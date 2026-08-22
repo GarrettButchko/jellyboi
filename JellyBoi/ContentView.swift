@@ -8,17 +8,22 @@
 import SwiftUI
 
 struct ContentView: View {
+
+    @EnvironmentObject var viewManager: ViewManager
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        switch viewManager.currentView {
+        case .getStarted:
+            GetStartedView()
+        case .signIn:
+            SignInView()
+        case .tabs:
+            TabsView()
         }
-        .padding()
     }
 }
 
 #Preview {
     ContentView()
+        .environmentObject(ViewManager())
 }

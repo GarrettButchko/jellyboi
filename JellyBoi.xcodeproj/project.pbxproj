@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */ = {isa = PBXBuildFile; productRef = 2153AEA63038FAE600DBE264 /* BaseColors */; };
+		21707810303647640055889C /* JellyfinAPI in Frameworks */ = {isa = PBXBuildFile; productRef = 2170780F303647640055889C /* JellyfinAPI */; };
+		217079C63036C0750055889C /* SDWebImageSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 217079C53036C0750055889C /* SDWebImageSwiftUI */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		217077FA303646DD0055889C /* JellyBoi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JellyBoi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +29,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */,
+				217079C63036C0750055889C /* SDWebImageSwiftUI in Frameworks */,
+				21707810303647640055889C /* JellyfinAPI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +74,9 @@
 			);
 			name = JellyBoi;
 			packageProductDependencies = (
+				2170780F303647640055889C /* JellyfinAPI */,
+				217079C53036C0750055889C /* SDWebImageSwiftUI */,
+				2153AEA63038FAE600DBE264 /* BaseColors */,
 			);
 			productName = JellyBoi;
 			productReference = 217077FA303646DD0055889C /* JellyBoi.app */;
@@ -94,6 +106,11 @@
 			);
 			mainGroup = 217077F1303646DD0055889C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2170780E303647640055889C /* XCRemoteSwiftPackageReference "jellyfin-sdk-swift" */,
+				217079C43036C0750055889C /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */,
+				2153AEA8303928CA00DBE264 /* XCLocalSwiftPackageReference "../../Packages/BaseColors" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 217077FB303646DD0055889C /* Products */;
 			projectDirPath = "";
@@ -244,7 +261,7 @@
 		21707806303646DD0055889C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = appIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -269,7 +286,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.5;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.garrettbutchko.jellyboi.JellyBoi;
+				PRODUCT_BUNDLE_IDENTIFIER = com.garrettbutchko.jellyboi;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -288,7 +305,7 @@
 		21707807303646DD0055889C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = appIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -313,7 +330,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.5;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.garrettbutchko.jellyboi.JellyBoi;
+				PRODUCT_BUNDLE_IDENTIFIER = com.garrettbutchko.jellyboi;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -351,6 +368,49 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		2153AEA8303928CA00DBE264 /* XCLocalSwiftPackageReference "../../Packages/BaseColors" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../Packages/BaseColors;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2170780E303647640055889C /* XCRemoteSwiftPackageReference "jellyfin-sdk-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jellyfin/jellyfin-sdk-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.0.0;
+			};
+		};
+		217079C43036C0750055889C /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SDWebImage/SDWebImageSwiftUI";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.1.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2153AEA63038FAE600DBE264 /* BaseColors */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BaseColors;
+		};
+		2170780F303647640055889C /* JellyfinAPI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2170780E303647640055889C /* XCRemoteSwiftPackageReference "jellyfin-sdk-swift" */;
+			productName = JellyfinAPI;
+		};
+		217079C53036C0750055889C /* SDWebImageSwiftUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 217079C43036C0750055889C /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */;
+			productName = SDWebImageSwiftUI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 217077F2303646DD0055889C /* Project object */;
 }

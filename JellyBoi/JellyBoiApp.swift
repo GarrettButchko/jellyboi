@@ -9,9 +9,13 @@ import SwiftUI
 
 @main
 struct JellyBoiApp: App {
+
+    @StateObject private var viewManager = ViewManager()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(viewManager)
         }
     }
 }
