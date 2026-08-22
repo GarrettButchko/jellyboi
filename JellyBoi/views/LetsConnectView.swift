@@ -7,19 +7,18 @@
 
 import SwiftUI
 import BaseColors
+import StatusOverlayKit
 import JellyfinAPI
 
 struct LetsConnectView: View {
+    @EnvironmentObject var viewManager: ViewManager
     @State private var viewModel = LetsConnectViewModel()
     @State private var serverURL = ""
     @FocusState private var urlFieldFocused: Bool
 
-    private var isValidURL: Bool {
-        guard let url = URL(string: serverURL),
-              let scheme = url.scheme,
-              (scheme == "http" || scheme == "https"),
-              let host = url.host, !host.isEmpty else { return false }
-        return true
+    private var isVerified: Bool {
+        if case .verified = viewModel.serverCheckState { return true }
+        return false
     }
 
     @State private var contentMargins: CGFloat = 70
@@ -44,9 +43,9 @@ struct LetsConnectView: View {
                     }
             }
         }
-        .presentationDragIndicator(.visible)
         .task { viewModel.startDiscovery() }
         .onDisappear { viewModel.stopDiscovery() }
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Header
@@ -82,7 +81,15 @@ struct LetsConnectView: View {
         VStack {
             Spacer()
             Button {
-
+                if case .verified(let name) = viewModel.serverCheckState {
+                    TransientStatusSignal.shared.pending = StatusMessage(
+                        title: "Connected!",
+                        subtitle: "Successfully reached \(name).",
+                        icon: "checkmark.circle.fill",
+                        tint: .green
+                    )
+                    viewManager.navigateToServerSignIn()
+                }
             } label: {
                 Text("Connect")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -94,8 +101,8 @@ struct LetsConnectView: View {
                 in: RoundedRectangle(cornerRadius: 14)
             )
             .foregroundStyle(.white)
-            .disabled(!isValidURL)
-            .opacity(isValidURL ? 1 : 0.4)
+            .disabled(!isVerified)
+            .opacity(isVerified ? 1 : 0.4)
             .padding(.horizontal, 24)
             .padding(.bottom, 8)
             .safeAreaPadding(.bottom, 10)
@@ -156,13 +163,18 @@ struct LetsConnectView: View {
 
             TextField(text: $serverURL) {
                 Text(verbatim: "https://jellyfin.example.com")
-                    .foregroundStyle(Color.subThree)
+                    .foregroundStyle(Color.subOpp.opacity(0.5))
             }
             .keyboardType(.URL)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .focused($urlFieldFocused)
             .foregroundStyle(Color.mainOpp)
+            .onChange(of: serverURL) { _, newValue in
+                viewModel.scheduleServerCheck(urlString: newValue)
+            }
+
+            checkStateIcon
         }
         .padding(14)
         .background {
@@ -171,6 +183,27 @@ struct LetsConnectView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { urlFieldFocused = true }
+        .animation(.default, value: viewModel.serverCheckState)
+    }
+
+    @ViewBuilder
+    private var checkStateIcon: some View {
+        switch viewModel.serverCheckState {
+        case .idle:
+            EmptyView()
+        case .checking:
+            ProgressView()
+                .tint(Color.subOpp.opacity(0.5))
+                .scaleEffect(0.8)
+        case .verified:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .transition(.scale.combined(with: .opacity))
+        case .failed:
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(.red)
+                .transition(.scale.combined(with: .opacity))
+        }
     }
 
     // MARK: - OR Divider
@@ -191,7 +224,6 @@ struct LetsConnectView: View {
 
     private var localServerSection: some View {
         VStack(spacing: 0) {
-            // Header row
             HStack(spacing: 12) {
                 Image(systemName: "server.rack")
                     .font(.system(size: 22))
@@ -204,7 +236,7 @@ struct LetsConnectView: View {
                         .foregroundStyle(Color.mainOpp)
                     Text(viewModel.isSearching ? "Searching your network..." : "\(viewModel.discoveredServers.count) found")
                         .font(.system(size: 13, weight: .regular, design: .rounded))
-                        .foregroundStyle(Color.subFour)
+                        .foregroundStyle(Color.subOpp.opacity(0.5))
                         .animation(.default, value: viewModel.isSearching)
                 }
 
@@ -212,15 +244,13 @@ struct LetsConnectView: View {
 
                 if viewModel.isSearching {
                     ProgressView()
-                        .tint(Color.subThree)
+                        .tint(Color.subOpp.opacity(0.5))
                 }
             }
             .padding(14)
 
-            // Discovered servers
             if !viewModel.discoveredServers.isEmpty {
-                Divider()
-                    .padding(.horizontal, 14)
+                Divider().padding(.horizontal, 14)
 
                 ForEach(viewModel.discoveredServers) { server in
                     Button {

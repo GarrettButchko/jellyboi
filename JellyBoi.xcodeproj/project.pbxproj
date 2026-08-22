@@ -10,6 +10,8 @@
 		2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */ = {isa = PBXBuildFile; productRef = 2153AEA63038FAE600DBE264 /* BaseColors */; };
 		21707810303647640055889C /* JellyfinAPI in Frameworks */ = {isa = PBXBuildFile; productRef = 2170780F303647640055889C /* JellyfinAPI */; };
 		217079C63036C0750055889C /* SDWebImageSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 217079C53036C0750055889C /* SDWebImageSwiftUI */; };
+		2186F9063039459C009D8CCA /* StatusOverlayKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2186F9053039459C009D8CCA /* StatusOverlayKit */; };
+		21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */ = {isa = PBXBuildFile; productRef = 21ACBB8B303942F500B6013E /* LoggingKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +32,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */,
+				2186F9063039459C009D8CCA /* StatusOverlayKit in Frameworks */,
+				21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */,
 				217079C63036C0750055889C /* SDWebImageSwiftUI in Frameworks */,
 				21707810303647640055889C /* JellyfinAPI in Frameworks */,
 			);
@@ -77,6 +81,8 @@
 				2170780F303647640055889C /* JellyfinAPI */,
 				217079C53036C0750055889C /* SDWebImageSwiftUI */,
 				2153AEA63038FAE600DBE264 /* BaseColors */,
+				21ACBB8B303942F500B6013E /* LoggingKit */,
+				2186F9053039459C009D8CCA /* StatusOverlayKit */,
 			);
 			productName = JellyBoi;
 			productReference = 217077FA303646DD0055889C /* JellyBoi.app */;
@@ -110,6 +116,8 @@
 				2170780E303647640055889C /* XCRemoteSwiftPackageReference "jellyfin-sdk-swift" */,
 				217079C43036C0750055889C /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */,
 				2153AEA8303928CA00DBE264 /* XCLocalSwiftPackageReference "../../Packages/BaseColors" */,
+				21ACBB8A303942F500B6013E /* XCLocalSwiftPackageReference "../../Packages/LoggingKit" */,
+				2186F9043039459C009D8CCA /* XCLocalSwiftPackageReference "../../Packages/StatusOverlayKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 217077FB303646DD0055889C /* Products */;
@@ -374,6 +382,14 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../Packages/BaseColors;
 		};
+		2186F9043039459C009D8CCA /* XCLocalSwiftPackageReference "../../Packages/StatusOverlayKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../Packages/StatusOverlayKit;
+		};
+		21ACBB8A303942F500B6013E /* XCLocalSwiftPackageReference "../../Packages/LoggingKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../Packages/LoggingKit;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -409,6 +425,14 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 217079C43036C0750055889C /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */;
 			productName = SDWebImageSwiftUI;
+		};
+		2186F9053039459C009D8CCA /* StatusOverlayKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = StatusOverlayKit;
+		};
+		21ACBB8B303942F500B6013E /* LoggingKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = LoggingKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

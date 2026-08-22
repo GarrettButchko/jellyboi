@@ -10,6 +10,7 @@ internal import Combine
 
 enum ViewType {
     case getStarted
+    case serverSignIn
     case signIn
     case tabs
 }
@@ -29,6 +30,10 @@ class ViewManager: ObservableObject {
 
     func navigateToGetStarted() {
         currentView = .getStarted
+    }
+
+    func navigateToServerSignIn() {
+        currentView = .serverSignIn
     }
 
     func navigateToSignIn() {
