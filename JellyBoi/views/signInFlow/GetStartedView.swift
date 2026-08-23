@@ -7,11 +7,13 @@
 
 import SwiftUI
 import SDWebImageSwiftUI
+import StatusOverlayKit
 
 struct GetStartedView: View {
 
     @EnvironmentObject var viewManager: ViewManager
     @State private var showLetsConnect = false
+    @State private var pendingServerSignIn = false
 
     var body: some View {
         ZStack {
@@ -66,8 +68,14 @@ struct GetStartedView: View {
             }
         }
         .ignoresSafeArea()
-        .sheet(isPresented: $showLetsConnect) {
-            LetsConnectView()
+        .consumesTransientStatus()
+        .sheet(isPresented: $showLetsConnect, onDismiss: {
+            if pendingServerSignIn {
+                pendingServerSignIn = false
+                viewManager.navigateToServerSignIn()
+            }
+        }) {
+            LetsConnectView(onConnected: { pendingServerSignIn = true })
         }
     }
 }

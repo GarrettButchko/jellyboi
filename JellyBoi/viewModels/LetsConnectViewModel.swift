@@ -23,6 +23,7 @@ class LetsConnectViewModel {
     var discoveredServers: [JellyfinClient.PublicServer] = []
     var isSearching = false
     var serverCheckState: ServerCheckState = .idle
+    private(set) var verifiedURL: URL?
 
     private var discoveryTask: Task<Void, Never>?
     private var checkTask: Task<Void, Never>?
@@ -58,6 +59,7 @@ class LetsConnectViewModel {
     func scheduleServerCheck(urlString: String) {
         checkTask?.cancel()
         serverCheckState = .idle
+        verifiedURL = nil
 
         guard let url = URL(string: urlString),
               let scheme = url.scheme, (scheme == "http" || scheme == "https"),
@@ -88,13 +90,16 @@ class LetsConnectViewModel {
             guard !Task.isCancelled else { return }
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 serverCheckState = .failed("Couldn't reach a Jellyfin server at this URL")
+                verifiedURL = nil
                 return
             }
             let info = try JSONDecoder().decode(PublicInfoResponse.self, from: data)
             serverCheckState = .verified(name: info.serverName ?? url.host ?? "Jellyfin Server")
+            verifiedURL = url
         } catch {
             guard !Task.isCancelled else { return }
             serverCheckState = .failed("Couldn't reach a Jellyfin server at this URL")
+            verifiedURL = nil
         }
     }
 }

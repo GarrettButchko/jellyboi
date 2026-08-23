@@ -1,0 +1,73 @@
+//
+//  ServerViewModel.swift
+//  JellyBoi
+//
+//  Created by Garrett Butchko on 8/22/26.
+//
+
+import Foundation
+import Observation
+import UIKit
+import Get
+import JellyfinAPI
+
+private struct StoredSession: Codable {
+    let token: String
+    let serverURL: URL
+    let serverName: String
+}
+
+private let sessionKey = "jellyfinSession"
+
+@Observable
+@MainActor
+class ServerViewModel {
+
+    var serverURL: URL?
+    var serverName: String?
+    private(set) var client: JellyfinClient?
+    var currentUser: UserDto?
+
+    func setServer(url: URL, name: String) {
+        serverURL = url
+        serverName = name
+        client = JellyfinClient(configuration: .init(
+            url: url,
+            client: "JellyBoi",
+            deviceName: UIDevice.current.name,
+            deviceID: UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString,
+            version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        ))
+    }
+
+    func saveSession(token: String) {
+        guard let url = serverURL, let name = serverName else { return }
+        KeychainStore.save(StoredSession(token: token, serverURL: url, serverName: name), for: sessionKey)
+    }
+
+    /// Restores a previous session from the keychain. Returns `false` if the stored
+    /// session is missing or the server rejects the token — caller should sign out.
+    func restoreSession() async -> Bool {
+        guard let session = KeychainStore.read(StoredSession.self, for: sessionKey) else { return false }
+
+        let restoredClient = JellyfinClient(configuration: .init(
+            url: session.serverURL,
+            accessToken: session.token,
+            client: "JellyBoi",
+            deviceName: UIDevice.current.name,
+            deviceID: UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString,
+            version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        ))
+
+        do {
+            let user = try await restoredClient.send(Paths.getCurrentUser).value
+            serverURL = session.serverURL
+            serverName = session.serverName
+            client = restoredClient
+            currentUser = user
+            return true
+        } catch {
+            return false
+        }
+    }
+}

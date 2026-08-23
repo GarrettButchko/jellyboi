@@ -18,10 +18,11 @@ enum ViewType {
 @MainActor
 class ViewManager: ObservableObject {
 
+    @Published private(set) var previousView: ViewType = .getStarted
     @Published var currentView: ViewType
 
     init() {
-        if KeychainStore.read(for: "jellyfinToken") != nil {
+        if KeychainStore.read(for: "jellyfinSession") != nil {
             self.currentView = .tabs
         } else {
             self.currentView = .getStarted
@@ -29,23 +30,28 @@ class ViewManager: ObservableObject {
     }
 
     func navigateToGetStarted() {
+        previousView = currentView
         currentView = .getStarted
     }
 
     func navigateToServerSignIn() {
+        previousView = currentView
         currentView = .serverSignIn
     }
 
     func navigateToSignIn() {
+        previousView = currentView
         currentView = .signIn
     }
 
     func navigateToTabs() {
+        previousView = currentView
         currentView = .tabs
     }
 
     func signOut() {
-        KeychainStore.delete(for: "jellyfinToken")
+        KeychainStore.delete(for: "jellyfinSession")
+        previousView = currentView
         currentView = .getStarted
     }
 }

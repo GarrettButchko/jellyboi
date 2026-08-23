@@ -11,7 +11,10 @@ import StatusOverlayKit
 import JellyfinAPI
 
 struct LetsConnectView: View {
-    @EnvironmentObject var viewManager: ViewManager
+    var onConnected: () -> Void = {}
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(ServerViewModel.self) private var serverViewModel
     @State private var viewModel = LetsConnectViewModel()
     @State private var serverURL = ""
     @FocusState private var urlFieldFocused: Bool
@@ -81,14 +84,11 @@ struct LetsConnectView: View {
         VStack {
             Spacer()
             Button {
-                if case .verified(let name) = viewModel.serverCheckState {
-                    TransientStatusSignal.shared.pending = StatusMessage(
-                        title: "Connected!",
-                        subtitle: "Successfully reached \(name).",
-                        icon: "checkmark.circle.fill",
-                        tint: .green
-                    )
-                    viewManager.navigateToServerSignIn()
+                if case .verified(let name) = viewModel.serverCheckState,
+                   let url = viewModel.verifiedURL {
+                    serverViewModel.setServer(url: url, name: name)
+                    onConnected()
+                    dismiss()
                 }
             } label: {
                 Text("Connect")
@@ -145,7 +145,6 @@ struct LetsConnectView: View {
                 .background {
                     RoundedRectangle(cornerRadius: 25, style: .continuous)
                         .fill(Color.sub)
-                        .cardShadow()
                 }
             }
             .padding(.horizontal, 24)
@@ -158,8 +157,9 @@ struct LetsConnectView: View {
     private var urlTextField: some View {
         HStack(spacing: 10) {
             Image(systemName: "globe")
+                .font(.system(size: 22))
                 .foregroundStyle(.accent)
-                .frame(width: 20)
+                .frame(width: 28)
 
             TextField(text: $serverURL) {
                 Text(verbatim: "https://jellyfin.example.com")

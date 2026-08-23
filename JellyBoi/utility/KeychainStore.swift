@@ -42,4 +42,16 @@ enum KeychainStore {
         ]
         SecItemDelete(query as CFDictionary)
     }
+
+    static func save<T: Codable>(_ value: T, for key: String) {
+        guard let data = try? JSONEncoder().encode(value),
+              let string = String(data: data, encoding: .utf8) else { return }
+        save(string, for: key)
+    }
+
+    static func read<T: Codable>(_ type: T.Type, for key: String) -> T? {
+        guard let string = read(for: key),
+              let data = string.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
+    }
 }

@@ -11,11 +11,13 @@ import SwiftUI
 struct JellyBoiApp: App {
 
     @StateObject private var viewManager = ViewManager()
+    @State private var serverViewModel = ServerViewModel()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(viewManager)
+                .environment(serverViewModel)
         }
     }
 }

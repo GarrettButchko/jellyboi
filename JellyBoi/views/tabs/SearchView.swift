@@ -10,6 +10,10 @@ import SwiftUI
 struct SearchView: View {
     var body: some View {
         Text("Search")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .topTrailing) {
+                ProfileAvatarButton()
+            }
     }
 }
 
