@@ -1,5 +1,5 @@
 {
-  "originHash" : "03dd6dbf559543468fa1ef5e3cfe311101f03e039470de8bf2df982fb655b374",
+  "originHash" : "bb7d25851ca3c9f9d98be62af069aafbaa18f3cd35bc1e6157ea92f4a0c5cc5d",
   "pins" : [
     {
       "identity" : "get",
@@ -16,6 +16,24 @@
       "location" : "https://github.com/jellyfin/jellyfin-sdk-swift",
       "state" : {
         "revision" : "37a2f5028bd24689b772effb559f72ec5388f021",
+        "version" : "3.0.0"
+      }
+    },
+    {
+      "identity" : "marqueetext",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/joekndy/MarqueeText.git",
+      "state" : {
+        "branch" : "master",
+        "revision" : "22309f6863a182e81a2b4ebbca8cdc044f854b33"
+      }
+    },
+    {
+      "identity" : "scalingheaderscrollview",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/exyte/ScalingHeaderScrollView.git",
+      "state" : {
+        "revision" : "95bf5ae92aa919e22d8ae3997534c7ebee87b525",
         "version" : "3.0.0"
       }
     },

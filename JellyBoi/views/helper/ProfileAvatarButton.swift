@@ -55,7 +55,6 @@ struct ProfileAvatarButton: View {
         }) {
             ProfileView(onSignOut: { pendingSignOut = true })
         }
-        .safeAreaPadding(.top)
         .padding(.trailing, 20)
     }
 

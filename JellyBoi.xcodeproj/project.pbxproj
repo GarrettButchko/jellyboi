@@ -7,10 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2114B68D303BDCEF006F4D0E /* ScalingHeaderScrollView in Frameworks */ = {isa = PBXBuildFile; productRef = 2114B68C303BDCEF006F4D0E /* ScalingHeaderScrollView */; };
 		2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */ = {isa = PBXBuildFile; productRef = 2153AEA63038FAE600DBE264 /* BaseColors */; };
 		21707810303647640055889C /* JellyfinAPI in Frameworks */ = {isa = PBXBuildFile; productRef = 2170780F303647640055889C /* JellyfinAPI */; };
 		217079C63036C0750055889C /* SDWebImageSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 217079C53036C0750055889C /* SDWebImageSwiftUI */; };
 		2186F9063039459C009D8CCA /* StatusOverlayKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2186F9053039459C009D8CCA /* StatusOverlayKit */; };
+		2186FE37303B5B5A009D8CCA /* MarqueeText in Frameworks */ = {isa = PBXBuildFile; productRef = 2186FE36303B5B5A009D8CCA /* MarqueeText */; };
 		21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */ = {isa = PBXBuildFile; productRef = 21ACBB8B303942F500B6013E /* LoggingKit */; };
 /* End PBXBuildFile section */
 
@@ -31,11 +33,13 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2186FE37303B5B5A009D8CCA /* MarqueeText in Frameworks */,
 				2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */,
 				2186F9063039459C009D8CCA /* StatusOverlayKit in Frameworks */,
 				21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */,
 				217079C63036C0750055889C /* SDWebImageSwiftUI in Frameworks */,
 				21707810303647640055889C /* JellyfinAPI in Frameworks */,
+				2114B68D303BDCEF006F4D0E /* ScalingHeaderScrollView in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,6 +87,8 @@
 				2153AEA63038FAE600DBE264 /* BaseColors */,
 				21ACBB8B303942F500B6013E /* LoggingKit */,
 				2186F9053039459C009D8CCA /* StatusOverlayKit */,
+				2186FE36303B5B5A009D8CCA /* MarqueeText */,
+				2114B68C303BDCEF006F4D0E /* ScalingHeaderScrollView */,
 			);
 			productName = JellyBoi;
 			productReference = 217077FA303646DD0055889C /* JellyBoi.app */;
@@ -118,6 +124,8 @@
 				2153AEA8303928CA00DBE264 /* XCLocalSwiftPackageReference "../../Packages/BaseColors" */,
 				21ACBB8A303942F500B6013E /* XCLocalSwiftPackageReference "../../Packages/LoggingKit" */,
 				2186F9043039459C009D8CCA /* XCLocalSwiftPackageReference "../../Packages/StatusOverlayKit" */,
+				2186FE35303B5B5A009D8CCA /* XCRemoteSwiftPackageReference "MarqueeText" */,
+				2114B68B303BDCEF006F4D0E /* XCRemoteSwiftPackageReference "ScalingHeaderScrollView" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 217077FB303646DD0055889C /* Products */;
@@ -393,6 +401,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		2114B68B303BDCEF006F4D0E /* XCRemoteSwiftPackageReference "ScalingHeaderScrollView" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/exyte/ScalingHeaderScrollView.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.0.0;
+			};
+		};
 		2170780E303647640055889C /* XCRemoteSwiftPackageReference "jellyfin-sdk-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/jellyfin/jellyfin-sdk-swift";
@@ -409,9 +425,22 @@
 				minimumVersion = 3.1.4;
 			};
 		};
+		2186FE35303B5B5A009D8CCA /* XCRemoteSwiftPackageReference "MarqueeText" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/joekndy/MarqueeText.git";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		2114B68C303BDCEF006F4D0E /* ScalingHeaderScrollView */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2114B68B303BDCEF006F4D0E /* XCRemoteSwiftPackageReference "ScalingHeaderScrollView" */;
+			productName = ScalingHeaderScrollView;
+		};
 		2153AEA63038FAE600DBE264 /* BaseColors */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BaseColors;
@@ -429,6 +458,11 @@
 		2186F9053039459C009D8CCA /* StatusOverlayKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = StatusOverlayKit;
+		};
+		2186FE36303B5B5A009D8CCA /* MarqueeText */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2186FE35303B5B5A009D8CCA /* XCRemoteSwiftPackageReference "MarqueeText" */;
+			productName = MarqueeText;
 		};
 		21ACBB8B303942F500B6013E /* LoggingKit */ = {
 			isa = XCSwiftPackageProductDependency;

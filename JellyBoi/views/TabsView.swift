@@ -10,6 +10,7 @@ import SwiftUI
 struct TabsView: View {
 
     @EnvironmentObject var viewManager: ViewManager
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         TabView {

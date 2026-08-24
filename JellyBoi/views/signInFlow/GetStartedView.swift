@@ -23,7 +23,7 @@ struct GetStartedView: View {
                 Spacer()
 
                 VStack(spacing: 16) {
-                    AnimatedImage(name: "jellyFishAni.gif")
+                    AnimatedImage(name: "jellyFishAniWhite.gif")
                         .resizable()
                         .rotationEffect(Angle(degrees: 45))
                         .scaledToFit()

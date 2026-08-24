@@ -1,8 +1,8 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "extended-gray:0.25000,1.00000",
-      "extended-gray:0.00000,1.00000"
+      "extended-srgb:0.00000,0.78431,0.70196,1.00000",
+      "srgb:0.38039,0.33333,0.96078,1.00000"
     ],
     "orientation" : {
       "start" : {
@@ -20,18 +20,15 @@
       "layers" : [
         {
           "fill" : {
-            "linear-gradient" : [
-              "extended-srgb:0.79608,0.18824,0.87843,1.00000",
-              "srgb:0.00000,0.99144,1.00000,1.00000"
-            ]
+            "solid" : "extended-gray:1.00000,1.00000"
           },
-          "image-name" : "Untitled-1 3.svg",
-          "name" : "Untitled-1 3",
+          "image-name" : "Jellyboi copy.svg",
+          "name" : "Jellyboi copy",
           "position" : {
-            "scale" : 1.75,
+            "scale" : 1.57,
             "translation-in-points" : [
-              10.0703125,
-              3.1299999999999955
+              0,
+              0
             ]
           }
         }
