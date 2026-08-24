@@ -14,7 +14,6 @@ struct MediaDetailView: View {
     let item: BaseItemDto
 
     @Environment(ServerViewModel.self) private var serverViewModel
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ScrollView {
@@ -55,21 +54,9 @@ struct MediaDetailView: View {
         .background(Color.bg.ignoresSafeArea())
         .toolbarVisibility(.hidden, for: .navigationBar)
         .overlay(alignment: .topLeading) {
-            backButton
+            BackButton()
                 .padding(.leading, 16)
                 .padding(.top, 4)
-        }
-    }
-
-    private var backButton: some View {
-        Button {
-            dismiss()
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.mainOpp)
-                .frame(width: 36, height: 36)
-                .background(.ultraThinMaterial, in: Circle())
         }
     }
 

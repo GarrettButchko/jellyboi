@@ -14,7 +14,7 @@ struct MediaView: View {
     @State private var selectedItem: BaseItemDto?
     @Namespace private var zoomTransition
     
-    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 12)]
+    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 16)]
     private let titleCollapseThreshold: CGFloat = 50
     
     private let topID = "TopID"
@@ -57,7 +57,6 @@ struct MediaView: View {
                                 }
                             }
                             .padding(.horizontal, 16)
-                            .padding(.top, 8)
                             .padding(.bottom, 16)
                             
                         }
@@ -214,27 +213,56 @@ private struct MediaCard: View {
     let onSelect: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button(action: onSelect) {
-                posterImage
-                    .aspectRatio(2/3, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(Color.mainOpp.opacity(0.08), lineWidth: 1)
+        Button(action: onSelect) {
+            posterImage
+                .aspectRatio(2/3, contentMode: .fit)
+                .overlay(alignment: .bottom) {
+                    if let progress = watchProgress, !isWatched {
+                        progressBar(progress)
                     }
-            }
-            .buttonStyle(.plain)
-            .matchedTransitionSource(id: item, in: namespace)
-            
-            Text(item.name ?? "")
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.mainOpp)
-                .lineLimit(2)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if isWatched {
+                        watchedBadge
+                            .padding(8)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
+        .buttonStyle(.plain)
+        .matchedTransitionSource(id: item, in: namespace)
         .frame(maxHeight: .infinity, alignment: .top)
     }
-    
+
+    private var watchProgress: Double? {
+        if item.userData?.isPlayed == true { return 1 }
+        guard let percent = item.userData?.playedPercentage else { return nil }
+        return min(max(percent / 100, 0), 1)
+    }
+
+    private var isWatched: Bool {
+        (watchProgress ?? 0) >= 0.85
+    }
+
+    private var watchedBadge: some View {
+        Image(systemName: "checkmark")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(Color.white)
+            .frame(width: 22, height: 22)
+            .background(Color.accentColor, in: Circle())
+    }
+
+    private func progressBar(_ progress: Double) -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.accentColor)
+                    .frame(width: proxy.size.width * progress)
+            }
+        }
+        .frame(height: 6)
+    }
+
     @ViewBuilder
     private var posterImage: some View {
         if let client = serverViewModel.client,

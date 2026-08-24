@@ -55,16 +55,10 @@ struct ServerSignInView: View {
     private var topSection: some View {
         ZStack(alignment: .center) {
             HStack {
-                Button {
+                BackButton {
                     viewModel.stopQuickConnect()
                     viewManager.navigateToGetStarted()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .semibold))
-                        .padding(14)
                 }
-                .glassEffect(.regular.interactive(), in: Circle())
-                .foregroundStyle(Color.mainOpp)
                 .padding(.leading, 20)
 
                 Spacer()

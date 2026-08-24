@@ -9,6 +9,7 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 import LoggingKit
+import SDWebImageSwiftUI
 
 struct ProfileAvatarButton: View {
     @EnvironmentObject private var viewManager: ViewManager
@@ -30,16 +31,13 @@ struct ProfileAvatarButton: View {
             showProfile = true
         } label: {
             if let url = profileImageURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    case .failure(let error):
-                        let _ = AppLogger.error("Failed to load user avatar", error, tag: "ProfileAvatarButton")
-                        fallbackIcon
-                    default:
-                        fallbackIcon
-                    }
+                WebImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    fallbackIcon
+                }
+                .onFailure { error in
+                    AppLogger.error("Failed to load user avatar", error, tag: "ProfileAvatarButton")
                 }
                 .frame(width: 40, height: 40)
                 .clipShape(Circle())
