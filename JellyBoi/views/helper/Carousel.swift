@@ -11,97 +11,67 @@ import SDWebImageSwiftUI
 import JellyfinAPI
 
 private let carouselCardWidthRatio: CGFloat = 0.8
-private let carouselRestingGap: CGFloat = 40
+private let carouselRestingGap: CGFloat = 5
+private let carouselNeighborScale: CGFloat = 0.85
 
 struct Carousel: View {
     let title: String
-    let items: [BaseItemDto]
     let namespace: Namespace.ID
-    let isInteractive: Bool
     let backdropURL: (BaseItemDto) -> URL?
     let onSelect: (BaseItemDto) -> Void
+    @EnvironmentObject var viewModel: HomeViewModel
 
-    @State private var currentIndex = 0
-    @State private var dragOffset: CGFloat = 0
-    @State private var isAnimating = false
+    @State private var currentIndex: Int? = 0
+    @State private var snappedIndex: Int = 0
 
     var body: some View {
-        VStack(alignment: .center, spacing: 12) {
-            GeometryReader { geometry in
-                let cardWidth = geometry.size.width * carouselCardWidthRatio
-                let cardHeight = cardWidth * 9 / 16
-                // 0.95 = half of full card + half of scaled neighbor, so the resting edge gap is constant
-                let pitch = cardWidth + carouselRestingGap
+        GeometryReader { geometry in
+            let cardWidth = geometry.size.width * carouselCardWidthRatio
+            let cardHeight = cardWidth * 9 / 16
+            let sideInset = (geometry.size.width - cardWidth) / 2
 
-                ZStack {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        // Only materialize the visible trio for smooth scrolling with big libraries
-                        if abs(index - currentIndex) <= 1{
-                            let distance = cardDistance(index: index, pitch: pitch)
-
-                            CarouselCard(
-                                item: item,
-                                backdropURL: backdropURL,
-                                width: cardWidth,
-                                height: cardHeight
-                            )
-                            .offset(x: CGFloat(index - currentIndex) * pitch + dragOffset)
-                            .scaleEffect(1.0 - 0.2 * max(distance - 0.5, 0))
-                            .zIndex(distance < 0.5 ? 1 : 0)
-                            .matchedTransitionSource(id: item, in: namespace)
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: carouselRestingGap) {
+                    ForEach(Array(viewModel.movies.enumerated()), id: \.element.id) { index, item in
+                        let scale: CGFloat = snappedIndex == index ? 1.0 : carouselNeighborScale
+                        CarouselCard(
+                            item: item,
+                            backdropURL: backdropURL,
+                            width: cardWidth * scale,
+                            height: cardHeight * scale
+                        )
+                        .animation(.smooth(duration: 0.3), value: snappedIndex == index)
+                        .id(index)
+                        .matchedTransitionSource(id: item, in: namespace)
+                        .onTapGesture {
+                            if currentIndex == index {
+                                onSelect(item)
+                            } else {
+                                withAnimation { currentIndex = index }
+                            }
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .highPriorityGesture(swipeGesture(width: geometry.size.width))
+                .scrollTargetLayout()
+                .padding(.horizontal, sideInset)
             }
-            // Height = width * cardRatio * 9/16, expressed as an aspect ratio (width:height)
-            .aspectRatio(16 / (9 * carouselCardWidthRatio), contentMode: .fit)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $currentIndex)
+            .scrollIndicators(.hidden)
+            .frame(height: cardHeight)
         }
-        .onChange(of: items.count) { _, newCount in
-            currentIndex = min(max(currentIndex, 0), max(newCount - 1, 0))
+        .aspectRatio(16 / (9 * carouselCardWidthRatio), contentMode: .fit)
+        .sensoryFeedback(.selection, trigger: snappedIndex)
+        .onChange(of: currentIndex) { _, newIndex in
+            guard let newIndex, newIndex != snappedIndex else { return }
+            snappedIndex = newIndex
+        }
+        .onChange(of: viewModel.movies.count) { _, newCount in
+            if let idx = currentIndex {
+                currentIndex = min(max(idx, 0), max(newCount - 1, 0))
+            }
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private func swipeGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                guard isInteractive, !isAnimating else { return }
-                dragOffset = value.translation.width
-            }
-            .onEnded { value in
-                guard isInteractive, !isAnimating else {
-                    withAnimation(.smooth(duration: 0.3)) { dragOffset = 0 }
-                    return
-                }
-                let translation = value.translation.width
-
-                // Small movement = tap on the center card
-                if abs(translation) < 5 && abs(value.translation.height) < 5 {
-                    onSelect(items[currentIndex])
-                    dragOffset = 0
-                    return
-                }
-
-                let threshold = width * 0.1
-                isAnimating = true
-                withAnimation(.smooth(duration: 0.3)) {
-                    if translation < -threshold && currentIndex < items.count - 1 {
-                        currentIndex += 1
-                    } else if translation > threshold && currentIndex > 0 {
-                        currentIndex -= 1
-                    }
-                    dragOffset = 0
-                } completion: {
-                    isAnimating = false
-                }
-            }
-    }
-
-    private func cardDistance(index: Int, pitch: CGFloat) -> CGFloat {
-        abs(CGFloat(index - currentIndex) * pitch + dragOffset) / pitch
     }
 }
 

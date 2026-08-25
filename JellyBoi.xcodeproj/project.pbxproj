@@ -11,6 +11,7 @@
 		2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */ = {isa = PBXBuildFile; productRef = 2153AEA63038FAE600DBE264 /* BaseColors */; };
 		21707810303647640055889C /* JellyfinAPI in Frameworks */ = {isa = PBXBuildFile; productRef = 2170780F303647640055889C /* JellyfinAPI */; };
 		217079C63036C0750055889C /* SDWebImageSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 217079C53036C0750055889C /* SDWebImageSwiftUI */; };
+		218336F4303E23680028E211 /* SkeletonUI in Frameworks */ = {isa = PBXBuildFile; productRef = 218336F3303E23680028E211 /* SkeletonUI */; };
 		2186F9063039459C009D8CCA /* StatusOverlayKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2186F9053039459C009D8CCA /* StatusOverlayKit */; };
 		2186FE37303B5B5A009D8CCA /* MarqueeText in Frameworks */ = {isa = PBXBuildFile; productRef = 2186FE36303B5B5A009D8CCA /* MarqueeText */; };
 		21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */ = {isa = PBXBuildFile; productRef = 21ACBB8B303942F500B6013E /* LoggingKit */; };
@@ -20,22 +21,9 @@
 		217077FA303646DD0055889C /* JellyBoi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JellyBoi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		217077FD303646DD0055889C /* Exceptions for "JellyBoi" folder in "JellyBoi" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 217077F9303646DD0055889C /* JellyBoi */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		217077FC303646DD0055889C /* JellyBoi */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				217077FD303646DD0055889C /* Exceptions for "JellyBoi" folder in "JellyBoi" target */,
-			);
 			path = JellyBoi;
 			sourceTree = "<group>";
 		};
@@ -51,6 +39,7 @@
 				2186F9063039459C009D8CCA /* StatusOverlayKit in Frameworks */,
 				21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */,
 				217079C63036C0750055889C /* SDWebImageSwiftUI in Frameworks */,
+				218336F4303E23680028E211 /* SkeletonUI in Frameworks */,
 				21707810303647640055889C /* JellyfinAPI in Frameworks */,
 				2114B68D303BDCEF006F4D0E /* ScalingHeaderScrollView in Frameworks */,
 			);
@@ -102,6 +91,7 @@
 				2186F9053039459C009D8CCA /* StatusOverlayKit */,
 				2186FE36303B5B5A009D8CCA /* MarqueeText */,
 				2114B68C303BDCEF006F4D0E /* ScalingHeaderScrollView */,
+				218336F3303E23680028E211 /* SkeletonUI */,
 			);
 			productName = JellyBoi;
 			productReference = 217077FA303646DD0055889C /* JellyBoi.app */;
@@ -139,6 +129,7 @@
 				2186F9043039459C009D8CCA /* XCLocalSwiftPackageReference "../../Packages/StatusOverlayKit" */,
 				2186FE35303B5B5A009D8CCA /* XCRemoteSwiftPackageReference "MarqueeText" */,
 				2114B68B303BDCEF006F4D0E /* XCRemoteSwiftPackageReference "ScalingHeaderScrollView" */,
+				218336F2303E23680028E211 /* XCRemoteSwiftPackageReference "SkeletonUI" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 217077FB303646DD0055889C /* Products */;
@@ -300,16 +291,16 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = JellyBoi/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = NO;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
@@ -345,16 +336,16 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = JellyBoi/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = NO;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
@@ -440,6 +431,14 @@
 				minimumVersion = 3.1.4;
 			};
 		};
+		218336F2303E23680028E211 /* XCRemoteSwiftPackageReference "SkeletonUI" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/CSolanaM/SkeletonUI.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.2;
+			};
+		};
 		2186FE35303B5B5A009D8CCA /* XCRemoteSwiftPackageReference "MarqueeText" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/joekndy/MarqueeText.git";
@@ -469,6 +468,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 217079C43036C0750055889C /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */;
 			productName = SDWebImageSwiftUI;
+		};
+		218336F3303E23680028E211 /* SkeletonUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 218336F2303E23680028E211 /* XCRemoteSwiftPackageReference "SkeletonUI" */;
+			productName = SkeletonUI;
 		};
 		2186F9053039459C009D8CCA /* StatusOverlayKit */ = {
 			isa = XCSwiftPackageProductDependency;

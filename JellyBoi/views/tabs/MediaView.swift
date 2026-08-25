@@ -27,7 +27,6 @@ struct MediaView: View {
         NavigationStack {
             ScrollViewReader { proxy in
             ZStack(alignment: .top) {
-               
                     ScrollView {
                         Color.clear
                             .frame(height: 0)
@@ -84,6 +83,7 @@ struct MediaView: View {
             .navigationDestination(item: $selectedItem) { item in
                 MediaDetailView(item: item)
                     .navigationTransition(.zoom(sourceID: item, in: zoomTransition))
+                    
             }
             .toolbarVisibility(.hidden, for: .navigationBar)
             .background(Color.bg.ignoresSafeArea())
@@ -232,6 +232,7 @@ private struct MediaCard: View {
         .buttonStyle(.plain)
         .matchedTransitionSource(id: item, in: namespace)
         .frame(maxHeight: .infinity, alignment: .top)
+        
     }
 
     private var watchProgress: Double? {

@@ -9,10 +9,11 @@ import Foundation
 import Observation
 import Get
 import JellyfinAPI
+internal import Combine
 
 @Observable
 @MainActor
-class HomeViewModel {
+class HomeViewModel: ObservableObject {
     var movies: [BaseItemDto] = []
     var isLoading = false
     var errorMessage: String?
