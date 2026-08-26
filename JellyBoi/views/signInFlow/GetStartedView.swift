@@ -23,11 +23,10 @@ struct GetStartedView: View {
                 Spacer()
 
                 VStack(spacing: 16) {
-                    AnimatedImage(name: "jellyFishAniWhite.gif")
+                    AnimatedImage(name: "floatingJellyWhite.gif")
                         .resizable()
-                        .rotationEffect(Angle(degrees: 45))
                         .scaledToFit()
-                        .frame(width: 120, height: 120)
+                        .frame(width: 140, height: 140)
                         .clipShape(RoundedRectangle(cornerRadius: 24))
 
                     VStack(spacing: 3) {

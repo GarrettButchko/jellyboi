@@ -11,14 +11,15 @@ import SDWebImageSwiftUI
 import JellyfinAPI
 
 private let carouselCardWidthRatio: CGFloat = 0.8
-private let carouselRestingGap: CGFloat = 5
-private let carouselNeighborScale: CGFloat = 0.85
+private let carouselRestingGap: CGFloat = 0
+private let carouselNeighborScale: CGFloat = 0.90
 
 struct Carousel: View {
     let title: String
     let namespace: Namespace.ID
     let backdropURL: (BaseItemDto) -> URL?
     let onSelect: (BaseItemDto) -> Void
+    var onSnap: ((Int, BaseItemDto) -> Void)? = nil
     @EnvironmentObject var viewModel: HomeViewModel
 
     @State private var currentIndex: Int? = 0
@@ -32,23 +33,21 @@ struct Carousel: View {
 
             ScrollView(.horizontal) {
                 LazyHStack(spacing: carouselRestingGap) {
-                    ForEach(Array(viewModel.movies.enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(viewModel.inProgressMovies.enumerated()), id: \.element.id) { index, item in
                         let scale: CGFloat = snappedIndex == index ? 1.0 : carouselNeighborScale
                         CarouselCard(
                             item: item,
                             backdropURL: backdropURL,
-                            width: cardWidth * scale,
-                            height: cardHeight * scale
+                            width: cardWidth,
+                            height: cardHeight
                         )
+                        .scaleEffect(scale)
                         .animation(.smooth(duration: 0.3), value: snappedIndex == index)
                         .id(index)
                         .matchedTransitionSource(id: item, in: namespace)
                         .onTapGesture {
-                            if currentIndex == index {
-                                onSelect(item)
-                            } else {
-                                withAnimation { currentIndex = index }
-                            }
+                            guard currentIndex == index else { return }
+                            onSelect(item)
                         }
                     }
                 }
@@ -65,8 +64,12 @@ struct Carousel: View {
         .onChange(of: currentIndex) { _, newIndex in
             guard let newIndex, newIndex != snappedIndex else { return }
             snappedIndex = newIndex
+            let items = viewModel.inProgressMovies
+            if newIndex < items.count {
+                onSnap?(newIndex, items[newIndex])
+            }
         }
-        .onChange(of: viewModel.movies.count) { _, newCount in
+        .onChange(of: viewModel.inProgressMovies.count) { _, newCount in
             if let idx = currentIndex {
                 currentIndex = min(max(idx, 0), max(newCount - 1, 0))
             }
@@ -83,19 +86,42 @@ private struct CarouselCard: View {
     let width: CGFloat
     let height: CGFloat
 
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            backdropImage
-        }
-        .frame(width: width, height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .clipped()
-    }
+    private let outerCornerRadius: CGFloat = 20
 
     private var watchProgress: Double? {
-        if item.userData?.isPlayed == true { return 1 }
-        guard let percent = item.userData?.playedPercentage else { return nil }
+        guard let percent = item.userData?.playedPercentage,
+              percent > 0, percent < 85 else { return nil }
         return min(max(percent / 100, 0), 1)
+    }
+
+    private var timeRemainingLabel: String? {
+        guard let ticks = item.runTimeTicks,
+              let percent = item.userData?.playedPercentage,
+              percent > 0 else { return nil }
+        let totalSeconds = Int(ticks / 10_000_000)
+        let remainingSeconds = totalSeconds - Int(Double(totalSeconds) * percent / 100)
+        guard remainingSeconds > 60 else { return nil }
+        let hours = remainingSeconds / 3600
+        let minutes = (remainingSeconds % 3600) / 60
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            backdropImage
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.5)],
+                startPoint: .center,
+                endPoint: .bottom
+            )
+            if let progress = watchProgress {
+                GlassProgressBar(progress: progress, label: timeRemainingLabel)
+                    .padding(10)
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous))
+        .clipped()
     }
 
     @ViewBuilder
@@ -111,17 +137,5 @@ private struct CarouselCard: View {
             Color.sub
                 .frame(width: width, height: height)
         }
-    }
-
-    private func progressBar(_ progress: Double) -> some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Color.main.opacity(0.4)
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(Color.main)
-                    .frame(width: proxy.size.width * progress)
-            }
-        }
-        .frame(height: 6)
     }
 }

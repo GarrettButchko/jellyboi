@@ -9,14 +9,42 @@ import Foundation
 import Observation
 import Get
 import JellyfinAPI
+import SDWebImage
 internal import Combine
 
 @Observable
 @MainActor
 class HomeViewModel: ObservableObject {
     var movies: [BaseItemDto] = []
+    var recommended: [BaseItemDto] = []
+    var recentlyAdded: [BaseItemDto] = []
     var isLoading = false
     var errorMessage: String?
+
+    var inProgressMovies: [BaseItemDto] {
+        movies.filter {
+            guard let percent = $0.userData?.playedPercentage else { return false }
+            return percent > 0 && percent < 85
+        }
+    }
+
+    var quality480p: [BaseItemDto] {
+        movies.filter { item in
+            guard let streams = item.mediaStreams,
+                  let video = streams.first(where: { $0.type == .video }),
+                  let height = video.height else { return false }
+            return height < 720
+        }
+    }
+
+    var quality1080p: [BaseItemDto] {
+        movies.filter { item in
+            guard let streams = item.mediaStreams,
+                  let video = streams.first(where: { $0.type == .video }),
+                  let height = video.height else { return false }
+            return height >= 1080
+        }
+    }
 
     func load(using client: JellyfinClient) async {
         guard movies.isEmpty else { return }
@@ -28,22 +56,71 @@ class HomeViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let params = Paths.GetItemsParameters(
-                isRecursive: true,
-                sortOrder: [.ascending],
+            let moviesParams = Paths.GetItemsParameters(
+                isRecursive: true, sortOrder: [.ascending], fields: [.mediaStreams],
                 includeItemTypes: [.movie],
                 sortBy: [.sortName]
             )
-            movies = try await client.send(Paths.getItems(parameters: params)).value.items ?? []
+            let recommendedParams = Paths.GetItemsParameters(
+                limit: 20, isRecursive: true,
+                sortOrder: [.descending],
+                includeItemTypes: [.movie],
+                sortBy: [.communityRating]
+            )
+            let recentParams = Paths.GetItemsParameters(
+                limit: 20, isRecursive: true,
+                sortOrder: [.descending],
+                includeItemTypes: [.movie],
+                sortBy: [.dateCreated]
+            )
+
+            async let moviesResult = client.send(Paths.getItems(parameters: moviesParams)).value.items
+            async let recommendedResult = client.send(Paths.getItems(parameters: recommendedParams)).value.items
+            async let recentResult = client.send(Paths.getItems(parameters: recentParams)).value.items
+
+            movies = try await moviesResult ?? []
+            recommended = try await recommendedResult ?? []
+            recentlyAdded = try await recentResult ?? []
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
+    func prefetchBackdrops(around index: Int, client: JellyfinClient) {
+        let neighbors = [index - 1, index, index + 1]
+            .filter { $0 >= 0 && $0 < movies.count }
+        let urls = neighbors.compactMap { backgroundURL(for: movies[$0], client: client) }
+        SDWebImagePrefetcher.shared.prefetchURLs(urls)
+    }
+
+    func prefetchPosters(around index: Int, client: JellyfinClient) {
+        let neighbors = [index - 1, index, index + 1]
+            .filter { $0 >= 0 && $0 < movies.count }
+        let urls = neighbors.compactMap { posterURL(for: movies[$0], client: client) }
+        SDWebImagePrefetcher.shared.prefetchURLs(urls)
+    }
+
+    func posterURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
+        guard let id = item.id else { return nil }
+        return client.url(with: Paths.getItemImage(
+            itemID: id,
+            imageType: "Primary",
+            parameters: .init(maxWidth: 400, quality: 80)
+        ))
+    }
+
+    func backgroundURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
+        guard let id = item.id else { return nil }
+        return client.url(with: Paths.getItemImage(
+            itemID: id,
+            imageType: "Backdrop",
+            parameters: .init(maxWidth: 800, quality: 80)
+        ))
+    }
+
     func backdropURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
         guard let id = item.id else { return nil }
-        // Prefer the 16:9 Thumb card; many items only have a Backdrop, so fall back to it
         let imageType = item.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Backdrop"
         return client.url(with: Paths.getItemImage(
             itemID: id,
