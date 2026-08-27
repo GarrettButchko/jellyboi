@@ -11,9 +11,9 @@ import JellyfinAPI
 import SDWebImageSwiftUI
 
 struct HomeView: View {
+    @EnvironmentObject var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @StateObject var viewModel = HomeViewModel()
-    @State private var selectedItem: BaseItemDto?
     @Namespace private var zoomTransition
 
     @State private var scrollOffset: CGFloat = 0
@@ -39,7 +39,7 @@ struct HomeView: View {
                                 guard let client = serverViewModel.client else { return nil }
                                 return viewModel.backdropURL(for: item, client: client)
                             } onSelect: { item in
-                                selectedItem = item
+                                viewManager.navigateToMedia(item)
                             } onSnap: { index, item in
                                 withAnimation(.smooth(duration: 0.4)) { heroItem = item }
                                 if let client = serverViewModel.client {
@@ -53,7 +53,7 @@ struct HomeView: View {
                                     title: "Recommended",
                                     items: viewModel.recommended,
                                     namespace: zoomTransition,
-                                    selectedItem: $selectedItem
+                                    onSelect: { item in viewManager.navigateToMedia(item) }
                                 ) { item in
                                     guard let client = serverViewModel.client else { return nil }
                                     return viewModel.posterURL(for: item, client: client)
@@ -66,7 +66,7 @@ struct HomeView: View {
                                     title: "Recently Added",
                                     items: viewModel.recentlyAdded,
                                     namespace: zoomTransition,
-                                    selectedItem: $selectedItem
+                                    onSelect: { item in viewManager.navigateToMedia(item) }
                                 ) { item in
                                     guard let client = serverViewModel.client else { return nil }
                                     return viewModel.posterURL(for: item, client: client)
@@ -79,7 +79,7 @@ struct HomeView: View {
                                     title: "DVD",
                                     items: viewModel.quality480p,
                                     namespace: zoomTransition,
-                                    selectedItem: $selectedItem
+                                    onSelect: { item in viewManager.navigateToMedia(item) }
                                 ) { item in
                                     guard let client = serverViewModel.client else { return nil }
                                     return viewModel.posterURL(for: item, client: client)
@@ -92,7 +92,7 @@ struct HomeView: View {
                                     title: "Blu-ray",
                                     items: viewModel.quality1080p,
                                     namespace: zoomTransition,
-                                    selectedItem: $selectedItem
+                                    onSelect: { item in viewManager.navigateToMedia(item) }
                                 ) { item in
                                     guard let client = serverViewModel.client else { return nil }
                                     return viewModel.posterURL(for: item, client: client)
@@ -108,7 +108,7 @@ struct HomeView: View {
                             .ignoresSafeArea(edges: .top)
                     }
                 }
-                .navigationDestination(item: $selectedItem) { item in
+                .navigationDestination(item: $viewManager.selectedMediaItem) { item in
                     MediaDetailView(item: item)
                         .navigationTransition(.zoom(sourceID: item, in: zoomTransition))
                 }
@@ -119,11 +119,11 @@ struct HomeView: View {
                 } action: { _, newValue in
                     scrollOffset = newValue
                 }
-                
 
-                TabPageHeader(title: "Home", scrollOffset: scrollOffset, headerHeight: $headerHeight, showGradient: false)
+
+                TabPageHeader(title: "Home", scrollOffset: scrollOffset, headerHeight: $headerHeight, showGradient: true)
             }
-            
+
         }
         .background(Color.bg.ignoresSafeArea())
         .background {
@@ -178,7 +178,7 @@ private struct HomeSectionRow: View {
     let title: String
     let items: [BaseItemDto]
     let namespace: Namespace.ID
-    @Binding var selectedItem: BaseItemDto?
+    let onSelect: (BaseItemDto) -> Void
     let posterURL: (BaseItemDto) -> URL?
 
     var body: some View {
@@ -196,7 +196,7 @@ private struct HomeSectionRow: View {
                             posterURL: posterURL(item),
                             namespace: namespace
                         ) {
-                            selectedItem = item
+                            onSelect(item)
                         }
                         .frame(width: 110)
                     }

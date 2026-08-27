@@ -7,13 +7,10 @@
 
 import SwiftUI
 import BaseColors
-import StatusOverlayKit
 import JellyfinAPI
 
 struct LetsConnectView: View {
-    var onConnected: () -> Void = {}
-
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @State private var viewModel = LetsConnectViewModel()
     @State private var serverURL = ""
@@ -24,146 +21,158 @@ struct LetsConnectView: View {
         return false
     }
 
-    @State private var contentMargins: CGFloat = 70
-    @State private var viewContentHeight: CGFloat = 0
-
     var body: some View {
-        ZStack {
-            mainContent
-                .contentMargins(.top, contentMargins)
-                .contentMargins(.bottom, contentMargins)
+        ZStack(alignment: .topLeading) {
+            Color.bg
+                .ignoresSafeArea()
+                
 
-            headerOverlay
-            bottomButton
-        }
-        .background {
-            GeometryReader { proxy in
-                Color.bg.ignoresSafeArea()
-                    .task(id: proxy.size) {
-                        withAnimation {
-                            viewContentHeight = proxy.size.height - contentMargins * 2
-                        }
-                    }
+            ScrollView {
+                VStack(spacing: 0) {
+                    title
+                    contentSection
+                }
+                .padding(.top, 60)
             }
+            .scrollDismissesKeyboard(.interactively)
+
+            topBar
         }
+        .safeAreaInset(edge: .bottom) {
+            connectButton
+                .padding(.horizontal, 24)
+                .padding(.vertical, 8)
+                .background(
+                    LinearGradient(
+                        colors: [Color.bg, Color.clear],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                    .ignoresSafeArea(edges: .bottom)
+                )
+        }
+        .toolbar(.hidden, for: .navigationBar)
         .task { viewModel.startDiscovery() }
         .onDisappear { viewModel.stopDiscovery() }
-        .presentationDragIndicator(.visible)
     }
 
-    // MARK: - Header
+    // MARK: - Top Bar
 
-    private var headerOverlay: some View {
-        VStack {
+    private var topBar: some View {
+        ZStack(alignment: .center) {
             HStack {
+                BackButton { viewManager.dismissSignInFlow() }
+                    .padding(.leading, 20)
                 Spacer()
-                Text("Let's Connect!")
-                    .font(.system(.title, design: .rounded, weight: .bold))
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Title
+
+    private var title: some View {
+        Text("Let's Connect!")
+            .font(.system(.title, design: .rounded, weight: .bold))
+            .foregroundStyle(Color.mainOpp)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 8)
+    }
+
+    // MARK: - Content
+
+    private var contentSection: some View {
+        VStack(spacing: 16) {
+            urlCard
+            OrDivider()
+            localServersCard
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 24)
+        .animation(.default, value: viewModel.serverCheckState)
+        .animation(.default, value: viewModel.discoveredServers.count)
+    }
+
+    // MARK: - URL Card
+
+    private var urlCard: some View {
+        VStack(spacing: 0) {
+            urlRow
+        }
+        .background {
+            RoundedRectangle(cornerRadius: 25, style: .continuous)
+                .fill(Color.sub)
+        }
+    }
+
+
+    // MARK: - Local Servers Card
+
+    private var localServersCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("Local Servers")
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.mainOpp)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .padding(.top, 20)
-                Spacer()
-            }
-            .padding(.bottom)
-            .background(
-                LinearGradient(
-                    colors: [Color.bg, Color.clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea(edges: .top)
-            )
-            Spacer()
-        }
-    }
+                    .padding(.leading, 8)
 
-    // MARK: - Bottom Button
-
-    private var bottomButton: some View {
-        VStack {
-            Spacer()
-            Button {
-                if case .verified(let name) = viewModel.serverCheckState,
-                   let url = viewModel.verifiedURL {
-                    serverViewModel.setServer(url: url, name: name)
-                    onConnected()
-                    dismiss()
+                if !viewModel.discoveredServers.isEmpty {
+                    Text("· \(viewModel.discoveredServers.count) found")
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                        .foregroundStyle(Color.mainOpp.opacity(0.3))
                 }
-            } label: {
-                Text("Connect")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
             }
-            .glassEffect(
-                .regular.tint(.accent).interactive(),
-                in: RoundedRectangle(cornerRadius: 14)
-            )
-            .foregroundStyle(.white)
-            .disabled(!isVerified)
-            .opacity(isVerified ? 1 : 0.4)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 8)
-            .safeAreaPadding(.bottom, 10)
-            .background(
-                LinearGradient(
-                    colors: [Color.bg, Color.clear],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                .ignoresSafeArea(edges: .bottom)
-            )
-        }
-    }
+            .padding(.leading, 4)
 
-    // MARK: - Main Content
-
-    private var mainContent: some View {
-        ScrollView {
-            VStack {
-                VStack(spacing: 24) {
-                    VStack(spacing: 6) {
-                        Text("Enter your server URL")
-                            .font(.system(.title3, design: .rounded, weight: .bold))
-                            .foregroundStyle(Color.mainOpp)
-
-                        Text("Connect to your Jellyfin server to get started")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.mainOpp.opacity(0.5))
-                            .multilineTextAlignment(.center)
+            VStack(spacing: 0) {
+                if viewModel.isSearching && viewModel.discoveredServers.isEmpty {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(Color.mainOpp.opacity(0.4))
+                            .scaleEffect(0.85)
+                        Text("Searching…")
+                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                            .foregroundStyle(Color.mainOpp.opacity(0.35))
+                        Spacer()
                     }
-
-                    VStack(spacing: 20) {
-                        urlTextField
-                        actionDivider
-                        localServerSection
+                    .padding(16)
+                    .transition(.opacity.combined(with: .blurReplace))
+                } else if !viewModel.isSearching && viewModel.discoveredServers.isEmpty {
+                    HStack {
+                        Text("No Local Servers Found")
+                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                            .foregroundStyle(Color.mainOpp.opacity(0.35))
+                        Spacer()
+                    }
+                    .padding(16)
+                    .transition(.opacity.combined(with: .blurReplace))
+                } else {
+                    ForEach(Array(viewModel.discoveredServers.enumerated()), id: \.element.id) { index, server in
+                        if index > 0 {
+                            Divider().padding(.horizontal, 16)
+                        }
+                        discoveredServerRow(server)
                     }
                 }
-                .padding(.vertical, 32)
-                .padding(.horizontal, 20)
-                .background {
-                    RoundedRectangle(cornerRadius: 25, style: .continuous)
-                        .fill(Color.sub)
-                }
             }
-            .padding(.horizontal, 24)
-            .frame(minHeight: viewContentHeight, alignment: .center)
+            .animation(.easeInOut(duration: 0.4), value: viewModel.isSearching)
+            .animation(.easeInOut(duration: 0.4), value: viewModel.discoveredServers.count)
+            .background {
+                RoundedRectangle(cornerRadius: 25, style: .continuous)
+                    .fill(Color.sub)
+            }
         }
     }
 
-    // MARK: - URL Text Field
-
-    private var urlTextField: some View {
+    private var urlRow: some View {
         HStack(spacing: 10) {
             Image(systemName: "globe")
-                .font(.system(size: 22))
                 .foregroundStyle(.accent)
-                .frame(width: 28)
+                .frame(width: 20)
 
             TextField(text: $serverURL) {
                 Text(verbatim: "https://jellyfin.example.com")
-                    .foregroundStyle(Color.subOpp.opacity(0.5))
+                    .foregroundStyle(Color.mainOpp.opacity(0.4))
             }
             .keyboardType(.URL)
             .autocorrectionDisabled()
@@ -176,14 +185,9 @@ struct LetsConnectView: View {
 
             checkStateIcon
         }
-        .padding(14)
-        .background {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        }
+        .padding(16)
         .contentShape(Rectangle())
         .onTapGesture { urlFieldFocused = true }
-        .animation(.default, value: viewModel.serverCheckState)
     }
 
     @ViewBuilder
@@ -193,7 +197,7 @@ struct LetsConnectView: View {
             EmptyView()
         case .checking:
             ProgressView()
-                .tint(Color.subOpp.opacity(0.5))
+                .tint(Color.mainOpp.opacity(0.4))
                 .scaleEffect(0.8)
         case .verified:
             Image(systemName: "checkmark.circle.fill")
@@ -206,98 +210,55 @@ struct LetsConnectView: View {
         }
     }
 
-    // MARK: - OR Divider
-
-    private var actionDivider: some View {
-        HStack {
-            Rectangle().fill(.separator).frame(height: 1)
-            Text("OR")
-                .font(.caption2)
-                .fontWeight(.black)
-                .foregroundStyle(Color.subThree)
-            Rectangle().fill(.separator).frame(height: 1)
-        }
-        .padding(.horizontal, 40)
-    }
-
-    // MARK: - Local Server Section
-
-    private var localServerSection: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
+    private func discoveredServerRow(_ server: JellyfinClient.PublicServer) -> some View {
+        Button {
+            serverURL = server.url.absoluteString
+            urlFieldFocused = false
+        } label: {
+            HStack(spacing: 10) {
                 Image(systemName: "server.rack")
-                    .font(.system(size: 22))
                     .foregroundStyle(.accent)
-                    .frame(width: 28)
+                    .frame(width: 20)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Local Servers")
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(server.name)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.mainOpp)
-                    Text(viewModel.isSearching ? "Searching your network..." : "\(viewModel.discoveredServers.count) found")
-                        .font(.system(size: 13, weight: .regular, design: .rounded))
-                        .foregroundStyle(Color.subOpp.opacity(0.5))
-                        .animation(.default, value: viewModel.isSearching)
+                    Text(server.url.absoluteString)
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundStyle(Color.mainOpp.opacity(0.4))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
 
                 Spacer()
 
-                if viewModel.isSearching {
-                    ProgressView()
-                        .tint(Color.subOpp.opacity(0.5))
-                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.mainOpp.opacity(0.3))
             }
-            .padding(14)
-
-            if !viewModel.discoveredServers.isEmpty {
-                Divider().padding(.horizontal, 14)
-
-                ForEach(viewModel.discoveredServers) { server in
-                    Button {
-                        serverURL = server.url.absoluteString
-                        urlFieldFocused = false
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 18))
-                                .foregroundStyle(.accent)
-                                .frame(width: 28)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(server.name)
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Color.mainOpp)
-                                Text(server.url.absoluteString)
-                                    .font(.system(size: 12, weight: .regular, design: .rounded))
-                                    .foregroundStyle(Color.subThree)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.subThree)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                    }
-
-                    if server.id != viewModel.discoveredServers.last?.id {
-                        Divider().padding(.horizontal, 14)
-                    }
-                }
-            }
+            .padding(16)
         }
-        .background {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        }
-        .animation(.default, value: viewModel.discoveredServers.count)
     }
-}
 
-#Preview {
-    GetStartedView()
+    // MARK: - Connect Button
+
+    private var connectButton: some View {
+        Button {
+            if case .verified(let name) = viewModel.serverCheckState,
+               let url = viewModel.verifiedURL {
+                serverViewModel.setServer(url: url, name: name)
+                viewManager.navigateToServerSignIn()
+            }
+        } label: {
+            Text("Connect")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+        }
+        .glassEffect(.regular.tint(.accent).interactive(), in: RoundedRectangle(cornerRadius: 14))
+        .foregroundStyle(.white)
+        .disabled(!isVerified)
+        .opacity(isVerified ? 1 : 0.4)
+    }
 }

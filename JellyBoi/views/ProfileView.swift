@@ -17,15 +17,6 @@ struct ProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ServerViewModel.self) private var serverViewModel
 
-    private var profileImageURL: URL? {
-        guard let client = serverViewModel.client,
-              let user = serverViewModel.currentUser,
-              let userID = user.id,
-              user.primaryImageTag != nil
-        else { return nil }
-        return client.url(with: Paths.getUserImage(parameters: .init(userID: userID)))
-    }
-
     var body: some View {
         ZStack {
             mainContent
@@ -123,7 +114,7 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var profileAvatar: some View {
-        if let url = profileImageURL {
+        if let url = serverViewModel.profileImageURL {
             WebImage(url: url) { image in
                 image
                     .resizable()

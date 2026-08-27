@@ -14,6 +14,7 @@ private let overlaySpring: Animation = .spring(response: 0.4, dampingFraction: 0
 struct ServerSignInView: View {
     @EnvironmentObject var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
+    @Environment(\.dismiss) private var dismiss
     @State private var viewModel = ServerSignInViewModel()
     @State private var showQuickConnectOverlay = false
     @State private var isOverlayActive = false
@@ -33,6 +34,7 @@ struct ServerSignInView: View {
 
             quickConnectOverlay
         }
+        .toolbar(.hidden, for: .navigationBar)
         .animation(overlaySpring, value: showQuickConnectOverlay)
         .onChange(of: viewModel.didAuthenticate) { _, authenticated in
             if authenticated {
@@ -45,7 +47,7 @@ struct ServerSignInView: View {
                 } completion: {
                     isOverlayActive = false
                 }
-                viewManager.navigateToTabs()
+                viewManager.completeSignIn()
             }
         }
     }
@@ -57,7 +59,7 @@ struct ServerSignInView: View {
             HStack {
                 BackButton {
                     viewModel.stopQuickConnect()
-                    viewManager.navigateToGetStarted()
+                    dismiss()
                 }
                 .padding(.leading, 20)
 
@@ -166,18 +168,7 @@ struct ServerSignInView: View {
                 }
             }
 
-            // "or" divider
-            HStack(spacing: 10) {
-                Rectangle()
-                    .fill(Color.mainOpp.opacity(0.15))
-                    .frame(height: 1)
-                Text("or")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.mainOpp.opacity(0.4))
-                Rectangle()
-                    .fill(Color.mainOpp.opacity(0.15))
-                    .frame(height: 1)
-            }
+            OrDivider()
 
             // Quick Connect button
             Button {

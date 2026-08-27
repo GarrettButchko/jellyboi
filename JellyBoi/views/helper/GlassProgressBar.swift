@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import BaseColors
 
 struct GlassProgressBar: View {
     let progress: Double
@@ -17,24 +18,24 @@ struct GlassProgressBar: View {
         HStack(spacing: 8) {
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(.white.opacity(0.35))
+                    .fill(Color.mainOpp.opacity(0.35))
                     .frame(width: barWidth, height: barHeight)
                 Capsule()
-                    .fill(.white)
+                    .fill(Color.mainOpp)
                     .frame(width: barWidth, height: barHeight)
                     .mask(alignment: .leading) {
                         Rectangle().frame(width: barWidth * progress)
                     }
             }
             if let label {
-                Text(label)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                Text(label + " left")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.mainOpp)
                     .fixedSize()
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .glassEffect(.clear.tint(.black.opacity(0.35)), in: Capsule())
+        .glassEffect(.clear.tint(Color.main.opacity(0.8)), in: Capsule())
     }
 }

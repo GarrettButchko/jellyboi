@@ -28,6 +28,14 @@ class ServerViewModel {
     private(set) var client: JellyfinClient?
     var currentUser: UserDto?
 
+    var profileImageURL: URL? {
+        guard let client,
+              let userID = currentUser?.id,
+              currentUser?.primaryImageTag != nil
+        else { return nil }
+        return client.url(with: Paths.getUserImage(parameters: .init(userID: userID)))
+    }
+
     func setServer(url: URL, name: String) {
         serverURL = url
         serverName = name

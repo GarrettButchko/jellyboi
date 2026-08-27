@@ -7,7 +7,6 @@
 
 import SwiftUI
 import BaseColors
-import JellyfinAPI
 import LoggingKit
 import SDWebImageSwiftUI
 
@@ -17,20 +16,11 @@ struct ProfileAvatarButton: View {
     @State private var showProfile = false
     @State private var pendingSignOut = false
 
-    private var profileImageURL: URL? {
-        guard let client = serverViewModel.client,
-              let user = serverViewModel.currentUser,
-              let userID = user.id,
-              user.primaryImageTag != nil
-        else { return nil }
-        return client.url(with: Paths.getUserImage(parameters: .init(userID: userID)))
-    }
-
     var body: some View {
         Button {
             showProfile = true
         } label: {
-            if let url = profileImageURL {
+            if let url = serverViewModel.profileImageURL {
                 WebImage(url: url) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {

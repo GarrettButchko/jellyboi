@@ -34,12 +34,11 @@ private struct MeshGradientView: View {
 
         // pink → purple → teal, matching the Jellyboi logo hues
         let colors: [Color] = [
-            Color(red: 0.10, green: 0.65, blue: 0.72),  // teal
-            Color(red: 0.80, green: 0.15, blue: 0.72),  // hot pink
-            Color(red: 0.44, green: 0.10, blue: 0.75),  // purple
-            Color(red: 0.10, green: 0.65, blue: 0.72),  // teal
-            Color(red: 0.55, green: 0.08, blue: 0.80),  // violet
-            Color(red: 0.10, green: 0.65, blue: 0.72),  // teal
+            Color.mint,
+            Color.indigo,
+            Color.indigo,
+            Color.mint,
+            Color.indigo,
         ]
         let idx = Int(t * 0.25) % colors.count
         let next = (idx + 1) % colors.count

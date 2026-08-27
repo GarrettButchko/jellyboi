@@ -12,8 +12,6 @@ import StatusOverlayKit
 struct GetStartedView: View {
 
     @EnvironmentObject var viewManager: ViewManager
-    @State private var showLetsConnect = false
-    @State private var pendingServerSignIn = false
 
     var body: some View {
         ZStack {
@@ -48,7 +46,7 @@ struct GetStartedView: View {
                         .foregroundStyle(.white.opacity(0.60))
 
                     Button {
-                        showLetsConnect = true
+                        viewManager.startSignIn()
                     } label: {
                         Text("Get Started")
                             .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -68,20 +66,5 @@ struct GetStartedView: View {
         }
         .ignoresSafeArea()
         .consumesTransientStatus()
-        .sheet(isPresented: $showLetsConnect, onDismiss: {
-            if pendingServerSignIn {
-                pendingServerSignIn = false
-                viewManager.navigateToServerSignIn()
-            }
-        }) {
-            LetsConnectView(onConnected: { pendingServerSignIn = true })
-        }
     }
-}
-
-
-
-#Preview {
-    GetStartedView()
-        .environmentObject(ViewManager())
 }

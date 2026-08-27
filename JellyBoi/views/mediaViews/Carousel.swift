@@ -13,6 +13,7 @@ import JellyfinAPI
 private let carouselCardWidthRatio: CGFloat = 0.8
 private let carouselRestingGap: CGFloat = 0
 private let carouselNeighborScale: CGFloat = 0.90
+private let carouselAutoScrollInterval: TimeInterval = 2
 
 struct Carousel: View {
     let title: String
@@ -41,9 +42,9 @@ struct Carousel: View {
                             width: cardWidth,
                             height: cardHeight
                         )
+                        .id(index)
                         .scaleEffect(scale)
                         .animation(.smooth(duration: 0.3), value: snappedIndex == index)
-                        .id(index)
                         .matchedTransitionSource(id: item, in: namespace)
                         .onTapGesture {
                             guard currentIndex == index else { return }
@@ -55,7 +56,7 @@ struct Carousel: View {
                 .padding(.horizontal, sideInset)
             }
             .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $currentIndex)
+            .scrollPosition(id: $currentIndex, anchor: .center)
             .scrollIndicators(.hidden)
             .frame(height: cardHeight)
         }
@@ -72,6 +73,19 @@ struct Carousel: View {
         .onChange(of: viewModel.inProgressMovies.count) { _, newCount in
             if let idx = currentIndex {
                 currentIndex = min(max(idx, 0), max(newCount - 1, 0))
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(carouselAutoScrollInterval))
+                guard !Task.isCancelled else { break }
+                let count = viewModel.inProgressMovies.count
+                guard count > 1 else { continue }
+                await MainActor.run {
+                    withAnimation(.smooth) {
+                        currentIndex = ((currentIndex ?? 0) + 1) % count
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity)

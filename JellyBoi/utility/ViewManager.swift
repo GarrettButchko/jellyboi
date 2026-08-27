@@ -6,52 +6,50 @@
 //
 
 import SwiftUI
+import JellyfinAPI
 internal import Combine
-
-enum ViewType {
-    case getStarted
-    case serverSignIn
-    case signIn
-    case tabs
-}
 
 @MainActor
 class ViewManager: ObservableObject {
 
-    @Published private(set) var previousView: ViewType = .getStarted
-    @Published var currentView: ViewType
+    @Published var isSignedIn: Bool
+    @Published var showSignInFlow: Bool = false
+    @Published var showServerSignIn: Bool = false
+    @Published var selectedMediaItem: BaseItemDto?
 
     init() {
-        if KeychainStore.read(for: "jellyfinSession") != nil {
-            self.currentView = .tabs
-        } else {
-            self.currentView = .getStarted
-        }
+        isSignedIn = KeychainStore.read(for: "jellyfinSession") != nil
     }
 
-    func navigateToGetStarted() {
-        previousView = currentView
-        currentView = .getStarted
+    func startSignIn() {
+        showSignInFlow = true
+    }
+
+    func dismissSignInFlow() {
+        showSignInFlow = false
     }
 
     func navigateToServerSignIn() {
-        previousView = currentView
-        currentView = .serverSignIn
+        showServerSignIn = true
     }
 
-    func navigateToSignIn() {
-        previousView = currentView
-        currentView = .signIn
-    }
-
-    func navigateToTabs() {
-        previousView = currentView
-        currentView = .tabs
+    func completeSignIn() {
+        isSignedIn = true
+        showSignInFlow = false
     }
 
     func signOut() {
         KeychainStore.delete(for: "jellyfinSession")
-        previousView = currentView
-        currentView = .getStarted
+        isSignedIn = false
+        showSignInFlow = false
+        showServerSignIn = false
+    }
+
+    func navigateToMedia(_ item: BaseItemDto) {
+        selectedMediaItem = item
+    }
+
+    func dismissMedia() {
+        selectedMediaItem = nil
     }
 }

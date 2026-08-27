@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import BaseColors
 
 struct ContentView: View {
 
@@ -14,37 +15,34 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            switch viewManager.currentView {
-            case .getStarted:
-                GetStartedView()
-                    .transition(transition(from: viewManager.previousView, to: .getStarted))
-            case .serverSignIn:
-                ServerSignInView()
-                    .transition(transition(from: viewManager.previousView, to: .serverSignIn))
-            case .signIn:
-                SignInView()
-                    .transition(transition(from: viewManager.previousView, to: .signIn))
-            case .tabs:
-                TabsView()
-                    .transition(transition(from: viewManager.previousView, to: .tabs))
+            Group {
+                if viewManager.isSignedIn {
+                    TabsView()
+                } else {
+                    GetStartedView()
+                }
+            }
+            .animation(.smooth, value: viewManager.isSignedIn)
+
+            if viewManager.showSignInFlow {
+                NavigationStack {
+                    LetsConnectView()
+                        .navigationDestination(isPresented: $viewManager.showServerSignIn) {
+                            ServerSignInView()
+                        }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .background(Color.bg)
+                .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
+                .ignoresSafeArea()
+                .zIndex(1)
             }
         }
-        .animation(.smooth, value: viewManager.currentView)
+        .animation(.smooth, value: viewManager.showSignInFlow)
         .task {
-            guard viewManager.currentView == .tabs else { return }
+            guard viewManager.isSignedIn else { return }
             let ok = await serverViewModel.restoreSession()
             if !ok { viewManager.signOut() }
-        }
-    }
-
-    private func transition(from: ViewType, to: ViewType) -> AnyTransition {
-        switch (from, to) {
-        case (.getStarted, .serverSignIn):
-            return .asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading))
-        case (.serverSignIn, .getStarted):
-            return .asymmetric(insertion: .move(edge: .leading), removal: .move(edge: .trailing))
-        default:
-            return .opacity
         }
     }
 }

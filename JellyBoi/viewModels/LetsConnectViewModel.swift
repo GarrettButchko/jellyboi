@@ -28,9 +28,17 @@ class LetsConnectViewModel {
     private var discoveryTask: Task<Void, Never>?
     private var checkTask: Task<Void, Never>?
 
+    private let isMock: Bool
+
+    init(mockServers: [JellyfinClient.PublicServer] = []) {
+        discoveredServers = mockServers
+        isMock = !mockServers.isEmpty
+    }
+
     // MARK: - Discovery
 
     func startDiscovery() {
+        guard !isMock else { return }
         discoveryTask?.cancel()
         discoveredServers = []
         isSearching = true

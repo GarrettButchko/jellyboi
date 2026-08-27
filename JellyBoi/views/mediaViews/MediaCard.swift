@@ -52,9 +52,9 @@ struct MediaCard: View {
     private var watchedBadge: some View {
         Image(systemName: "checkmark")
             .font(.system(size: 10, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.mainOpp)
             .padding(6)
-            .glassEffect(.clear.tint(.black.opacity(0.35)), in: Circle())
+            .glassEffect(.clear.tint(Color.main.opacity(0.8)), in: Circle())
     }
 
 

@@ -1,8 +1,8 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "extended-srgb:0.00000,0.78431,0.70196,1.00000",
-      "srgb:0.38039,0.33333,0.96078,1.00000"
+      "srgb:0.00000,0.85490,0.76471,1.00000",
+      "srgb:0.42745,0.48627,1.00000,1.00000"
     ],
     "orientation" : {
       "start" : {
@@ -22,6 +22,7 @@
           "fill" : {
             "solid" : "extended-gray:1.00000,1.00000"
           },
+          "glass" : true,
           "image-name" : "Jellyboi copy.svg",
           "name" : "Jellyboi copy",
           "position" : {
