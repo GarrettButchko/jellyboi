@@ -13,6 +13,7 @@ struct TabPageHeader<Content: View>: View {
     let scrollOffset: CGFloat
     @Binding var headerHeight: CGFloat
     let content: Content
+    var showGradient: Bool = true
     @State private var titleRowHeight: CGFloat = 40
     private var isTitleHidden: Bool { scrollOffset > titleRowHeight }
 
@@ -20,11 +21,13 @@ struct TabPageHeader<Content: View>: View {
         title: String,
         scrollOffset: CGFloat = 0,
         headerHeight: Binding<CGFloat> = .constant(0),
+        showGradient: Bool = true,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.scrollOffset = scrollOffset
         self._headerHeight = headerHeight
+        self.showGradient = showGradient
         self.content = content()
     }
 
@@ -54,7 +57,7 @@ struct TabPageHeader<Content: View>: View {
         }
         .padding(.vertical, 16)
         .background {
-            if isTitleHidden {
+            if isTitleHidden && showGradient {
                 LinearGradient(
                     colors: [Color.bg, Color.bg.opacity(0.5), Color.clear],
                     startPoint: .top,
@@ -77,6 +80,6 @@ extension TabPageHeader where Content == EmptyView {
         headerHeight: Binding<CGFloat> = .constant(0),
         showGradient: Bool = true
     ) {
-        self.init(title: title, scrollOffset: scrollOffset, headerHeight: headerHeight) { EmptyView() }
+        self.init(title: title, scrollOffset: scrollOffset, headerHeight: headerHeight, showGradient: showGradient) { EmptyView() }
     }
 }

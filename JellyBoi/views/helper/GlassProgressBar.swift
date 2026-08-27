@@ -36,6 +36,6 @@ struct GlassProgressBar: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .glassEffect(.clear.tint(Color.main.opacity(0.8)), in: Capsule())
+        .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
     }
 }

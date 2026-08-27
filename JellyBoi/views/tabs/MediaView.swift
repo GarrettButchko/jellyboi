@@ -11,7 +11,10 @@ struct MediaView: View {
     @State private var selectedItem: BaseItemDto?
     @Namespace private var zoomTransition
     
-    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 16)]
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
+    }
     private let topID = "TopID"
     
     var body: some View {
@@ -46,10 +49,18 @@ struct MediaView: View {
                                     }
                                 }
                             }
+                            .id(viewModel.filter)
                             .padding(.horizontal, 16)
-                            .padding(.bottom, 16)
+                            .padding(.bottom, 8)
+                            .transition(.opacity)
+                            
+
+                            ScrollToTopButton { withAnimation { proxy.scrollTo(topID, anchor: .top) } }
+                                .frame(maxWidth: .infinity)
+                                .padding(.bottom, 16)
                         }
                     }
+                    .animation(.smooth(duration: 0.3), value: viewModel.filter)
                     .contentMargins(.top, headerHeight, for: .scrollContent)
                     .onScrollGeometryChange(for: CGFloat.self) { geometry in
                         geometry.contentOffset.y + geometry.contentInsets.top
@@ -77,6 +88,7 @@ struct MediaView: View {
                     .onChange(of: viewModel.filter) { _, _ in
                         proxy.scrollTo(topID, anchor: .top)
                     }
+
                 }
             }
             .navigationDestination(item: $selectedItem) { item in

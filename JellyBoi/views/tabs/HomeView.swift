@@ -16,15 +16,22 @@ struct HomeView: View {
     @StateObject var viewModel = HomeViewModel()
     @Namespace private var zoomTransition
 
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
     @State private var heroItem: BaseItemDto?
     @State private var safeAreaTop: CGFloat = 0
 
+    private let homeTopID = "homeTop"
+
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             ZStack(alignment: .top) {
                 ScrollView {
+                    Color.clear.frame(height: 0).id(homeTopID)
                     VStack(alignment: .leading) {
                         if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
                             Text(error)
@@ -100,8 +107,12 @@ struct HomeView: View {
                                 .padding(.top, 20)
                             }
                         }
+
+                        ScrollToTopButton { withAnimation { proxy.scrollTo(homeTopID, anchor: .top) } }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 8)
                     }
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 16)
                     .background(alignment: .top) {
                         heroBackdrop
                             .offset(y: -(headerHeight + safeAreaTop + 500))
@@ -121,9 +132,9 @@ struct HomeView: View {
                 }
 
 
-                TabPageHeader(title: "Home", scrollOffset: scrollOffset, headerHeight: $headerHeight, showGradient: true)
+                TabPageHeader(title: "Home", scrollOffset: scrollOffset, headerHeight: $headerHeight, showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact)
             }
-
+            } // ScrollViewReader
         }
         .background(Color.bg.ignoresSafeArea())
         .background {
@@ -147,14 +158,15 @@ struct HomeView: View {
     private var heroBackdrop: some View {
         if let item = heroItem ?? viewModel.movies.first,
            let client = serverViewModel.client,
-           let url = viewModel.posterURL(for: item, client: client) {
+           let url = verticalSizeClass == .compact
+                ? viewModel.backgroundURL(for: item, client: client)
+                : viewModel.posterURL(for: item, client: client) {
             WebImage(url: url) { image in
                 image.resizable().scaledToFill()
             } placeholder: { Color.clear }
             .frame(maxWidth: .infinity)
             .frame(height: 1150)
             .blur(radius: 30)
-            .opacity(1)
             .mask(
                 LinearGradient(
                     colors: [.black, .black.opacity(0.5), .clear],
@@ -165,7 +177,7 @@ struct HomeView: View {
             .ignoresSafeArea(edges: .top)
             .id(item.id)
             .transition(.opacity)
-            .animation(.smooth(duration: 0.5), value: item.id)
+            .animation(.easeInOut(duration: 0.3), value: item.id)
         }
     }
 }
@@ -180,6 +192,10 @@ private struct HomeSectionRow: View {
     let namespace: Namespace.ID
     let onSelect: (BaseItemDto) -> Void
     let posterURL: (BaseItemDto) -> URL?
+
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    private var cardWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -198,7 +214,7 @@ private struct HomeSectionRow: View {
                         ) {
                             onSelect(item)
                         }
-                        .frame(width: 110)
+                        .frame(width: cardWidth)
                     }
                 }
                 .padding(.horizontal, 16)

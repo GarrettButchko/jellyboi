@@ -18,27 +18,24 @@ class HomeViewModel: ObservableObject {
     var movies: [BaseItemDto] = []
     var recommended: [BaseItemDto] = []
     var recentlyAdded: [BaseItemDto] = []
+    private(set) var inProgressMovies: [BaseItemDto] = []
+    private(set) var quality480p: [BaseItemDto] = []
+    private(set) var quality1080p: [BaseItemDto] = []
     var isLoading = false
     var errorMessage: String?
 
-    var inProgressMovies: [BaseItemDto] {
-        movies.filter {
+    private func updateDerivedLists() {
+        inProgressMovies = movies.filter {
             guard let percent = $0.userData?.playedPercentage else { return false }
             return percent > 0 && percent < 85
         }
-    }
-
-    var quality480p: [BaseItemDto] {
-        movies.filter { item in
+        quality480p = movies.filter { item in
             guard let streams = item.mediaStreams,
                   let video = streams.first(where: { $0.type == .video }),
                   let height = video.height else { return false }
             return height < 720
         }
-    }
-
-    var quality1080p: [BaseItemDto] {
-        movies.filter { item in
+        quality1080p = movies.filter { item in
             guard let streams = item.mediaStreams,
                   let video = streams.first(where: { $0.type == .video }),
                   let height = video.height else { return false }
@@ -81,6 +78,7 @@ class HomeViewModel: ObservableObject {
             movies = try await moviesResult ?? []
             recommended = try await recommendedResult ?? []
             recentlyAdded = try await recentResult ?? []
+            updateDerivedLists()
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription

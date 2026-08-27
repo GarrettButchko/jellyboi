@@ -13,7 +13,7 @@ import JellyfinAPI
 private let carouselCardWidthRatio: CGFloat = 0.8
 private let carouselRestingGap: CGFloat = 0
 private let carouselNeighborScale: CGFloat = 0.90
-private let carouselAutoScrollInterval: TimeInterval = 2
+private let carouselAutoScrollInterval: TimeInterval = 5
 
 struct Carousel: View {
     let title: String
@@ -25,6 +25,8 @@ struct Carousel: View {
 
     @State private var currentIndex: Int? = 0
     @State private var snappedIndex: Int = 0
+    @State private var timerResetTrigger: UUID = UUID()
+    @State private var isAutoScrolling: Bool = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -32,39 +34,60 @@ struct Carousel: View {
             let cardHeight = cardWidth * 9 / 16
             let sideInset = (geometry.size.width - cardWidth) / 2
 
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: carouselRestingGap) {
-                    ForEach(Array(viewModel.inProgressMovies.enumerated()), id: \.element.id) { index, item in
-                        let scale: CGFloat = snappedIndex == index ? 1.0 : carouselNeighborScale
-                        CarouselCard(
-                            item: item,
-                            backdropURL: backdropURL,
-                            width: cardWidth,
-                            height: cardHeight
-                        )
-                        .id(index)
-                        .scaleEffect(scale)
-                        .animation(.smooth(duration: 0.3), value: snappedIndex == index)
-                        .matchedTransitionSource(id: item, in: namespace)
-                        .onTapGesture {
-                            guard currentIndex == index else { return }
-                            onSelect(item)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: carouselRestingGap) {
+                        ForEach(Array(viewModel.inProgressMovies.enumerated()), id: \.element.id) { index, item in
+                            let scale: CGFloat = snappedIndex == index ? 1.0 : carouselNeighborScale
+                            CarouselCard(
+                                item: item,
+                                backdropURL: backdropURL,
+                                width: cardWidth,
+                                height: cardHeight
+                            )
+                            .id(index)
+                            .scaleEffect(scale)
+                            .animation(.smooth(duration: 0.3), value: snappedIndex == index)
+                            .matchedTransitionSource(id: item, in: namespace)
+                            .onTapGesture {
+                                guard currentIndex == index else { return }
+                                onSelect(item)
+                            }
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .contentMargins(.horizontal, sideInset, for: .scrollContent)
+                .scrollTargetBehavior(.viewAligned)
+                .scrollPosition(id: $currentIndex, anchor: .center)
+                .scrollIndicators(.hidden)
+                .frame(height: cardHeight)
+                .task(id: timerResetTrigger) {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(carouselAutoScrollInterval))
+                        guard !Task.isCancelled else { break }
+                        let count = viewModel.inProgressMovies.count
+                        guard count > 1 else { continue }
+                        isAutoScrolling = true
+                        let nextIndex = (snappedIndex + 1) % count
+                        currentIndex = nextIndex
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            proxy.scrollTo(nextIndex, anchor: .center)
                         }
                     }
                 }
-                .scrollTargetLayout()
-                .padding(.horizontal, sideInset)
             }
-            .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $currentIndex, anchor: .center)
-            .scrollIndicators(.hidden)
-            .frame(height: cardHeight)
         }
         .aspectRatio(16 / (9 * carouselCardWidthRatio), contentMode: .fit)
         .sensoryFeedback(.selection, trigger: snappedIndex)
         .onChange(of: currentIndex) { _, newIndex in
             guard let newIndex, newIndex != snappedIndex else { return }
             snappedIndex = newIndex
+            if isAutoScrolling {
+                isAutoScrolling = false
+            } else {
+                timerResetTrigger = UUID()
+            }
             let items = viewModel.inProgressMovies
             if newIndex < items.count {
                 onSnap?(newIndex, items[newIndex])
@@ -73,19 +96,6 @@ struct Carousel: View {
         .onChange(of: viewModel.inProgressMovies.count) { _, newCount in
             if let idx = currentIndex {
                 currentIndex = min(max(idx, 0), max(newCount - 1, 0))
-            }
-        }
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(carouselAutoScrollInterval))
-                guard !Task.isCancelled else { break }
-                let count = viewModel.inProgressMovies.count
-                guard count > 1 else { continue }
-                await MainActor.run {
-                    withAnimation(.smooth) {
-                        currentIndex = ((currentIndex ?? 0) + 1) % count
-                    }
-                }
             }
         }
         .frame(maxWidth: .infinity)
