@@ -15,10 +15,12 @@ struct TabsView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var homeViewModel: HomeViewModel
     @State private var mediaViewModel: MediaViewModel
+    @State private var searchViewModel: SearchViewModel
 
     init() {
         _homeViewModel = State(initialValue: HomeViewModel())
         _mediaViewModel = State(initialValue: MediaViewModel())
+        _searchViewModel = State(initialValue: SearchViewModel())
     }
 
     var body: some View {
@@ -40,6 +42,7 @@ struct TabsView: View {
         }
         .environment(homeViewModel)
         .environment(mediaViewModel)
+        .environment(searchViewModel)
         .task {
             if let client = serverViewModel.client {
                 await libraryViewModel.load(using: client)
@@ -52,6 +55,7 @@ struct TabsView: View {
         .onAppear {
             homeViewModel.library = libraryViewModel
             mediaViewModel.library = libraryViewModel
+            searchViewModel.library = libraryViewModel
         }
     }
 }

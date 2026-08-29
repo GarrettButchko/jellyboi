@@ -36,28 +36,51 @@ struct HomeView: View {
                     Color.clear.frame(height: 0).id(homeTopID)
                     VStack(alignment: .leading) {
                         if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
-                            Text(error)
-                                .font(.system(.footnote, design: .rounded))
-                                .foregroundStyle(Color.mainOpp.opacity(0.6))
-                                .padding(.horizontal, 20)
+                            EmptyStateView(
+                                icon: "wifi.exclamationmark",
+                                title: "Couldn't load your library",
+                                message: error,
+                                buttonTitle: "Try Again"
+                            ) {
+                                Task {
+                                    if let client = serverViewModel.client {
+                                        await viewModel.refresh(using: client)
+                                    }
+                                }
+                            }
+                        } else if !viewModel.isLoading && viewModel.isLibraryEmpty {
+                            EmptyStateView(
+                                icon: "film.stack",
+                                title: "Your library is empty",
+                                message: "Add media to your Jellyfin server to see it here.",
+                                buttonTitle: "Refresh"
+                            ) {
+                                Task {
+                                    if let client = serverViewModel.client {
+                                        await viewModel.refresh(using: client)
+                                    }
+                                }
+                            }
                         } else {
                             SkeletonZone(showsContent: !viewModel.isLoading) {
                                 SkeletonCarousel()
                             } content: {
-                                Carousel(
-                                    title: "Movies",
-                                    namespace: zoomTransition
-                                ) { item in
-                                    guard let client = serverViewModel.client else { return nil }
-                                    return libraryViewModel.backdropURL(for: item, client: client)
-                                } onSelect: { item in
-                                    zoomSourceID = AnyHashable(item)
-                                    viewManager.navigateToMedia(item)
-                                } onSnap: { index, item in
-                                    withAnimation(.smooth(duration: 0.4)) { heroItem = item }
-                                    if let client = serverViewModel.client {
-                                        libraryViewModel.prefetchBackdrops(around: index, client: client)
-                                        libraryViewModel.prefetchPosters(around: index, client: client)
+                                if !viewModel.carouselItems.isEmpty {
+                                    Carousel(
+                                        title: viewModel.topWatchedMovies.isEmpty ? "Recently Added" : "Movies",
+                                        namespace: zoomTransition
+                                    ) { item in
+                                        guard let client = serverViewModel.client else { return nil }
+                                        return libraryViewModel.backdropURL(for: item, client: client)
+                                    } onSelect: { item in
+                                        zoomSourceID = AnyHashable(item)
+                                        viewManager.navigateToMedia(item)
+                                    } onSnap: { index, item in
+                                        withAnimation(.smooth(duration: 0.4)) { heroItem = item }
+                                        if let client = serverViewModel.client {
+                                            libraryViewModel.prefetchBackdrops(around: index, client: client)
+                                            libraryViewModel.prefetchPosters(around: index, client: client)
+                                        }
                                     }
                                 }
                             }
@@ -83,6 +106,28 @@ struct HomeView: View {
                                     }
                                     .scrollIndicators(.hidden)
                                     .padding(.top, 16)
+                                }
+                            }
+
+                            SkeletonZone(showsContent: !viewModel.isLoading) {
+                                SkeletonSectionRow()
+                                    .padding(.top, 20)
+                            } content: {
+                                if !viewModel.collections.isEmpty {
+                                    HomeSectionRow(
+                                        title: "Collections",
+                                        items: viewModel.collections,
+                                        namespace: zoomTransition,
+                                        rowKey: "collections",
+                                        onSelect: { item, zoomID in
+                                            zoomSourceID = zoomID
+                                            viewManager.navigateToMedia(item)
+                                        }
+                                    ) { item in
+                                        guard let client = serverViewModel.client else { return nil }
+                                        return libraryViewModel.posterURL(for: item, client: client)
+                                    }
+                                    .padding(.top, 20)
                                 }
                             }
 
@@ -179,11 +224,16 @@ struct HomeView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.top, 8)
                     }
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 8)
                     .background(alignment: .top) {
                         heroBackdrop
                             .offset(y: -(headerHeight + safeAreaTop + 500))
                             .ignoresSafeArea(edges: .top)
+                    }
+                }
+                .refreshable {
+                    if let client = serverViewModel.client {
+                        await viewModel.refresh(using: client)
                     }
                 }
                 .navigationDestination(item: $viewManager.selectedMediaItem) { item in
@@ -337,7 +387,7 @@ private struct HomeSectionRow: View {
     private var cardWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading) {
             Text(title)
                 .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(Color.mainOpp)
@@ -351,17 +401,15 @@ private struct HomeSectionRow: View {
                             item: item,
                             posterURL: posterURL(item),
                             namespace: namespace,
-                            zoomID: zoomID
-                        ) {
-                            onSelect(item, zoomID)
-                        }
+                            onSelect:  {
+                                onSelect(item, zoomID)
+                            }, zoomID: zoomID)
                         .frame(width: cardWidth)
                     }
                 }
                 .padding(.horizontal, 16)
                 .scrollTargetLayout()
             }
-            .contentMargins(.vertical, 12, for: .scrollContent)
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned)
         }

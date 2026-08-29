@@ -26,6 +26,7 @@ class LibraryViewModel {
 
     // MARK: - Home aggregates
 
+    private(set) var collections: [BaseItemDto] = []
     private(set) var recommended: [BaseItemDto] = []
     private(set) var recentlyAdded: [BaseItemDto] = []
     private(set) var resumeShows: [BaseItemDto] = []
@@ -39,8 +40,11 @@ class LibraryViewModel {
 
     // MARK: - State
 
-    var isLoading = false
+    var isLoading = true
     var errorMessage: String?
+
+    /// True when no media of any kind has been fetched yet (brand-new or fully empty library).
+    var isLibraryEmpty: Bool { movies.isEmpty && tvShows.isEmpty && episodes.isEmpty }
 
     func load(using client: JellyfinClient) async {
         guard movies.isEmpty && tvShows.isEmpty else { return }
@@ -54,15 +58,23 @@ class LibraryViewModel {
         do {
             let moviesParams = Paths.GetItemsParameters(
                 isRecursive: true, sortOrder: [.ascending],
+                fields: [.genres],
                 includeItemTypes: [.movie], sortBy: [.sortName]
             )
             let showsParams = Paths.GetItemsParameters(
                 isRecursive: true, sortOrder: [.ascending],
+                fields: [.genres],
                 includeItemTypes: [.series], sortBy: [.sortName]
             )
             let episodesParams = Paths.GetItemsParameters(
                 isRecursive: true, sortOrder: [.ascending],
                 includeItemTypes: [.episode], sortBy: [.sortName]
+            )
+            let collectionsParams = Paths.GetItemsParameters(
+                isRecursive: true,
+                sortOrder: [.ascending],
+                includeItemTypes: [.boxSet],
+                sortBy: [.sortName]
             )
             let recommendedParams = Paths.GetItemsParameters(
                 limit: 20, isRecursive: true,
@@ -84,15 +96,17 @@ class LibraryViewModel {
             async let moviesResult      = client.send(Paths.getItems(parameters: moviesParams)).value.items
             async let showsResult       = client.send(Paths.getItems(parameters: showsParams)).value.items
             async let episodesResult    = client.send(Paths.getItems(parameters: episodesParams)).value.items
+            async let collectionsResult = client.send(Paths.getItems(parameters: collectionsParams)).value.items
             async let recommendedResult = client.send(Paths.getItems(parameters: recommendedParams)).value.items
             async let recentResult      = client.send(Paths.getItems(parameters: recentParams)).value.items
             async let nextUpResult      = client.send(Paths.getNextUp(parameters: nextUpParams)).value.items
             async let favoritesResult   = client.send(Paths.getItems(parameters: favoritesCountParams)).value.totalRecordCount
 
-            movies      = try await moviesResult ?? []
-            tvShows     = try await showsResult ?? []
-            episodes    = try await episodesResult ?? []
-            recommended = try await recommendedResult ?? []
+            movies        = try await moviesResult ?? []
+            tvShows       = try await showsResult ?? []
+            episodes      = try await episodesResult ?? []
+            collections   = try await collectionsResult ?? []
+            recommended   = try await recommendedResult ?? []
             recentlyAdded = try await recentResult ?? []
             resumeShows   = try await nextUpResult ?? []
             favoritesCount = try await favoritesResult ?? 0

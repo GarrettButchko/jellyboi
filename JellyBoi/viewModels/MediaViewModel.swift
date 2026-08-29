@@ -33,6 +33,7 @@ enum MediaFilter: CaseIterable, Hashable {
 @MainActor
 class MediaViewModel {
     var filter: MediaFilter = .movies
+    var showFavoritesOnly: Bool = false
     var library = LibraryViewModel()
 
     init(library: LibraryViewModel? = nil) {
@@ -40,7 +41,14 @@ class MediaViewModel {
     }
 
     var currentItems: [BaseItemDto] {
-        filter == .movies ? library.movies : library.tvShows
+        let base = filter == .movies ? library.movies : library.tvShows
+        return showFavoritesOnly ? base.filter { $0.userData?.isFavorite == true } : base
+    }
+
+    /// True when the base list (before favorites filter) has items — used to distinguish
+    /// "no favorites yet" from "library failed to load."
+    var hasBaseItems: Bool {
+        !(filter == .movies ? library.movies : library.tvShows).isEmpty
     }
 
     var isLoading: Bool { library.isLoading }

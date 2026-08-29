@@ -31,12 +31,39 @@ struct MediaView: View {
                             if viewModel.isLoading {
                                 SkeletonMediaGrid()
                                     .transition(.opacity)
+                            } else if viewModel.showFavoritesOnly && viewModel.hasBaseItems {
+                                // Library loaded fine — favorites filter just returned nothing.
+                                EmptyStateView(
+                                    icon: "star",
+                                    title: "No Favorites",
+                                    message: "You haven't starred any \(viewModel.filter.title.lowercased()) yet."
+                                )
                             } else if let error = viewModel.errorMessage {
-                                errorState(message: error)
+                                EmptyStateView(
+                                    icon: "wifi.exclamationmark",
+                                    title: "Couldn't load library",
+                                    message: error,
+                                    buttonTitle: "Try Again"
+                                ) {
+                                    Task {
+                                        if let client = serverViewModel.client {
+                                            await viewModel.refresh(using: client)
+                                        }
+                                    }
+                                }
                             } else {
-                                ProgressView()
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.top, 40)
+                                EmptyStateView(
+                                    icon: viewModel.filter == .movies ? "film" : "tv",
+                                    title: "No \(viewModel.filter.title)",
+                                    message: "Nothing here yet. Pull to refresh or add media to your Jellyfin server.",
+                                    buttonTitle: "Refresh"
+                                ) {
+                                    Task {
+                                        if let client = serverViewModel.client {
+                                            await viewModel.refresh(using: client)
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             LazyVGrid(columns: columns, spacing: 16) {
@@ -58,7 +85,7 @@ struct MediaView: View {
 
                             ScrollToTopButton { withAnimation { proxy.scrollTo(topID, anchor: .top) } }
                                 .frame(maxWidth: .infinity)
-                                .padding(.bottom, 16)
+                                .padding(.bottom, 8)
                         }
                     }
                     .animation(.smooth(duration: 0.3), value: viewModel.filter)
@@ -77,18 +104,33 @@ struct MediaView: View {
                     
                     // Fixed top header overlay
                     TabPageHeader(title: "Library", scrollOffset: scrollOffset, headerHeight: $headerHeight) {
-                        Picker("Filter", selection: $viewModel.filter) {
-                            ForEach(MediaFilter.allCases, id: \.self) { filter in
-                                Text(filter.title).tag(filter)
+                        HStack(spacing: 10) {
+                            Picker("Filter", selection: $viewModel.filter) {
+                                ForEach(MediaFilter.allCases, id: \.self) { filter in
+                                    Text(filter.title).tag(filter)
+                                }
                             }
+                            .pickerStyle(.segmented)
+                            .padding(6)
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
+
+                            Button {
+                                viewModel.showFavoritesOnly.toggle()
+                            } label: {
+                                Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
+                                    .frame(width: 44, height: 44)
+                                    .glassEffect(.regular.interactive(), in: Circle())
+                                    .contentShape(Circle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .pickerStyle(.segmented)
-                        .padding(6)
-                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 16)
                     }
                     .onChange(of: viewModel.filter) { _, _ in
                         proxy.scrollTo(topID, anchor: .top)
+                        viewModel.showFavoritesOnly = false
                     }
 
                 }
@@ -103,30 +145,5 @@ struct MediaView: View {
         }
     }
     
-    private func errorState(message: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 32, weight: .medium))
-                .foregroundStyle(Color.mainOpp.opacity(0.5))
-            Text(message)
-                .font(.system(.footnote, design: .rounded))
-                .foregroundStyle(Color.mainOpp.opacity(0.6))
-                .multilineTextAlignment(.center)
-            Button("Try Again") {
-                Task {
-                    if let client = serverViewModel.client {
-                        await viewModel.refresh(using: client)
-                    }
-                }
-            }
-            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-            .foregroundStyle(Color.bg)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color.mainOpp, in: Capsule())
-        }
-        .padding(.horizontal, 40)
-        .padding(.top, 40)
-    }
-    
+
 }

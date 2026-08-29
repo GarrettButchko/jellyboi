@@ -14,6 +14,7 @@ struct TabPageHeader<Content: View>: View {
     @Binding var headerHeight: CGFloat
     let content: Content
     var showGradient: Bool = true
+    var showBackButton: Bool = false
     @State private var titleRowHeight: CGFloat = 40
     private var isTitleHidden: Bool { scrollOffset > titleRowHeight }
 
@@ -22,12 +23,14 @@ struct TabPageHeader<Content: View>: View {
         scrollOffset: CGFloat = 0,
         headerHeight: Binding<CGFloat> = .constant(0),
         showGradient: Bool = true,
+        showBackButton: Bool = false,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.scrollOffset = scrollOffset
         self._headerHeight = headerHeight
         self.showGradient = showGradient
+        self.showBackButton = showBackButton
         self.content = content()
     }
 
@@ -36,12 +39,20 @@ struct TabPageHeader<Content: View>: View {
             if !isTitleHidden {
                 Group{
                     HStack(alignment: .center) {
+                        if showBackButton {
+                            BackButton()
+                                .padding(.leading, -6)
+                        }
                         Text(title)
                             .font(.system(size: 35, weight: .bold))
                             .foregroundStyle(Color.mainOpp)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                         Spacer()
-                        ProfileAvatarButton()
-                            .padding(.trailing, -20)
+                        if !showBackButton {
+                            ProfileAvatarButton()
+                                .padding(.trailing, -20)
+                        }
                     }
                     .padding(.horizontal, 20)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
@@ -78,8 +89,9 @@ extension TabPageHeader where Content == EmptyView {
         title: String,
         scrollOffset: CGFloat = 0,
         headerHeight: Binding<CGFloat> = .constant(0),
-        showGradient: Bool = true
+        showGradient: Bool = true,
+        showBackButton: Bool = false
     ) {
-        self.init(title: title, scrollOffset: scrollOffset, headerHeight: headerHeight, showGradient: showGradient) { EmptyView() }
+        self.init(title: title, scrollOffset: scrollOffset, headerHeight: headerHeight, showGradient: showGradient, showBackButton: showBackButton) { EmptyView() }
     }
 }

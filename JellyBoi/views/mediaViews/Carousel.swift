@@ -38,9 +38,10 @@ struct Carousel: View {
     @State private var slideStartDate: Date = .now
     @State private var isVisible: Bool = true
 
-    // Top items by most absolute time watched (precomputed once at fetch time)
+    // In-progress movies by most absolute time watched, falling back to Recently Added
+    // when the user hasn't started anything yet.
     private var items: [BaseItemDto] {
-        viewModel.topWatchedMovies
+        viewModel.carouselItems
     }
 
     private var buf: Int { min(carouselBufferSize, items.count) }

@@ -21,6 +21,7 @@ class HomeViewModel: ObservableObject {
     }
 
     var movies: [BaseItemDto] { library.movies }
+    var collections: [BaseItemDto] { library.collections }
     var recommended: [BaseItemDto] { library.recommended }
     var recentlyAdded: [BaseItemDto] { library.recentlyAdded }
     var inProgressMovies: [BaseItemDto] { library.inProgressMovies }
@@ -34,6 +35,11 @@ class HomeViewModel: ObservableObject {
 
     var isLoading: Bool { library.isLoading }
     var errorMessage: String? { library.errorMessage }
+    var isLibraryEmpty: Bool { library.isLibraryEmpty }
+
+    /// Items shown in the hero carousel. Falls back to Recently Added when the user
+    /// has no in-progress movies, so the carousel is never blank.
+    var carouselItems: [BaseItemDto] { topWatchedMovies.isEmpty ? recentlyAdded : topWatchedMovies }
 
     func load(using client: JellyfinClient) async {
         await library.load(using: client)
