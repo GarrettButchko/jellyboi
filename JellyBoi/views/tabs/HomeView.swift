@@ -13,7 +13,8 @@ import SDWebImageSwiftUI
 struct HomeView: View {
     @EnvironmentObject var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
-    @StateObject var viewModel = HomeViewModel()
+    @Environment(LibraryViewModel.self) private var libraryViewModel
+    @Environment(HomeViewModel.self) private var viewModel
     @Namespace private var zoomTransition
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -23,6 +24,7 @@ struct HomeView: View {
     @State private var headerHeight: CGFloat = 120
     @State private var heroItem: BaseItemDto?
     @State private var safeAreaTop: CGFloat = 0
+    @State private var zoomSourceID: AnyHashable?
 
     private let homeTopID = "homeTop"
 
@@ -39,72 +41,137 @@ struct HomeView: View {
                                 .foregroundStyle(Color.mainOpp.opacity(0.6))
                                 .padding(.horizontal, 20)
                         } else {
-                            Carousel(
-                                title: "Movies",
-                                namespace: zoomTransition
-                            ) { item in
-                                guard let client = serverViewModel.client else { return nil }
-                                return viewModel.backdropURL(for: item, client: client)
-                            } onSelect: { item in
-                                viewManager.navigateToMedia(item)
-                            } onSnap: { index, item in
-                                withAnimation(.smooth(duration: 0.4)) { heroItem = item }
-                                if let client = serverViewModel.client {
-                                    viewModel.prefetchBackdrops(around: index, client: client)
-                                    viewModel.prefetchPosters(around: index, client: client)
+                            SkeletonZone(showsContent: !viewModel.isLoading) {
+                                SkeletonCarousel()
+                            } content: {
+                                Carousel(
+                                    title: "Movies",
+                                    namespace: zoomTransition
+                                ) { item in
+                                    guard let client = serverViewModel.client else { return nil }
+                                    return libraryViewModel.backdropURL(for: item, client: client)
+                                } onSelect: { item in
+                                    zoomSourceID = AnyHashable(item)
+                                    viewManager.navigateToMedia(item)
+                                } onSnap: { index, item in
+                                    withAnimation(.smooth(duration: 0.4)) { heroItem = item }
+                                    if let client = serverViewModel.client {
+                                        libraryViewModel.prefetchBackdrops(around: index, client: client)
+                                        libraryViewModel.prefetchPosters(around: index, client: client)
+                                    }
                                 }
                             }
 
-                            if !viewModel.recommended.isEmpty {
-                                HomeSectionRow(
-                                    title: "Recommended",
-                                    items: viewModel.recommended,
-                                    namespace: zoomTransition,
-                                    onSelect: { item in viewManager.navigateToMedia(item) }
-                                ) { item in
-                                    guard let client = serverViewModel.client else { return nil }
-                                    return viewModel.posterURL(for: item, client: client)
+                            SkeletonZone(showsContent: !viewModel.isLoading) {
+                                SkeletonStatsRow()
+                                    .padding(.top, 16)
+                            } content: {
+                                if !viewModel.movies.isEmpty {
+                                    ScrollView(.horizontal) {
+                                        HStack(spacing: 10) {
+                                            HomeStatBubble(label: "Movies",   value: viewModel.movies.count,           icon: "film")
+                                            HomeStatsDoubleBubble(
+                                                leftLabel: "Shows",    leftValue: viewModel.tvSeriesCount, leftIcon: "tv",
+                                                rightLabel: "Episodes", rightValue: viewModel.episodeCount, rightIcon: "film.stack"
+                                            )
+                                            HomeStatBubble(label: "Watching",  value: viewModel.inProgressMovies.count, icon: "play.circle")
+                                            HomeStatBubble(label: "Favorites", value: viewModel.favoritesCount,       icon: "heart.fill")
+                                            HomeStatBubble(label: "Completed", value: viewModel.completedCount,       icon: "checkmark.circle.fill")
+                                            HomeStatBubble(label: "Hrs Watched", value: viewModel.watchedHours,       icon: "clock.fill")
+                                        }
+                                        .padding(.horizontal, 16)
+                                    }
+                                    .scrollIndicators(.hidden)
+                                    .padding(.top, 16)
                                 }
-                                .padding(.top, 20)
                             }
 
-                            if !viewModel.recentlyAdded.isEmpty {
-                                HomeSectionRow(
-                                    title: "Recently Added",
-                                    items: viewModel.recentlyAdded,
-                                    namespace: zoomTransition,
-                                    onSelect: { item in viewManager.navigateToMedia(item) }
-                                ) { item in
-                                    guard let client = serverViewModel.client else { return nil }
-                                    return viewModel.posterURL(for: item, client: client)
+                            SkeletonZone(showsContent: !viewModel.isLoading) {
+                                SkeletonSectionRow()
+                                    .padding(.top, 20)
+                            } content: {
+                                if !viewModel.inProgressMovies.isEmpty {
+                                    HomeSectionRow(
+                                        title: "Continue Watching",
+                                        items: viewModel.inProgressMovies,
+                                        namespace: zoomTransition,
+                                        rowKey: "continueWatching",
+                                        onSelect: { item, zoomID in
+                                            zoomSourceID = zoomID
+                                            viewManager.navigateToMedia(item)
+                                        }
+                                    ) { item in
+                                        guard let client = serverViewModel.client else { return nil }
+                                        return libraryViewModel.posterURL(for: item, client: client)
+                                    }
+                                    .padding(.top, 20)
                                 }
-                                .padding(.top, 20)
                             }
 
-                            if !viewModel.quality480p.isEmpty {
-                                HomeSectionRow(
-                                    title: "DVD",
-                                    items: viewModel.quality480p,
-                                    namespace: zoomTransition,
-                                    onSelect: { item in viewManager.navigateToMedia(item) }
-                                ) { item in
-                                    guard let client = serverViewModel.client else { return nil }
-                                    return viewModel.posterURL(for: item, client: client)
+                            SkeletonZone(showsContent: !viewModel.isLoading) {
+                                SkeletonSectionRow()
+                                    .padding(.top, 20)
+                            } content: {
+                                if !viewModel.resumeShows.isEmpty {
+                                    HomeSectionRow(
+                                        title: "Continue Shows",
+                                        items: viewModel.resumeShows,
+                                        namespace: zoomTransition,
+                                        rowKey: "continueShows",
+                                        onSelect: { item, zoomID in
+                                            zoomSourceID = zoomID
+                                            viewManager.navigateToMedia(item)
+                                        }
+                                    ) { item in
+                                        guard let client = serverViewModel.client else { return nil }
+                                        return libraryViewModel.seriesPosterURL(for: item, client: client)
+                                    }
+                                    .padding(.top, 20)
                                 }
-                                .padding(.top, 20)
                             }
 
-                            if !viewModel.quality1080p.isEmpty {
-                                HomeSectionRow(
-                                    title: "Blu-ray",
-                                    items: viewModel.quality1080p,
-                                    namespace: zoomTransition,
-                                    onSelect: { item in viewManager.navigateToMedia(item) }
-                                ) { item in
-                                    guard let client = serverViewModel.client else { return nil }
-                                    return viewModel.posterURL(for: item, client: client)
+                            SkeletonZone(showsContent: !viewModel.isLoading) {
+                                SkeletonSectionRow()
+                                    .padding(.top, 20)
+                            } content: {
+                                if !viewModel.recommended.isEmpty {
+                                    HomeSectionRow(
+                                        title: "Top Rated",
+                                        items: viewModel.recommended,
+                                        namespace: zoomTransition,
+                                        rowKey: "topRated",
+                                        onSelect: { item, zoomID in
+                                            zoomSourceID = zoomID
+                                            viewManager.navigateToMedia(item)
+                                        }
+                                    ) { item in
+                                        guard let client = serverViewModel.client else { return nil }
+                                        return libraryViewModel.posterURL(for: item, client: client)
+                                    }
+                                    .padding(.top, 20)
                                 }
-                                .padding(.top, 20)
+                            }
+
+                            SkeletonZone(showsContent: !viewModel.isLoading) {
+                                SkeletonSectionRow()
+                                    .padding(.top, 20)
+                            } content: {
+                                if !viewModel.recentlyAdded.isEmpty {
+                                    HomeSectionRow(
+                                        title: "Recently Added",
+                                        items: viewModel.recentlyAdded,
+                                        namespace: zoomTransition,
+                                        rowKey: "recentlyAdded",
+                                        onSelect: { item, zoomID in
+                                            zoomSourceID = zoomID
+                                            viewManager.navigateToMedia(item)
+                                        }
+                                    ) { item in
+                                        guard let client = serverViewModel.client else { return nil }
+                                        return libraryViewModel.posterURL(for: item, client: client)
+                                    }
+                                    .padding(.top, 20)
+                                }
                             }
                         }
 
@@ -121,10 +188,11 @@ struct HomeView: View {
                 }
                 .navigationDestination(item: $viewManager.selectedMediaItem) { item in
                     MediaDetailView(item: item)
-                        .navigationTransition(.zoom(sourceID: item, in: zoomTransition))
+                        .navigationTransition(.zoom(sourceID: zoomSourceID ?? AnyHashable(item), in: zoomTransition))
                 }
                 .toolbarVisibility(.hidden, for: .navigationBar)
                 .contentMargins(.top, headerHeight, for: .scrollContent)
+                .contentMargins(.bottom, 12, for: .scrollContent)
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     geometry.contentOffset.y + geometry.contentInsets.top
                 } action: { _, newValue in
@@ -142,16 +210,6 @@ struct HomeView: View {
                 Color.clear.onAppear { safeAreaTop = geo.safeAreaInsets.top }
             }
         }
-        .task {
-            if let client = serverViewModel.client {
-                await viewModel.load(using: client)
-            }
-        }
-        .onChange(of: serverViewModel.client != nil) { _, hasClient in
-            guard hasClient, let client = serverViewModel.client else { return }
-            Task { await viewModel.load(using: client) }
-        }
-        .environment(viewModel)
     }
 
     @ViewBuilder
@@ -159,8 +217,8 @@ struct HomeView: View {
         if let item = heroItem ?? viewModel.movies.first,
            let client = serverViewModel.client,
            let url = verticalSizeClass == .compact
-                ? viewModel.backgroundURL(for: item, client: client)
-                : viewModel.posterURL(for: item, client: client) {
+                ? libraryViewModel.backgroundURL(for: item, client: client)
+                : libraryViewModel.posterURL(for: item, client: client) {
             WebImage(url: url) { image in
                 image.resizable().scaledToFill()
             } placeholder: { Color.clear }
@@ -184,13 +242,94 @@ struct HomeView: View {
 
 
 
+// MARK: - Stat Bubbles
+
+private struct HomeStatBubble: View {
+    let label: String
+    let value: Int
+    let icon: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.mainOpp.opacity(0.45))
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(value)")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.mainOpp)
+                Text(label)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.mainOpp.opacity(0.45))
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 56)
+        .background(Color.mainOpp.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct HomeStatsDoubleBubble: View {
+    let leftLabel: String
+    let leftValue: Int
+    let leftIcon: String
+    let rightLabel: String
+    let rightValue: Int
+    let rightIcon: String
+
+    var body: some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: leftIcon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.mainOpp.opacity(0.45))
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(leftValue)")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.mainOpp)
+                    Text(leftLabel)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.mainOpp.opacity(0.45))
+                }
+            }
+            .padding(.horizontal, 14)
+
+            Rectangle()
+                .fill(Color.mainOpp.opacity(0.15))
+                .frame(width: 0.5)
+                .padding(.vertical, 14)
+
+            HStack(spacing: 10) {
+                Image(systemName: rightIcon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.mainOpp.opacity(0.45))
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(rightValue)")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.mainOpp)
+                    Text(rightLabel)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.mainOpp.opacity(0.45))
+                }
+            }
+            .padding(.horizontal, 14)
+        }
+        .frame(height: 56)
+        .background(Color.mainOpp.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
 // MARK: - Section Row
 
 private struct HomeSectionRow: View {
     let title: String
     let items: [BaseItemDto]
     let namespace: Namespace.ID
-    let onSelect: (BaseItemDto) -> Void
+    let rowKey: String
+    let onSelect: (BaseItemDto, AnyHashable) -> Void
     let posterURL: (BaseItemDto) -> URL?
 
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -206,13 +345,15 @@ private struct HomeSectionRow: View {
 
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 16) {
-                    ForEach(items, id: \.id) { item in
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        let zoomID: AnyHashable = AnyHashable("\(rowKey)-\(index)")
                         MediaCard(
                             item: item,
                             posterURL: posterURL(item),
-                            namespace: namespace
+                            namespace: namespace,
+                            zoomID: zoomID
                         ) {
-                            onSelect(item)
+                            onSelect(item, zoomID)
                         }
                         .frame(width: cardWidth)
                     }
@@ -220,6 +361,7 @@ private struct HomeSectionRow: View {
                 .padding(.horizontal, 16)
                 .scrollTargetLayout()
             }
+            .contentMargins(.vertical, 12, for: .scrollContent)
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned)
         }
@@ -228,4 +370,5 @@ private struct HomeSectionRow: View {
 
 #Preview {
     HomeView()
+        .environment(LibraryViewModel())
 }

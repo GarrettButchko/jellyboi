@@ -5,7 +5,8 @@ import JellyfinAPI
 
 struct MediaView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
-    @State private var viewModel = MediaViewModel()
+    @Environment(LibraryViewModel.self) private var libraryViewModel
+    @Environment(MediaViewModel.self) private var viewModel
     @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
     @State private var selectedItem: BaseItemDto?
@@ -18,6 +19,7 @@ struct MediaView: View {
     private let topID = "TopID"
     
     var body: some View {
+        @Bindable var viewModel = viewModel
         NavigationStack {
             ScrollViewReader { proxy in
             ZStack(alignment: .top) {
@@ -27,9 +29,8 @@ struct MediaView: View {
                             .id(topID)
                         if viewModel.currentItems.isEmpty {
                             if viewModel.isLoading {
-                                ProgressView()
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.top, 40)
+                                SkeletonMediaGrid()
+                                    .transition(.opacity)
                             } else if let error = viewModel.errorMessage {
                                 errorState(message: error)
                             } else {
@@ -42,7 +43,7 @@ struct MediaView: View {
                                 ForEach(viewModel.currentItems, id: \.id) { item in
                                     MediaCard(
                                         item: item,
-                                        posterURL: serverViewModel.client.flatMap { viewModel.posterURL(for: item, client: $0) },
+                                        posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
                                         namespace: zoomTransition
                                     ) {
                                         selectedItem = item
@@ -62,6 +63,7 @@ struct MediaView: View {
                     }
                     .animation(.smooth(duration: 0.3), value: viewModel.filter)
                     .contentMargins(.top, headerHeight, for: .scrollContent)
+                    .contentMargins(.bottom, 12, for: .scrollContent)
                     .onScrollGeometryChange(for: CGFloat.self) { geometry in
                         geometry.contentOffset.y + geometry.contentInsets.top
                     } action: { _, newValue in
@@ -98,11 +100,6 @@ struct MediaView: View {
             }
             .toolbarVisibility(.hidden, for: .navigationBar)
             .background(Color.bg.ignoresSafeArea())
-            .task {
-                if let client = serverViewModel.client {
-                    await viewModel.load(using: client)
-                }
-            }
         }
     }
     

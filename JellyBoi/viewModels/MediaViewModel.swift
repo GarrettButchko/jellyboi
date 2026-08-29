@@ -33,60 +33,20 @@ enum MediaFilter: CaseIterable, Hashable {
 @MainActor
 class MediaViewModel {
     var filter: MediaFilter = .movies
-    var movies: [BaseItemDto] = []
-    var tvShows: [BaseItemDto] = []
-    var isLoading = false
-    var errorMessage: String?
+    var library = LibraryViewModel()
+
+    init(library: LibraryViewModel? = nil) {
+        if let library { self.library = library }
+    }
 
     var currentItems: [BaseItemDto] {
-        filter == .movies ? movies : tvShows
+        filter == .movies ? library.movies : library.tvShows
     }
 
-    func load(using client: JellyfinClient) async {
-        guard movies.isEmpty && tvShows.isEmpty else { return }
-        await fetchAll(using: client)
-    }
+    var isLoading: Bool { library.isLoading }
+    var errorMessage: String? { library.errorMessage }
 
     func refresh(using client: JellyfinClient) async {
-        await fetchAll(using: client)
-    }
-
-    func posterURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
-        guard let id = item.id else { return nil }
-        return client.url(with: Paths.getItemImage(
-            itemID: id,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 300, quality: 85)
-        ))
-    }
-
-    private func fetchAll(using client: JellyfinClient) async {
-        isLoading = true
-        defer { isLoading = false }
-
-        async let moviesResult = fetch(.movie, using: client)
-        async let showsResult = fetch(.series, using: client)
-
-        do {
-            let (m, s) = try await (moviesResult, showsResult)
-            movies = m
-            tvShows = s
-            errorMessage = nil
-        } catch is CancellationError {
-            // Refresh was interrupted; keep whatever is already loaded
-        } catch {
-            // Keep existing items so a failed refresh doesn't blank the grid
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func fetch(_ type: BaseItemKind, using client: JellyfinClient) async throws -> [BaseItemDto] {
-        let params = Paths.GetItemsParameters(
-            isRecursive: true,
-            sortOrder: [.ascending],
-            includeItemTypes: [type],
-            sortBy: [.sortName]
-        )
-        return try await client.send(Paths.getItems(parameters: params)).value.items ?? []
+        await library.refresh(using: client)
     }
 }
