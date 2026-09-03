@@ -30,36 +30,48 @@ struct PlayProgressPill: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
+            if progress == 0 { Spacer() }
+
             Image(systemName: "play.fill")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(Color.main)
 
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 25, style: .continuous)
-                        .fill(Color.main.opacity(0.5))
-                        .frame(height: 10)
-                    RoundedRectangle(cornerRadius: 25, style: .continuous)
-                        .fill(Color.main)
-                        .frame(height: 10)
-                        .mask(alignment: .leading) {
-                            Rectangle()
-                                .frame(width: proxy.size.width * progress)
-                        }
+            if progress == 0 {
+                Text("Play")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.main)
+                Spacer()
+            } else {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 25, style: .continuous)
+                            .fill(Color.main.opacity(0.5))
+                            .frame(height: 10)
+                        RoundedRectangle(cornerRadius: 25, style: .continuous)
+                            .fill(Color.main)
+                            .frame(height: 10)
+                            .mask(alignment: .leading) {
+                                Rectangle()
+                                    .frame(width: proxy.size.width * progress)
+                            }
+                    }
+                }
+                .frame(height: 10)
+
+                if let label = timeRemainingLabel {
+                    Text(label)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.main)
+                        .lineLimit(1)
                 }
             }
-            .frame(width: 60, height: 10)
-
-            if let label = timeRemainingLabel {
-                Text(label)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.main)
-                    .frame(width: 50)
-            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
-        .background(Color.mainOpp, in: Capsule())
+        .frame(maxWidth: .infinity, minHeight: 50)
+        .padding(.horizontal, 18)
+        .background(){
+            Capsule()
+                .glassEffect(.regular.tint(Color.mainOpp.opacity(0.9)))
+        }
     }
 }

@@ -82,6 +82,11 @@ class SearchViewModel {
         return sorted(matching)
     }
 
+    /// A representative item for a genre, used as a background image on genre cards.
+    func previewItem(forGenre name: String) -> BaseItemDto? {
+        pool.first { $0.genres?.contains(name) == true }
+    }
+
     // MARK: State proxies
 
     var isLoading: Bool   { library.isLoading }

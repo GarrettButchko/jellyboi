@@ -94,7 +94,7 @@ struct HomeView: View {
                                         HStack(spacing: 10) {
                                             HomeStatBubble(label: "Movies",   value: viewModel.movies.count,           icon: "film")
                                             HomeStatsDoubleBubble(
-                                                leftLabel: "Shows",    leftValue: viewModel.tvSeriesCount, leftIcon: "tv",
+                                                leftLabel: "Shows", leftValue: viewModel.tvSeriesCount, leftIcon: "tv",
                                                 rightLabel: "Episodes", rightValue: viewModel.episodeCount, rightIcon: "film.stack"
                                             )
                                             HomeStatBubble(label: "Watching",  value: viewModel.inProgressMovies.count, icon: "play.circle")
@@ -109,113 +109,30 @@ struct HomeView: View {
                                 }
                             }
 
-                            SkeletonZone(showsContent: !viewModel.isLoading) {
-                                SkeletonSectionRow()
-                                    .padding(.top, 20)
-                            } content: {
-                                if !viewModel.collections.isEmpty {
-                                    HomeSectionRow(
-                                        title: "Collections",
-                                        items: viewModel.collections,
-                                        namespace: zoomTransition,
-                                        rowKey: "collections",
-                                        onSelect: { item, zoomID in
-                                            zoomSourceID = zoomID
-                                            viewManager.navigateToMedia(item)
+                            ForEach(sectionRows) { config in
+                                SkeletonZone(showsContent: !viewModel.isLoading) {
+                                    SkeletonSectionRow()
+                                        .padding(.top, 16)
+                                } content: {
+                                    if !config.items.isEmpty {
+                                        HomeSectionRow(
+                                            title: config.title,
+                                            items: config.items,
+                                            namespace: zoomTransition,
+                                            rowKey: config.id,
+                                            onSelect: { item, zoomID in
+                                                zoomSourceID = zoomID
+                                                viewManager.navigateToMedia(item)
+                                            }
+                                        ) { item in
+                                            guard let client = serverViewModel.client else { return nil }
+                                            switch config.posterStyle {
+                                            case .poster:       return libraryViewModel.posterURL(for: item, client: client)
+                                            case .seriesPoster: return libraryViewModel.seriesPosterURL(for: item, client: client)
+                                            }
                                         }
-                                    ) { item in
-                                        guard let client = serverViewModel.client else { return nil }
-                                        return libraryViewModel.posterURL(for: item, client: client)
+                                        .padding(.top, 16)
                                     }
-                                    .padding(.top, 20)
-                                }
-                            }
-
-                            SkeletonZone(showsContent: !viewModel.isLoading) {
-                                SkeletonSectionRow()
-                                    .padding(.top, 20)
-                            } content: {
-                                if !viewModel.inProgressMovies.isEmpty {
-                                    HomeSectionRow(
-                                        title: "Continue Watching",
-                                        items: viewModel.inProgressMovies,
-                                        namespace: zoomTransition,
-                                        rowKey: "continueWatching",
-                                        onSelect: { item, zoomID in
-                                            zoomSourceID = zoomID
-                                            viewManager.navigateToMedia(item)
-                                        }
-                                    ) { item in
-                                        guard let client = serverViewModel.client else { return nil }
-                                        return libraryViewModel.posterURL(for: item, client: client)
-                                    }
-                                    .padding(.top, 20)
-                                }
-                            }
-
-                            SkeletonZone(showsContent: !viewModel.isLoading) {
-                                SkeletonSectionRow()
-                                    .padding(.top, 20)
-                            } content: {
-                                if !viewModel.resumeShows.isEmpty {
-                                    HomeSectionRow(
-                                        title: "Continue Shows",
-                                        items: viewModel.resumeShows,
-                                        namespace: zoomTransition,
-                                        rowKey: "continueShows",
-                                        onSelect: { item, zoomID in
-                                            zoomSourceID = zoomID
-                                            viewManager.navigateToMedia(item)
-                                        }
-                                    ) { item in
-                                        guard let client = serverViewModel.client else { return nil }
-                                        return libraryViewModel.seriesPosterURL(for: item, client: client)
-                                    }
-                                    .padding(.top, 20)
-                                }
-                            }
-
-                            SkeletonZone(showsContent: !viewModel.isLoading) {
-                                SkeletonSectionRow()
-                                    .padding(.top, 20)
-                            } content: {
-                                if !viewModel.recommended.isEmpty {
-                                    HomeSectionRow(
-                                        title: "Top Rated",
-                                        items: viewModel.recommended,
-                                        namespace: zoomTransition,
-                                        rowKey: "topRated",
-                                        onSelect: { item, zoomID in
-                                            zoomSourceID = zoomID
-                                            viewManager.navigateToMedia(item)
-                                        }
-                                    ) { item in
-                                        guard let client = serverViewModel.client else { return nil }
-                                        return libraryViewModel.posterURL(for: item, client: client)
-                                    }
-                                    .padding(.top, 20)
-                                }
-                            }
-
-                            SkeletonZone(showsContent: !viewModel.isLoading) {
-                                SkeletonSectionRow()
-                                    .padding(.top, 20)
-                            } content: {
-                                if !viewModel.recentlyAdded.isEmpty {
-                                    HomeSectionRow(
-                                        title: "Recently Added",
-                                        items: viewModel.recentlyAdded,
-                                        namespace: zoomTransition,
-                                        rowKey: "recentlyAdded",
-                                        onSelect: { item, zoomID in
-                                            zoomSourceID = zoomID
-                                            viewManager.navigateToMedia(item)
-                                        }
-                                    ) { item in
-                                        guard let client = serverViewModel.client else { return nil }
-                                        return libraryViewModel.posterURL(for: item, client: client)
-                                    }
-                                    .padding(.top, 20)
                                 }
                             }
                         }
@@ -262,9 +179,26 @@ struct HomeView: View {
         }
     }
 
+    private enum PosterStyle { case poster, seriesPoster }
+
+    private struct HomeSectionConfig: Identifiable {
+        let id: String
+        let title: String
+        let items: [BaseItemDto]
+        let posterStyle: PosterStyle
+    }
+
+    private var sectionRows: [HomeSectionConfig] {[
+        .init(id: "collections",      title: "Collections",       items: viewModel.collections,      posterStyle: .poster),
+        .init(id: "continueWatching", title: "Continue Watching", items: viewModel.inProgressMovies, posterStyle: .poster),
+        .init(id: "continueShows",    title: "Continue Shows",    items: viewModel.resumeShows,       posterStyle: .seriesPoster),
+        .init(id: "topRated",         title: "Top Rated",         items: viewModel.recommended,       posterStyle: .poster),
+        .init(id: "recentlyAdded",    title: "Recently Added",    items: viewModel.recentlyAdded,     posterStyle: .poster),
+    ]}
+
     @ViewBuilder
     private var heroBackdrop: some View {
-        if let item = heroItem ?? viewModel.movies.first,
+        if let item = heroItem ?? viewModel.carouselItems.first,
            let client = serverViewModel.client,
            let url = verticalSizeClass == .compact
                 ? libraryViewModel.backgroundURL(for: item, client: client)
@@ -372,49 +306,6 @@ private struct HomeStatsDoubleBubble: View {
     }
 }
 
-// MARK: - Section Row
-
-private struct HomeSectionRow: View {
-    let title: String
-    let items: [BaseItemDto]
-    let namespace: Namespace.ID
-    let rowKey: String
-    let onSelect: (BaseItemDto, AnyHashable) -> Void
-    let posterURL: (BaseItemDto) -> URL?
-
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
-    private var cardWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
-
-    var body: some View {
-        VStack(alignment: .leading) {
-            Text(title)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(Color.mainOpp)
-                .padding(.horizontal, 16)
-
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 16) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        let zoomID: AnyHashable = AnyHashable("\(rowKey)-\(index)")
-                        MediaCard(
-                            item: item,
-                            posterURL: posterURL(item),
-                            namespace: namespace,
-                            onSelect:  {
-                                onSelect(item, zoomID)
-                            }, zoomID: zoomID)
-                        .frame(width: cardWidth)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .scrollTargetLayout()
-            }
-            .scrollIndicators(.hidden)
-            .scrollTargetBehavior(.viewAligned)
-        }
-    }
-}
 
 #Preview {
     HomeView()

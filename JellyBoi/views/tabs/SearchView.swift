@@ -9,6 +9,7 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 import SDWebImageSwiftUI
+import MarqueeText
 
 // MARK: - SearchView
 
@@ -114,7 +115,7 @@ struct SearchView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
         .animation(.smooth(duration: 0.2), value: viewModel.searchText.isEmpty)
     }
 
@@ -181,7 +182,12 @@ struct SearchView: View {
                     spacing: 12
                 ) {
                     ForEach(viewModel.genres) { genre in
-                        GenreChip(genre: genre) {
+                        GenreChip(
+                            genre: genre,
+                            posterURL: viewModel.previewItem(forGenre: genre.name).flatMap { item in
+                                serverViewModel.client.flatMap { libraryViewModel.backgroundURL(for: item, client: $0) }
+                            }
+                        ) {
                             selectedGenre = genre.name
                         }
                     }
@@ -235,36 +241,59 @@ struct SearchView: View {
 
 private struct GenreChip: View {
     let genre: GenreCount
+    let posterURL: URL?
     let onTap: () -> Void
 
     var body: some View {
         let style = GenreStyle.forGenre(genre.name)
         Button(action: onTap) {
-            HStack(spacing: 12) {
-                Image(systemName: style.icon)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(style.color)
-                    .frame(width: 24)
+            ZStack(alignment: .bottom) {
+                // Backdrop image fills the card
+                if let url = posterURL {
+                    WebImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        style.color.opacity(0.3)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(genre.name)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(style.color)
-                        .lineLimit(1)
-                    Text("\(genre.count) title\(genre.count == 1 ? "" : "s")")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(style.color.opacity(0.7))
+                    // Gradient rises from the bottom so text stays readable
+                    LinearGradient(
+                        stops: [
+                            .init(color: style.color.opacity(0.97), location: 0),
+                            .init(color: style.color.opacity(0.65), location: 0.5),
+                            .init(color: style.color.opacity(0.0), location: 1.0),
+                        ],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                } else {
+                    style.color.opacity(0.25)
                 }
 
-                Spacer()
+                // Genre label spans the full bottom edge
+                HStack(spacing: 8) {
+                    Image(systemName: style.icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(style.color.opacity(0.5))
+                    Text(genre.name)
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(3)
+                        .layoutPriority(1)
+
+                    Text("\(genre.count) title\(genre.count == 1 ? "" : "s")")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .fixedSize()
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(style.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: 95)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
     }
