@@ -70,37 +70,22 @@ class MediaDetailViewModel {
         ))
     }
 
-    func load(item: BaseItemDto, client: JellyfinClient, userID: String?) async {
+    func load(item: BaseItemDto, client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel) async {
         guard let itemID = item.id else { return }
         self.client = client
         self.sourceItem = item
-        heroReady = false
         isLoading = true
         defer { isLoading = false }
 
-        do {
-            // Fetch the full item (people, studios, ratings, tags, etc.) and
-            // similar items in parallel.
-            async let detailResult = client.send(
-                Paths.getItem(itemID: itemID, userID: userID)
-            ).value
-            async let similarResult = client.send(
-                Paths.getSimilarItems(
-                    itemID: itemID,
-                    parameters: .init(
-                        userID: userID,
-                        limit: 12,
-                        fields: [.primaryImageAspectRatio]
-                    )
-                )
-            ).value.items
+        async let detailResult: BaseItemDto? = {
+            try? await client.send(Paths.getItem(itemID: itemID, userID: userID)).value
+        }()
+        async let similarResult: [BaseItemDto] = libraryViewModel.similarItems(
+            for: itemID, client: client, userID: userID
+        )
 
-            detailedItem = try await detailResult
-            similarItems = try await similarResult ?? []
-        } catch {
-            // Silently fail — the passed-in item still has enough to render
-            // the hero, title, and any genres that were already fetched.
-        }
+        detailedItem = await detailResult
+        similarItems = await similarResult
     }
 
 }

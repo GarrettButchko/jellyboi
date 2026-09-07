@@ -10,68 +10,182 @@ import BaseColors
 import JellyfinAPI
 
 struct PlayProgressPill: View {
+
+    // MARK: - Nested Types
+
+    enum PlaybackState: Equatable {
+        case unwatched
+        case inProgress(Double)   // 0.0 – 1.0
+        case completed
+    }
+
+    // MARK: - Properties
+
     let item: BaseItemDto
+    var onOptions: (() -> Void)? = nil
+    @State private var state: PlaybackState
+    @State private var progressVisible = false
+    @Namespace private var glassNamespace
 
-    private var progress: Double {
-        guard let percent = item.userData?.playedPercentage else { return 0 }
-        return min(max(percent / 100, 0), 1)
+    init(item: BaseItemDto, initialState: PlaybackState? = nil, onOptions: (() -> Void)? = nil) {
+        self.onOptions = onOptions
+        self.item = item
+        let derived: PlaybackState
+        if let override = initialState {
+            derived = override
+        } else if let pct = item.userData?.playedPercentage {
+            if pct >= 100 {
+                derived = .completed
+            } else if pct > 0 {
+                derived = .inProgress(pct / 100)
+            } else {
+                derived = .unwatched
+            }
+        } else {
+            derived = .unwatched
+        }
+        _state = State(initialValue: derived)
     }
 
-    private var timeRemainingLabel: String? {
-        guard let ticks = item.runTimeTicks,
-              let percent = item.userData?.playedPercentage,
-              percent > 0 else { return nil }
-        let totalSeconds = Int(ticks / 10_000_000)
-        let remainingSeconds = totalSeconds - Int(Double(totalSeconds) * percent / 100)
-        guard remainingSeconds > 60 else { return nil }
-        let hours = remainingSeconds / 3600
-        let minutes = (remainingSeconds % 3600) / 60
-        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    // MARK: - Computed helpers
+
+    private var progressValue: Double {
+        switch state {
+        case .unwatched:         return 0
+        case .inProgress(let p): return p
+        case .completed:         return 1
+        }
     }
+
+    private var percentText: String {
+        "\(Int(progressValue * 100))%"
+    }
+
+    // MARK: - Body
 
     var body: some View {
-        HStack(spacing: 8) {
-            if progress == 0 { Spacer() }
-
-            Image(systemName: "play.fill")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(Color.main)
-
-            if progress == 0 {
-                Text("Play")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.main)
-                Spacer()
-            } else {
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 25, style: .continuous)
-                            .fill(Color.main.opacity(0.5))
-                            .frame(height: 10)
-                        RoundedRectangle(cornerRadius: 25, style: .continuous)
-                            .fill(Color.main)
-                            .frame(height: 10)
-                            .mask(alignment: .leading) {
-                                Rectangle()
-                                    .frame(width: proxy.size.width * progress)
-                            }
-                    }
+        VStack(spacing: 12) {
+            if let onOptions {
+                Button(action: onOptions) {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.mainOpp)
+                        .frame(width: 50, height: 50)
+                        .contentShape(Circle())
                 }
-                .frame(height: 10)
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: Circle())
+            }
 
-                if let label = timeRemainingLabel {
-                    Text(label)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.main)
-                        .lineLimit(1)
+            GlassEffectContainer(spacing: 40) {
+                VStack(spacing: 12) {
+                    if progressVisible {
+                        progressRingButton
+                            .glassEffect(.regular.interactive(), in: Circle())
+                            .glassEffectID("progress", in: glassNamespace)
+                    }
+                    mainPlayButton
+                        .glassEffect(.regular.tint(.mainOpp.opacity(0.9)).interactive(), in: Circle())
+                        .glassEffectID("play", in: glassNamespace)
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 50)
-        .padding(.horizontal, 18)
-        .background(){
-            Capsule()
-                .glassEffect(.regular.tint(Color.mainOpp.opacity(0.9)))
+        .animation(.smooth, value: progressVisible)
+        .onAppear {
+            guard state != .unwatched else { return }
+            withAnimation(.smooth.delay(0.4)) {
+                progressVisible = true
+            }
+        }
+        .onChange(of: state) { _, newValue in
+            withAnimation(.smooth) {
+                progressVisible = newValue != .unwatched
+            }
         }
     }
+
+    // MARK: - Progress Ring Button
+
+    private var progressRingButton: some View {
+        Menu {
+            Button("Continue watching") { }
+            Button("Start from beginning") { }
+            Button("Reset progress", role: .destructive) {
+                withAnimation(.smooth) {
+                    state = .unwatched
+                }
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .stroke(Color.mainOpp.opacity(0.1), lineWidth: 5)
+                    .frame(width: 35, height: 35)
+
+                Circle()
+                    .trim(from: 0, to: progressValue)
+                    .stroke(Color.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 35, height: 35)
+
+                if state == .completed {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.mainOpp)
+                } else {
+                    Text(percentText)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.mainOpp)
+                }
+            }
+            .frame(width: 50, height: 50)
+        }
+    }
+
+    // MARK: - Main Play Button
+
+    private var mainPlayButton: some View {
+        Button {
+            handlePlayTap()
+        } label: {
+            Image(systemName: "play.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.main)
+                .frame(width: 50, height: 50)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Interaction
+
+    private func handlePlayTap() {
+        switch state {
+        case .unwatched:
+            withAnimation(.smooth) {
+                state = .inProgress(0.1)
+            }
+        case .inProgress:
+            break
+        case .completed:
+            withAnimation(.smooth) {
+                state = .inProgress(0.02)
+            }
+        }
+    }
+}
+
+// MARK: - Previews
+
+#Preview("Unwatched") {
+    PlayProgressPill(item: BaseItemDto(name: "Sample"), initialState: .unwatched)
+        .padding(40)
+}
+
+#Preview("In Progress — 42%") {
+    PlayProgressPill(item: BaseItemDto(name: "Sample"), initialState: .inProgress(0.42))
+        .padding(40)
+}
+
+#Preview("Completed") {
+    PlayProgressPill(item: BaseItemDto(name: "Sample"), initialState: .completed)
+        .padding(40)
 }

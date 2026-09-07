@@ -10,6 +10,7 @@ struct MediaView: View {
     @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
     @State private var selectedItem: BaseItemDto?
+    @State private var sttButtonHeight: CGFloat = 0
     @Namespace private var zoomTransition
     
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -83,14 +84,11 @@ struct MediaView: View {
                             .transition(.opacity)
                             
 
-                            ScrollToTopButton { withAnimation { proxy.scrollTo(topID, anchor: .top) } }
-                                .frame(maxWidth: .infinity)
-                                .padding(.bottom, 8)
                         }
                     }
                     .animation(.smooth(duration: 0.3), value: viewModel.filter)
                     .contentMargins(.top, headerHeight, for: .scrollContent)
-                    .contentMargins(.bottom, 12, for: .scrollContent)
+                    .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
                     .onScrollGeometryChange(for: CGFloat.self) { geometry in
                         geometry.contentOffset.y + geometry.contentInsets.top
                     } action: { _, newValue in
@@ -133,6 +131,9 @@ struct MediaView: View {
                         viewModel.showFavoritesOnly = false
                     }
 
+                    ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
+                        withAnimation { proxy.scrollTo(topID, anchor: .top) }
+                    }
                 }
             }
             .navigationDestination(item: $selectedItem) { item in

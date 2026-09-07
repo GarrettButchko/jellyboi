@@ -16,159 +16,161 @@ struct HomeView: View {
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(HomeViewModel.self) private var viewModel
     @Namespace private var zoomTransition
-
+    
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
+    
     @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
     @State private var heroItem: BaseItemDto?
     @State private var safeAreaTop: CGFloat = 0
     @State private var zoomSourceID: AnyHashable?
-
+    @State private var sttButtonHeight: CGFloat = 0
+    
     private let homeTopID = "homeTop"
-
+    
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
-            ZStack(alignment: .top) {
-                ScrollView {
-                    Color.clear.frame(height: 0).id(homeTopID)
-                    VStack(alignment: .leading) {
-                        if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
-                            EmptyStateView(
-                                icon: "wifi.exclamationmark",
-                                title: "Couldn't load your library",
-                                message: error,
-                                buttonTitle: "Try Again"
-                            ) {
-                                Task {
-                                    if let client = serverViewModel.client {
-                                        await viewModel.refresh(using: client)
-                                    }
-                                }
-                            }
-                        } else if !viewModel.isLoading && viewModel.isLibraryEmpty {
-                            EmptyStateView(
-                                icon: "film.stack",
-                                title: "Your library is empty",
-                                message: "Add media to your Jellyfin server to see it here.",
-                                buttonTitle: "Refresh"
-                            ) {
-                                Task {
-                                    if let client = serverViewModel.client {
-                                        await viewModel.refresh(using: client)
-                                    }
-                                }
-                            }
-                        } else {
-                            SkeletonZone(showsContent: !viewModel.isLoading) {
-                                SkeletonCarousel()
-                            } content: {
-                                if !viewModel.carouselItems.isEmpty {
-                                    Carousel(
-                                        title: viewModel.topWatchedMovies.isEmpty ? "Recently Added" : "Movies",
-                                        namespace: zoomTransition
-                                    ) { item in
-                                        guard let client = serverViewModel.client else { return nil }
-                                        return libraryViewModel.backdropURL(for: item, client: client)
-                                    } onSelect: { item in
-                                        zoomSourceID = AnyHashable(item)
-                                        viewManager.navigateToMedia(item)
-                                    } onSnap: { index, item in
-                                        withAnimation(.smooth(duration: 0.4)) { heroItem = item }
+                ZStack(alignment: .top) {
+                    ScrollView {
+                        Color.clear.frame(height: 0).id(homeTopID)
+                        VStack(alignment: .leading) {
+                            if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
+                                EmptyStateView(
+                                    icon: "wifi.exclamationmark",
+                                    title: "Couldn't load your library",
+                                    message: error,
+                                    buttonTitle: "Try Again"
+                                ) {
+                                    Task {
                                         if let client = serverViewModel.client {
-                                            libraryViewModel.prefetchBackdrops(around: index, client: client)
-                                            libraryViewModel.prefetchPosters(around: index, client: client)
+                                            await viewModel.refresh(using: client)
                                         }
                                     }
                                 }
-                            }
-
-                            SkeletonZone(showsContent: !viewModel.isLoading) {
-                                SkeletonStatsRow()
-                                    .padding(.top, 16)
-                            } content: {
-                                if !viewModel.movies.isEmpty {
-                                    ScrollView(.horizontal) {
-                                        HStack(spacing: 10) {
-                                            HomeStatBubble(label: "Movies",   value: viewModel.movies.count,           icon: "film")
-                                            HomeStatsDoubleBubble(
-                                                leftLabel: "Shows", leftValue: viewModel.tvSeriesCount, leftIcon: "tv",
-                                                rightLabel: "Episodes", rightValue: viewModel.episodeCount, rightIcon: "film.stack"
-                                            )
-                                            HomeStatBubble(label: "Watching",  value: viewModel.inProgressMovies.count, icon: "play.circle")
-                                            HomeStatBubble(label: "Favorites", value: viewModel.favoritesCount,       icon: "heart.fill")
-                                            HomeStatBubble(label: "Completed", value: viewModel.completedCount,       icon: "checkmark.circle.fill")
-                                            HomeStatBubble(label: "Hrs Watched", value: viewModel.watchedHours,       icon: "clock.fill")
+                            } else if !viewModel.isLoading && viewModel.isLibraryEmpty {
+                                EmptyStateView(
+                                    icon: "film.stack",
+                                    title: "Your library is empty",
+                                    message: "Add media to your Jellyfin server to see it here.",
+                                    buttonTitle: "Refresh"
+                                ) {
+                                    Task {
+                                        if let client = serverViewModel.client {
+                                            await viewModel.refresh(using: client)
                                         }
-                                        .padding(.horizontal, 16)
                                     }
-                                    .scrollIndicators(.hidden)
-                                    .padding(.top, 16)
                                 }
-                            }
-
-                            ForEach(sectionRows) { config in
+                            } else {
                                 SkeletonZone(showsContent: !viewModel.isLoading) {
-                                    SkeletonSectionRow()
-                                        .padding(.top, 16)
+                                    SkeletonCarousel()
                                 } content: {
-                                    if !config.items.isEmpty {
-                                        HomeSectionRow(
-                                            title: config.title,
-                                            items: config.items,
-                                            namespace: zoomTransition,
-                                            rowKey: config.id,
-                                            onSelect: { item, zoomID in
-                                                zoomSourceID = zoomID
-                                                viewManager.navigateToMedia(item)
-                                            }
+                                    if !viewModel.carouselItems.isEmpty {
+                                        Carousel(
+                                            title: viewModel.topWatchedMovies.isEmpty ? "Recently Added" : "Movies",
+                                            namespace: zoomTransition
                                         ) { item in
                                             guard let client = serverViewModel.client else { return nil }
-                                            switch config.posterStyle {
-                                            case .poster:       return libraryViewModel.posterURL(for: item, client: client)
-                                            case .seriesPoster: return libraryViewModel.seriesPosterURL(for: item, client: client)
+                                            return libraryViewModel.backdropURL(for: item, client: client)
+                                        } onSelect: { item in
+                                            zoomSourceID = AnyHashable(item)
+                                            viewManager.navigateToMedia(item)
+                                        } onSnap: { index, item in
+                                            withAnimation(.smooth(duration: 0.4)) { heroItem = item }
+                                            if let client = serverViewModel.client {
+                                                libraryViewModel.prefetchBackdrops(around: index, client: client)
+                                                libraryViewModel.prefetchPosters(around: index, client: client)
                                             }
                                         }
+                                    }
+                                }
+                                
+                                SkeletonZone(showsContent: !viewModel.isLoading) {
+                                    SkeletonStatsRow()
+                                        .padding(.top, 16)
+                                } content: {
+                                    if !viewModel.movies.isEmpty {
+                                        ScrollView(.horizontal) {
+                                            HStack(spacing: 10) {
+                                                HomeStatBubble(label: "Movies",   value: viewModel.movies.count,           icon: "film")
+                                                HomeStatsDoubleBubble(
+                                                    leftLabel: "Shows", leftValue: viewModel.tvSeriesCount, leftIcon: "tv",
+                                                    rightLabel: "Episodes", rightValue: viewModel.episodeCount, rightIcon: "film.stack"
+                                                )
+                                                HomeStatBubble(label: "Watching",  value: viewModel.inProgressMovies.count, icon: "play.circle")
+                                                HomeStatBubble(label: "Favorites", value: viewModel.favoritesCount,       icon: "heart.fill")
+                                                HomeStatBubble(label: "Completed", value: viewModel.completedCount,       icon: "checkmark.circle.fill")
+                                                HomeStatBubble(label: "Hrs Watched", value: viewModel.watchedHours,       icon: "clock.fill")
+                                            }
+                                            .padding(.horizontal, 16)
+                                        }
+                                        .scrollIndicators(.hidden)
                                         .padding(.top, 16)
                                     }
                                 }
+                                
+                                ForEach(sectionRows) { config in
+                                    SkeletonZone(showsContent: !viewModel.isLoading) {
+                                        SkeletonSectionRow()
+                                            .padding(.top, 16)
+                                    } content: {
+                                        if !config.items.isEmpty {
+                                            HomeSectionRow(
+                                                title: config.title,
+                                                items: config.items,
+                                                namespace: zoomTransition,
+                                                rowKey: config.id,
+                                                onSelect: { item, zoomID in
+                                                    zoomSourceID = zoomID
+                                                    viewManager.navigateToMedia(item)
+                                                }
+                                            ) { item in
+                                                guard let client = serverViewModel.client else { return nil }
+                                                switch config.posterStyle {
+                                                case .poster:       return libraryViewModel.posterURL(for: item, client: client)
+                                                case .seriesPoster: return libraryViewModel.seriesPosterURL(for: item, client: client)
+                                                }
+                                            }
+                                            .padding(.top, 16)
+                                        }
+                                    }
+                                }
                             }
+                            
                         }
-
-                        ScrollToTopButton { withAnimation { proxy.scrollTo(homeTopID, anchor: .top) } }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 8)
+                        .padding(.bottom, 8)
+                        .background(alignment: .top) {
+                            heroBackdrop
+                                .offset(y: -(headerHeight + safeAreaTop + 500))
+                                .ignoresSafeArea(edges: .top)
+                        }
                     }
-                    .padding(.bottom, 8)
-                    .background(alignment: .top) {
-                        heroBackdrop
-                            .offset(y: -(headerHeight + safeAreaTop + 500))
-                            .ignoresSafeArea(edges: .top)
+                    .refreshable {
+                        if let client = serverViewModel.client {
+                            await viewModel.refresh(using: client)
+                        }
+                    }
+                    .navigationDestination(item: $viewManager.selectedMediaItem) { item in
+                        MediaDetailView(item: item)
+                            .navigationTransition(.zoom(sourceID: zoomSourceID ?? AnyHashable(item), in: zoomTransition))
+                    }
+                    .toolbarVisibility(.hidden, for: .navigationBar)
+                    .contentMargins(.top, headerHeight, for: .scrollContent)
+                    .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
+                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.contentOffset.y + geometry.contentInsets.top
+                    } action: { _, newValue in
+                        scrollOffset = newValue
+                    }
+                    
+                    
+                    TabPageHeader(title: "Home", scrollOffset: scrollOffset, headerHeight: $headerHeight, showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact)
+                    
+                    ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
+                        withAnimation { proxy.scrollTo(homeTopID, anchor: .top) }
                     }
                 }
-                .refreshable {
-                    if let client = serverViewModel.client {
-                        await viewModel.refresh(using: client)
-                    }
-                }
-                .navigationDestination(item: $viewManager.selectedMediaItem) { item in
-                    MediaDetailView(item: item)
-                        .navigationTransition(.zoom(sourceID: zoomSourceID ?? AnyHashable(item), in: zoomTransition))
-                }
-                .toolbarVisibility(.hidden, for: .navigationBar)
-                .contentMargins(.top, headerHeight, for: .scrollContent)
-                .contentMargins(.bottom, 12, for: .scrollContent)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, newValue in
-                    scrollOffset = newValue
-                }
-
-
-                TabPageHeader(title: "Home", scrollOffset: scrollOffset, headerHeight: $headerHeight, showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact)
-            }
             } // ScrollViewReader
         }
         .background(Color.bg.ignoresSafeArea())

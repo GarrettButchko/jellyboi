@@ -26,3 +26,29 @@ struct ScrollToTopButton: View {
         .buttonStyle(.plain)
     }
 }
+
+/// Floating overlay that sits over a scroll view and appears once the user
+/// has scrolled past `threshold` points. Animates in from the bottom with
+/// a blurReplace transition and passes taps through when hidden.
+struct ScrollToTopOverlay: View {
+    let scrollOffset: CGFloat
+    var threshold: CGFloat = 300
+    @Binding var STTButtonHeight: CGFloat
+    let action: () -> Void
+
+    private var isVisible: Bool { scrollOffset > threshold }
+
+    var body: some View {
+        ZStack {
+            if isVisible {
+                ScrollToTopButton(action: action)
+                    .padding(.bottom, 8)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { STTButtonHeight = $0 }
+                    .transition(.move(edge: .bottom).combined(with: .blurReplace))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .allowsHitTesting(isVisible)
+        .animation(.smooth(duration: 0.3), value: isVisible)
+    }
+}

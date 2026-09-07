@@ -48,7 +48,6 @@ struct MediaCard: View {
         .animation(.easeInOut(duration: 0.2), value: isHovered)
         .onHover { isHovered = $0 }
         .matchedTransitionSource(id: zoomID ?? AnyHashable(item), in: namespace)
-        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var watchProgress: Double? {

@@ -19,13 +19,7 @@ private var deviceCornerRadius: CGFloat {
     return (screen?.value(forKey: "_displayCornerRadius") as? CGFloat) ?? 49
 }
 
-private var deviceTopSafeArea: CGFloat {
-    UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .first?
-        .windows.first?
-        .safeAreaInsets.top ?? 44
-}
+
 
 extension MediaDetailView {
 
@@ -63,7 +57,7 @@ extension MediaDetailView {
         if let url = detailVM.posterURL {
             WebImage(url: url) { image in
                 image.resizable()
-                    .aspectRatio(2/3, contentMode: .fit)
+                    .scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .shadow(color: .black.opacity(0.5), radius: 24, x: 0, y: 8)
             } placeholder: {
@@ -76,8 +70,6 @@ extension MediaDetailView {
             }
             .opacity(detailVM.heroReady ? 1 : 0)
             .animation(.easeIn(duration: 0.35), value: detailVM.heroReady)
-            .padding(.horizontal, 50)
-            .padding(.top, deviceTopSafeArea + 8)
             .frame(maxWidth: .infinity)
         } else {
             Color.clear

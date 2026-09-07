@@ -11,18 +11,6 @@ import JellyfinAPI
 
 // MARK: - Supporting types
 
-enum SearchSort: CaseIterable, Hashable {
-    case nameAsc, recentlyAdded, rating
-
-    var title: String {
-        switch self {
-        case .nameAsc:       "A–Z"
-        case .recentlyAdded: "Recently Added"
-        case .rating:        "Top Rated"
-        }
-    }
-}
-
 struct GenreCount: Identifiable, Hashable {
     let name: String
     let count: Int
@@ -36,8 +24,9 @@ struct GenreCount: Identifiable, Hashable {
 class SearchViewModel {
     var library = LibraryViewModel()
     var searchText = ""
-    var sort: SearchSort = .nameAsc
     var showFavoritesOnly: Bool = false
+
+    private let ranker = MediaSearchRanker()
 
     init(library: LibraryViewModel? = nil) {
         if let library { self.library = library }
@@ -45,23 +34,26 @@ class SearchViewModel {
 
     // MARK: Derived state
 
-    /// All movies+shows available to search/filter, narrowed to favorites when toggled.
+    /// Movies + shows only, narrowed to favorites when toggled.
+    /// Used for genre browse, `items(inGenre:)`, and `previewItem(forGenre:)`.
     private var pool: [BaseItemDto] {
         let all = library.movies + library.tvShows
         return showFavoritesOnly ? all.filter { $0.userData?.isFavorite == true } : all
     }
 
-    /// Items matching the current search text, sorted by `sort`.
-    /// Returns an empty array when `searchText` is empty (genre grid shown instead).
-    var results: [BaseItemDto] {
-        guard !searchText.isEmpty else { return [] }
-        let query = searchText.lowercased()
-        let filtered = pool.filter { ($0.name ?? "").lowercased().contains(query) }
-        return sorted(filtered)
+    /// Full pool including episodes, used when the user is actively searching.
+    private var searchPool: [BaseItemDto] {
+        let all = library.movies + library.tvShows + library.episodes
+        return showFavoritesOnly ? all.filter { $0.userData?.isFavorite == true } : all
     }
 
-    /// Unique genres derived from the current scope (All / Movies / Shows), sorted by
-    /// frequency descending then alphabetically.
+    /// Items matching the current search text, ordered by relevance score descending.
+    /// Returns an empty array when `searchText` is empty (genre grid shown instead).
+    var results: [BaseItemDto] {
+        ranker.results(for: searchText, in: searchPool)
+    }
+
+    /// Unique genres derived from movies + shows, sorted by frequency descending then alphabetically.
     var genres: [GenreCount] {
         var counts: [String: Int] = [:]
         for item in pool {
@@ -76,10 +68,11 @@ class SearchViewModel {
             }
     }
 
-    /// All items (from the scoped pool) that belong to a given genre, sorted by `sort`.
+    /// All items (from the movies+shows pool) that belong to a given genre, sorted A–Z.
     func items(inGenre name: String) -> [BaseItemDto] {
-        let matching = pool.filter { $0.genres?.contains(name) == true }
-        return sorted(matching)
+        pool
+            .filter { $0.genres?.contains(name) == true }
+            .sorted { ($0.sortName ?? $0.name ?? "") < ($1.sortName ?? $1.name ?? "") }
     }
 
     /// A representative item for a genre, used as a background image on genre cards.
@@ -91,17 +84,4 @@ class SearchViewModel {
 
     var isLoading: Bool   { library.isLoading }
     var errorMessage: String? { library.errorMessage }
-
-    // MARK: Helpers
-
-    private func sorted(_ items: [BaseItemDto]) -> [BaseItemDto] {
-        switch sort {
-        case .nameAsc:
-            return items.sorted { ($0.sortName ?? $0.name ?? "") < ($1.sortName ?? $1.name ?? "") }
-        case .recentlyAdded:
-            return items.sorted { ($0.dateCreated ?? .distantPast) > ($1.dateCreated ?? .distantPast) }
-        case .rating:
-            return items.sorted { ($0.communityRating ?? 0) > ($1.communityRating ?? 0) }
-        }
-    }
 }

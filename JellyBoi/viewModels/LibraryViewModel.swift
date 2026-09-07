@@ -38,6 +38,26 @@ class LibraryViewModel {
     private(set) var completedCount: Int = 0
     private(set) var watchedHours: Int = 0
 
+    // MARK: - Similar items cache
+
+    private var similarItemsCache: [String: [BaseItemDto]] = [:]
+
+    func similarItems(for itemID: String, client: JellyfinClient, userID: String?) async -> [BaseItemDto] {
+        if let cached = similarItemsCache[itemID] { return cached }
+        let result = (try? await client.send(
+            Paths.getSimilarItems(
+                itemID: itemID,
+                parameters: .init(
+                    userID: userID,
+                    limit: 12,
+                    fields: [.primaryImageAspectRatio]
+                )
+            )
+        ).value.items) ?? []
+        similarItemsCache[itemID] = result
+        return result
+    }
+
     // MARK: - State
 
     var isLoading = true
@@ -58,12 +78,12 @@ class LibraryViewModel {
         do {
             let moviesParams = Paths.GetItemsParameters(
                 isRecursive: true, sortOrder: [.ascending],
-                fields: [.genres],
+                fields: [.genres, .tags],
                 includeItemTypes: [.movie], sortBy: [.sortName]
             )
             let showsParams = Paths.GetItemsParameters(
                 isRecursive: true, sortOrder: [.ascending],
-                fields: [.genres],
+                fields: [.genres, .tags],
                 includeItemTypes: [.series], sortBy: [.sortName]
             )
             let episodesParams = Paths.GetItemsParameters(

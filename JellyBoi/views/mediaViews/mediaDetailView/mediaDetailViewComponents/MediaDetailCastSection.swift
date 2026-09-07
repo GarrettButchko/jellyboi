@@ -73,9 +73,9 @@ struct CastCircle: View {
                 Text(person.name ?? "")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.mainOpp)
-                    .minimumScaleFactor(0.8)
-                    .lineLimit(1)
+                    .lineLimit(3)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(width: 74)
 
                 if let role = person.role, !role.isEmpty {
@@ -83,7 +83,8 @@ struct CastCircle: View {
                         .font(.system(size: 9, weight: .regular, design: .rounded))
                         .foregroundStyle(Color.mainOpp.opacity(0.55))
                         .multilineTextAlignment(.center)
-                        .minimumScaleFactor(0.8)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 74)
                 }
             }

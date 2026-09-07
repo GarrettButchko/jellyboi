@@ -29,18 +29,8 @@ struct BackButton: View {
             Image(systemName: "chevron.left")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Color.mainOpp)
-                .padding(14)
+                .padding(14) // larger than trailing buttons because Circle() needs more radius to look equivalent
         }
         .glassEffect(.regular.interactive(), in: Circle())
-    }
-}
-
-#Preview {
-    ZStack {
-        Color.bg.ignoresSafeArea()
-        VStack(spacing: 20) {
-            BackButton()
-            BackButton { print("custom") }
-        }
     }
 }

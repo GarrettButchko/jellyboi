@@ -23,6 +23,7 @@ struct SearchView: View {
     @State private var selectedGenre: String?
     @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
+    @State private var sttButtonHeight: CGFloat = 0
 
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var columns: [GridItem] {
@@ -46,21 +47,19 @@ struct SearchView: View {
                         }
                     }
                     .contentMargins(.top, headerHeight, for: .scrollContent)
-                    .contentMargins(.bottom, 12, for: .scrollContent)
+                    .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
                     .onScrollGeometryChange(for: CGFloat.self) { geometry in
                         geometry.contentOffset.y + geometry.contentInsets.top
                     } action: { _, newValue in
                         scrollOffset = newValue
                     }
                     .animation(.smooth(duration: 0.25), value: viewModel.searchText.isEmpty)
-                    .animation(.smooth(duration: 0.25), value: viewModel.sort)
 
                     // Fixed collapsing header with search field + controls
                     TabPageHeader(title: "Search", scrollOffset: scrollOffset, headerHeight: $headerHeight) {
                         GlassEffectContainer(spacing: 12) {
                             HStack(spacing: 10) {
                                 searchField
-                                sortButton
                                 favoritesButton
                             }
                         }
@@ -68,6 +67,10 @@ struct SearchView: View {
                     }
                     .onChange(of: viewModel.searchText) { _, _ in
                         proxy.scrollTo(topID, anchor: .top)
+                    }
+
+                    ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
+                        withAnimation { proxy.scrollTo(topID, anchor: .top) }
                     }
                 }
             }
@@ -95,7 +98,7 @@ struct SearchView: View {
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.mainOpp.opacity(0.5))
 
-            TextField("Movies, shows, genres…", text: $viewModel.searchText)
+            TextField("Movies, shows, genres, tags…", text: $viewModel.searchText)
                 .font(.system(.body, design: .rounded))
                 .foregroundStyle(Color.mainOpp)
                 .autocorrectionDisabled()
@@ -117,32 +120,6 @@ struct SearchView: View {
         .padding(.vertical, 11)
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
         .animation(.smooth(duration: 0.2), value: viewModel.searchText.isEmpty)
-    }
-
-    // MARK: - Sort button
-
-    private var sortButton: some View {
-        @Bindable var viewModel = viewModel
-        return Menu {
-            ForEach(SearchSort.allCases, id: \.self) { option in
-                Button {
-                    viewModel.sort = option
-                } label: {
-                    if viewModel.sort == option {
-                        Label(option.title, systemImage: "checkmark")
-                    } else {
-                        Text(option.title)
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "arrow.up.arrow.down")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.mainOpp)
-                .frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: Circle())
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Favorites button
@@ -221,14 +198,19 @@ struct SearchView: View {
                     ForEach(viewModel.results, id: \.id) { item in
                         MediaCard(
                             item: item,
-                            posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
+                            posterURL: serverViewModel.client.flatMap { c in
+                                // Episodes use the parent series poster (2:3 art) so cards
+                                // look consistent alongside movies and shows in the grid.
+                                item.type == .episode
+                                    ? libraryViewModel.seriesPosterURL(for: item, client: c)
+                                    : libraryViewModel.posterURL(for: item, client: c)
+                            },
                             namespace: zoomTransition
                         ) {
                             selectedItem = item
                         }
                     }
                 }
-                .id(viewModel.sort)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
                 .transition(.opacity)
@@ -311,6 +293,7 @@ struct GenreResultsView: View {
     @State private var selectedItem: BaseItemDto?
     @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
+    @State private var sttButtonHeight: CGFloat = 0
 
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var columns: [GridItem] {
@@ -344,22 +327,24 @@ struct GenreResultsView: View {
                                 }
                             }
                         }
-                        .id(viewModel.sort)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                         .transition(.opacity)
                     }
                 }
                 .contentMargins(.top, headerHeight, for: .scrollContent)
-                .contentMargins(.bottom, 12, for: .scrollContent)
+                .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     geometry.contentOffset.y + geometry.contentInsets.top
                 } action: { _, newValue in
                     scrollOffset = newValue
                 }
-                .animation(.smooth(duration: 0.25), value: viewModel.sort)
 
                 TabPageHeader(title: genre, scrollOffset: scrollOffset, headerHeight: $headerHeight, showBackButton: true)
+
+                ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
+                    withAnimation { proxy.scrollTo(topID, anchor: .top) }
+                }
             }
         }
         .navigationDestination(item: $selectedItem) { item in

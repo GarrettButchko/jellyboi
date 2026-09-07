@@ -11,6 +11,12 @@ import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
 
+private var safeAreaTop: CGFloat {
+    UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .first?.keyWindow?.safeAreaInsets.top ?? 0
+}
+
 struct MediaDetailView: View {
     let item: BaseItemDto
 
@@ -27,6 +33,10 @@ struct MediaDetailView: View {
     @Namespace var relatedTransition
     @State var relatedZoomID: AnyHashable?
     @State var moreButtonHeight: CGFloat = 0
+    @State var backButtonHeight: CGFloat = 0
+    @State var isFavorited = false
+    @State var isDownloaded = false
+    @Namespace var actionNamespace
 
     var isDescriptionTruncated: Bool { overviewFullHeight > overviewLimitedHeight + 1 }
     var displayItem: BaseItemDto { detailVM.detailedItem ?? item }
@@ -35,19 +45,27 @@ struct MediaDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
 
-                heroImage
-                    .background(alignment: .top) {
-                        heroBackdrop
-                            .offset(y: -400)
-                            .ignoresSafeArea(edges: .top)
-                    }
-                    .safeAreaPadding(.top)
-                
-                buttonRow
-                    .padding([.horizontal, .top], 16)
+                HStack(alignment: .bottom, spacing: 8){
+                    heroImage
+                        .background(alignment: .top) {
+                            heroBackdrop
+                                .offset(y: -400)
+                                .ignoresSafeArea(edges: .top)
+                        }
+                    buttonColumn
+                }
+                .padding(.top, safeAreaTop + backButtonHeight + 8)
+                .padding(.horizontal, 16)
+
+                if displayItem.type == .episode, let episodeName = displayItem.name, !episodeName.isEmpty {
+                    Text(episodeName)
+                        .font(.system(.title3, design: .rounded, weight: .semibold))
+                        .foregroundStyle(Color.mainOpp)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 16)
+                }
 
                 VStack(alignment: .leading, spacing: 24) {
-
                     if let overview = displayItem.overview, !overview.isEmpty {
                         overviewSection(overview)
                             .padding(.horizontal, 20)
@@ -86,18 +104,29 @@ struct MediaDetailView: View {
                             .padding(.horizontal, 20)
                     }
                 }
-                .padding(.top, 20)
+                .padding(.top, displayItem.type == .episode ? 8 : 20)
                 .padding(.bottom, 48)
             }
         }
         .ignoresSafeArea(edges: .top)
         .background(Color.bg.ignoresSafeArea())
         .toolbarVisibility(.hidden, for: .navigationBar)
-        .overlay(alignment: .topLeading) {
-            BackButton()
-                .padding(.leading, 16)
-                .padding(.top, 4)
-                .safeAreaPadding(.top)
+        .overlay(alignment: .top) {
+            HStack {
+                BackButton()
+                Spacer()
+                MediaDetailButtonRowTopTrailing {
+                    // TODO
+                } onDownload: {
+                    // TODO
+                }
+            }
+            .padding(.horizontal, 16)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: {
+                backButtonHeight = $0
+            }
         }
         .sheet(isPresented: $showOptionsSheet) {
             optionsSheet
@@ -114,7 +143,8 @@ struct MediaDetailView: View {
             await detailVM.load(
                 item: item,
                 client: client,
-                userID: serverViewModel.currentUser?.id
+                userID: serverViewModel.currentUser?.id,
+                libraryViewModel: libraryViewModel
             )
         }
     }
