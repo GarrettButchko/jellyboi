@@ -22,6 +22,15 @@ class MediaDetailViewModel {
     private(set) var heroReady: Bool = false
     var isLoading = false
 
+    private(set) var seasons: [BaseItemDto] = []
+    private(set) var episodes: [BaseItemDto] = []
+    var selectedSeasonIndex: Int = 0
+
+    var selectedSeason: BaseItemDto? {
+        guard seasons.indices.contains(selectedSeasonIndex) else { return nil }
+        return seasons[selectedSeasonIndex]
+    }
+
     private var client: JellyfinClient?
     private var sourceItem: BaseItemDto?
 
@@ -86,6 +95,103 @@ class MediaDetailViewModel {
 
         detailedItem = await detailResult
         similarItems = await similarResult
+
+        if item.type == .series {
+            await loadSeasonsAndEpisodes(client: client, userID: userID)
+        }
+    }
+
+    // MARK: - Seasons & Episodes
+
+    func loadSeasonsAndEpisodes(client: JellyfinClient, userID: String?) async {
+        guard let seriesID = sourceItem?.id else { return }
+
+        let seasonResult = (try? await client.send(
+            Paths.getSeasons(
+                seriesID: seriesID,
+                parameters: .init(
+                    userID: userID,
+                    fields: [.primaryImageAspectRatio],
+                    enableImages: true,
+                    enableUserData: false
+                )
+            )
+        ).value.items) ?? []
+
+        // Filter out specials and missing-season placeholders
+        let filtered = seasonResult.filter { season in
+            guard season.parentIndexNumber != 0 else { return false }
+            return season.type == .season
+        }
+        seasons = filtered.isEmpty ? seasonResult : filtered
+        guard !seasons.isEmpty else { return }
+
+        // Load all seasons' episodes in parallel to find the in-progress one
+        let allEpisodes = await withTaskGroup(of: (Int, [BaseItemDto]).self) { group in
+            for (index, season) in seasons.enumerated() {
+                group.addTask {
+                    let eps = (try? await client.send(
+                        Paths.getEpisodes(
+                            seriesID: seriesID,
+                            parameters: .init(
+                                userID: userID,
+                                fields: [.primaryImageAspectRatio, .mediaSources, .mediaStreams],
+                                season: season.parentIndexNumber,
+                                enableImages: true,
+                                enableUserData: true
+                            )
+                        )
+                    ).value.items) ?? []
+                    return (index, eps)
+                }
+            }
+            var dict: [Int: [BaseItemDto]] = [:]
+            for await (index, eps) in group {
+                dict[index] = eps
+            }
+            return dict.sorted { $0.key < $1.key }.map(\.value)
+        }
+
+        // Default to the season containing an in-progress episode, else Season 1
+        let inProgressIndex = allEpisodes.enumerated().first { _, eps in
+            eps.contains { episode in
+                guard let percent = episode.userData?.playedPercentage,
+                      let isPlayed = episode.userData?.isPlayed else { return false }
+                return percent > 0 && percent < 85 && !isPlayed
+            }
+        }?.offset ?? 0
+
+        selectedSeasonIndex = inProgressIndex
+        episodes = allEpisodes.indices.contains(selectedSeasonIndex) ? allEpisodes[selectedSeasonIndex] : []
+    }
+
+    func selectSeason(_ index: Int, client: JellyfinClient, userID: String?) async {
+        guard seasons.indices.contains(index), index != selectedSeasonIndex else { return }
+        episodes = []
+        selectedSeasonIndex = index
+        let result = (try? await client.send(
+            Paths.getEpisodes(
+                seriesID: sourceItem?.id ?? "",
+                parameters: .init(
+                    userID: userID,
+                    fields: [.primaryImageAspectRatio, .mediaSources, .mediaStreams],
+                    season: seasons[index].parentIndexNumber,
+                    enableImages: true,
+                    enableUserData: true
+                )
+            )
+        ).value.items) ?? []
+        episodes = result
+    }
+
+    func episodeThumbnailURL(for episode: BaseItemDto) -> URL? {
+        guard let client, let id = episode.id else { return nil }
+        let imageType = episode.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
+        return client.url(with: Paths.getItemImage(
+            itemID: id,
+            imageType: imageType,
+            parameters: .init(maxWidth: 600, quality: 90)
+        ))
     }
 
 }

@@ -16,13 +16,14 @@ struct MediaCard: View {
     let namespace: Namespace.ID
     let onSelect: () -> Void
     var zoomID: AnyHashable? = nil
+    var imageAspectRatio: CGFloat = 2.0 / 3.0
 
     @State private var isHovered = false
 
     var body: some View {
         Button(action: onSelect) {
             posterImage
-                .aspectRatio(2/3, contentMode: .fit)
+                .aspectRatio(imageAspectRatio, contentMode: .fit)
                 .overlay(alignment: .bottomTrailing) {
                     VStack(alignment: .trailing, spacing: 6) {
                         if let progress = watchProgress, !isWatched {

@@ -52,7 +52,7 @@ struct SkeletonZone<Content: View, Placeholder: View>: View {
     }
 
     var body: some View {
-        ZStack {
+        VStack(spacing: 0) {
             if showsContent {
                 content
                     .transition(.opacity)
@@ -218,6 +218,64 @@ struct SkeletonMediaGrid: View {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
+    }
+}
+
+// MARK: - Detail content skeleton
+
+/// Loading placeholder that mirrors the content area of `MediaDetailView`
+/// (overview, info chips, cast row, and similar-items row).
+struct SkeletonDetailContent: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            // Overview
+            VStack(alignment: .leading, spacing: 8) {
+                SkeletonBlock(cornerRadius: 4).frame(maxWidth: .infinity).frame(height: 14)
+                SkeletonBlock(cornerRadius: 4).frame(maxWidth: .infinity).frame(height: 14)
+                SkeletonBlock(cornerRadius: 4).frame(height: 14).frame(maxWidth: .infinity, alignment: .leading).padding(.trailing, 80)
+            }
+            .padding(.horizontal, 20)
+
+            // Info chips
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach([70, 90, 50, 80, 60] as [CGFloat], id: \.self) { w in
+                        SkeletonBlock(cornerRadius: 14).frame(width: w, height: 32)
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+            .scrollIndicators(.hidden)
+            .disabled(true)
+
+            // Cast section
+            VStack(alignment: .leading, spacing: 12) {
+                SkeletonBlock(cornerRadius: 6)
+                    .frame(width: 110, height: 22)
+                    .padding(.horizontal, 16)
+
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: 16) {
+                        ForEach(0..<8, id: \.self) { _ in
+                            VStack(spacing: 7) {
+                                SkeletonBlock(cornerRadius: 35).frame(width: 70, height: 70)
+                                SkeletonBlock(cornerRadius: 4).frame(width: 60, height: 10)
+                                SkeletonBlock(cornerRadius: 4).frame(width: 45, height: 9)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .scrollIndicators(.hidden)
+                .disabled(true)
+            }
+
+            // More Like This
+            SkeletonSectionRow()
+        }
+        .padding(.top, 16)
+        .padding(.bottom, 48)
+        .onAppear { SkeletonPulse.shared.start() }
     }
 }
 

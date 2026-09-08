@@ -37,6 +37,9 @@ struct MediaDetailView: View {
     @State var isFavorited = false
     @State var isDownloaded = false
     @Namespace var actionNamespace
+    @State var selectedEpisode: BaseItemDto?
+    @Namespace var episodeTransition
+    @State var episodeZoomID: AnyHashable?
 
     var isDescriptionTruncated: Bool { overviewFullHeight > overviewLimitedHeight + 1 }
     var displayItem: BaseItemDto { detailVM.detailedItem ?? item }
@@ -52,60 +55,76 @@ struct MediaDetailView: View {
                                 .offset(y: -400)
                                 .ignoresSafeArea(edges: .top)
                         }
-                    buttonColumn
+                    MediaButtonColumn(item: displayItem, onOptions: { showOptionsSheet = true })
                 }
                 .padding(.top, safeAreaTop + backButtonHeight + 8)
                 .padding(.horizontal, 16)
 
                 if displayItem.type == .episode, let episodeName = displayItem.name, !episodeName.isEmpty {
-                    Text(episodeName)
-                        .font(.system(.title3, design: .rounded, weight: .semibold))
-                        .foregroundStyle(Color.mainOpp)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
-                }
-
-                VStack(alignment: .leading, spacing: 24) {
-                    if let overview = displayItem.overview, !overview.isEmpty {
-                        overviewSection(overview)
-                            .padding(.horizontal, 20)
-                    }
-
-                    infoChipsScrollView
-
-                    let actors = (displayItem.people ?? []).filter { $0.type == .actor }
-                    if !actors.isEmpty {
-                        castSection(actors)
-                    }
-
-                    if !detailVM.similarItems.isEmpty {
-                        HomeSectionRow(
-                            title: "More Like This",
-                            items: detailVM.similarItems,
-                            namespace: relatedTransition,
-                            rowKey: "related",
-                            onSelect: { relatedItem, zoomID in
-                                relatedZoomID = zoomID
-                                selectedRelatedItem = relatedItem
-                            }
-                        ) { relatedItem in
-                            guard let client = serverViewModel.client else { return nil }
-                            return libraryViewModel.posterURL(for: relatedItem, client: client)
+                    HStack(alignment: .center, spacing: 8) {
+                        Text(episodeName)
+                            .font(.system(.title3, design: .rounded, weight: .semibold))
+                            .foregroundStyle(Color.mainOpp)
+                        if let season = displayItem.parentIndexNumber, let episode = displayItem.indexNumber {
+                            Text("S\(season) E\(episode)")
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.mainOpp)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
                         }
                     }
-
-                    if let tags = displayItem.tags, !tags.isEmpty {
-                        tagsSection(tags)
-                            .padding(.horizontal, 20)
-                    }
-
-                    if hasExtraInfo {
-                        extraInfoSection
-                            .padding(.horizontal, 20)
-                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
                 }
-                .padding(.top, displayItem.type == .episode ? 8 : 20)
-                .padding(.bottom, 48)
+
+                SkeletonZone(showsContent: detailVM.detailedItem != nil) {
+                    SkeletonDetailContent()
+                } content: {
+                    VStack(alignment: .leading, spacing: 24) {
+                        if let overview = displayItem.overview, !overview.isEmpty {
+                            overviewSection(overview)
+                                .padding(.horizontal, 20)
+                        }
+
+                        infoChipsScrollView
+
+                        episodesSection
+
+                        let actors = (displayItem.people ?? []).filter { $0.type == .actor }
+                        if !actors.isEmpty {
+                            castSection(actors)
+                        }
+
+                        if !detailVM.similarItems.isEmpty {
+                            SectionRow(
+                                title: "More Like This",
+                                items: detailVM.similarItems,
+                                namespace: relatedTransition,
+                                rowKey: "related",
+                                onSelect: { relatedItem, zoomID in
+                                    relatedZoomID = zoomID
+                                    selectedRelatedItem = relatedItem
+                                }
+                            ) { relatedItem in
+                                guard let client = serverViewModel.client else { return nil }
+                                return libraryViewModel.posterURL(for: relatedItem, client: client)
+                            }
+                        }
+
+                        if let tags = displayItem.tags, !tags.isEmpty {
+                            tagsSection(tags)
+                                .padding(.horizontal, 20)
+                        }
+
+                        if hasExtraInfo {
+                            extraInfoSection
+                                .padding(.horizontal, 20)
+                        }
+                    }
+                    .padding(.top, displayItem.type == .episode ? 8 : 16)
+                    .padding(.bottom, 48)
+                }
             }
         }
         .ignoresSafeArea(edges: .top)
@@ -136,6 +155,13 @@ struct MediaDetailView: View {
                 .navigationTransition(.zoom(
                     sourceID: relatedZoomID ?? AnyHashable(relatedItem),
                     in: relatedTransition
+                ))
+        }
+        .navigationDestination(item: $selectedEpisode) { episode in
+            MediaDetailView(item: episode)
+                .navigationTransition(.zoom(
+                    sourceID: episodeZoomID ?? AnyHashable(episode),
+                    in: episodeTransition
                 ))
         }
         .task {

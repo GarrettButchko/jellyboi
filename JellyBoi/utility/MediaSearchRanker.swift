@@ -40,9 +40,6 @@ struct MediaSearchRanker {
 
         // Episode's series name (weakest — for "I remember the show name but not the episode")
         static let episodeSeriesContain = 30
-
-        // Items scoring below this are excluded from results entirely.
-        static let minimumScore = 60
     }
 
     // MARK: - Public API
@@ -61,7 +58,7 @@ struct MediaSearchRanker {
         return items
             .compactMap { item -> (item: BaseItemDto, score: Int)? in
                 let s = score(item, query: q)
-                return s >= Weight.minimumScore ? (item, s) : nil
+                return s > 0 ? (item, s) : nil
             }
             .sorted { $0.score > $1.score }
             .map(\.item)

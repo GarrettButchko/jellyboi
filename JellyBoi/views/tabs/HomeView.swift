@@ -116,7 +116,7 @@ struct HomeView: View {
                                             .padding(.top, 16)
                                     } content: {
                                         if !config.items.isEmpty {
-                                            HomeSectionRow(
+                                            SectionRow(
                                                 title: config.title,
                                                 items: config.items,
                                                 namespace: zoomTransition,

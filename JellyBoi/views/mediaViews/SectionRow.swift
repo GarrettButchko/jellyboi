@@ -11,7 +11,7 @@ import JellyfinAPI
 
 /// A reusable horizontal-scroll row of `MediaCard`s with a bold section title.
 /// Used on both the Home screen and the media detail screen.
-struct HomeSectionRow: View {
+struct SectionRow: View {
     let title: String
     let items: [BaseItemDto]
     let namespace: Namespace.ID

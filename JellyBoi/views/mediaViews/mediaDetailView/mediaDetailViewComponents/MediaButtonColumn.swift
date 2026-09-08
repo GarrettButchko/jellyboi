@@ -9,7 +9,7 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 
-struct PlayProgressPill: View {
+struct MediaButtonColumn: View {
 
     // MARK: - Nested Types
 
@@ -176,16 +176,16 @@ struct PlayProgressPill: View {
 // MARK: - Previews
 
 #Preview("Unwatched") {
-    PlayProgressPill(item: BaseItemDto(name: "Sample"), initialState: .unwatched)
+    MediaButtonColumn(item: BaseItemDto(name: "Sample"), initialState: .unwatched)
         .padding(40)
 }
 
 #Preview("In Progress — 42%") {
-    PlayProgressPill(item: BaseItemDto(name: "Sample"), initialState: .inProgress(0.42))
+    MediaButtonColumn(item: BaseItemDto(name: "Sample"), initialState: .inProgress(0.42))
         .padding(40)
 }
 
 #Preview("Completed") {
-    PlayProgressPill(item: BaseItemDto(name: "Sample"), initialState: .completed)
+    MediaButtonColumn(item: BaseItemDto(name: "Sample"), initialState: .completed)
         .padding(40)
 }
