@@ -15,6 +15,7 @@
 		2186F9063039459C009D8CCA /* StatusOverlayKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2186F9053039459C009D8CCA /* StatusOverlayKit */; };
 		2186FE37303B5B5A009D8CCA /* MarqueeText in Frameworks */ = {isa = PBXBuildFile; productRef = 2186FE36303B5B5A009D8CCA /* MarqueeText */; };
 		21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */ = {isa = PBXBuildFile; productRef = 21ACBB8B303942F500B6013E /* LoggingKit */; };
+		21B1989830548D68006D0D6A /* FlowStack in Frameworks */ = {isa = PBXBuildFile; productRef = 21B1989730548D68006D0D6A /* FlowStack */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +36,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2186FE37303B5B5A009D8CCA /* MarqueeText in Frameworks */,
+				21B1989830548D68006D0D6A /* FlowStack in Frameworks */,
 				2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */,
 				2186F9063039459C009D8CCA /* StatusOverlayKit in Frameworks */,
 				21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */,
@@ -92,6 +94,7 @@
 				2186FE36303B5B5A009D8CCA /* MarqueeText */,
 				2114B68C303BDCEF006F4D0E /* ScalingHeaderScrollView */,
 				218336F3303E23680028E211 /* SkeletonUI */,
+				21B1989730548D68006D0D6A /* FlowStack */,
 			);
 			productName = JellyBoi;
 			productReference = 217077FA303646DD0055889C /* JellyBoi.app */;
@@ -130,6 +133,7 @@
 				2186FE35303B5B5A009D8CCA /* XCRemoteSwiftPackageReference "MarqueeText" */,
 				2114B68B303BDCEF006F4D0E /* XCRemoteSwiftPackageReference "ScalingHeaderScrollView" */,
 				218336F2303E23680028E211 /* XCRemoteSwiftPackageReference "SkeletonUI" */,
+				21B1989630548D68006D0D6A /* XCRemoteSwiftPackageReference "FlowStack" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 217077FB303646DD0055889C /* Products */;

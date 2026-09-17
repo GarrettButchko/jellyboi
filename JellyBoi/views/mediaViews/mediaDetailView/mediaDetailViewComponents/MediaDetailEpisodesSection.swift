@@ -11,6 +11,10 @@ import JellyfinAPI
 
 extension MediaDetailView {
 
+    private var episodeCardHeight: CGFloat {
+        horizontalSizeClass == .regular ? 140 : 120
+    }
+
     @ViewBuilder
     var episodesSection: some View {
         if displayItem.type == .series, !detailVM.seasons.isEmpty {
@@ -40,7 +44,9 @@ extension MediaDetailView {
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(Array(detailVM.episodes.enumerated()), id: \.element.id) { index, episode in
+                            let cardWidth = episodeCardHeight * episode.imageAspectRatio
                             let zoomID: AnyHashable = AnyHashable("episode-\(detailVM.selectedSeasonIndex)-\(index)")
+
                             MediaCard(
                                 item: episode,
                                 posterURL: detailVM.episodeThumbnailURL(for: episode),
@@ -50,10 +56,9 @@ extension MediaDetailView {
                                     selectedEpisode = episode
                                 },
                                 zoomID: zoomID,
-                                imageAspectRatio: 16.0 / 9.0
+                                imageAspectRatio: episode.imageAspectRatio
                             )
-                            .frame(width: 200)
-                            .frame(minHeight: 120)
+                            .frame(width: cardWidth, height: episodeCardHeight)
                         }
                     }
                     .padding(.horizontal, 16)

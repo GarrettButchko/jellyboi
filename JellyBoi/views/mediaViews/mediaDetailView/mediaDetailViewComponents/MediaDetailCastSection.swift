@@ -59,10 +59,18 @@ struct CastCircle: View {
                     .frame(width: 70, height: 70)
 
                 if let url = imageURL {
-                    WebImage(url: url) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Color.sub
+                    WebImage(
+                        url: url,
+                        transaction: Transaction(animation: .easeInOut(duration: 0.3))
+                    ) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .transition(.fade(duration: 0.3))
+                        } else {
+                            Color.sub
+                        }
                     }
                     .frame(width: 70, height: 70)
                     .clipShape(Circle())

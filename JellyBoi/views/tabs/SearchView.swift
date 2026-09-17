@@ -60,7 +60,17 @@ struct SearchView: View {
                         GlassEffectContainer(spacing: 12) {
                             HStack(spacing: 10) {
                                 searchField
-                                favoritesButton
+                                Button {
+                                    viewModel.showFavoritesOnly.toggle()
+                                } label: {
+                                    Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
+                                        .frame(width: 44, height: 44)
+                                        .glassEffect(.regular.interactive(), in: Circle())
+                                        .contentShape(Circle())
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                         .padding(.horizontal, 16)
@@ -122,23 +132,6 @@ struct SearchView: View {
         .animation(.smooth(duration: 0.2), value: viewModel.searchText.isEmpty)
     }
 
-    // MARK: - Favorites button
-
-    private var favoritesButton: some View {
-        @Bindable var viewModel = viewModel
-        return Button {
-            viewModel.showFavoritesOnly.toggle()
-        } label: {
-            Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
-                .frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: - Genre browse (empty state)
 
     private var genreBrowse: some View {
@@ -154,6 +147,7 @@ struct SearchView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 40)
             } else {
+                let previewItems = viewModel.previewItems
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)],
                     spacing: 12
@@ -161,7 +155,7 @@ struct SearchView: View {
                     ForEach(viewModel.genres) { genre in
                         GenreChip(
                             genre: genre,
-                            posterURL: viewModel.previewItem(forGenre: genre.name).flatMap { item in
+                            posterURL: previewItems[genre.name].flatMap { item in
                                 serverViewModel.client.flatMap { libraryViewModel.backgroundURL(for: item, client: $0) }
                             }
                         ) {
@@ -233,22 +227,24 @@ private struct GenreChip: View {
                 // Backdrop image fills the card
                 if let url = posterURL {
                     WebImage(url: url) { image in
-                        image.resizable().scaledToFill()
+                        image.resizable().scaledToFill().tint(style.color)
                     } placeholder: {
                         style.color.opacity(0.3)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    
+                    //style.color.opacity(0.5)
 
                     // Gradient rises from the bottom so text stays readable
-                    LinearGradient(
-                        stops: [
-                            .init(color: style.color.opacity(0.97), location: 0),
-                            .init(color: style.color.opacity(0.65), location: 0.5),
-                            .init(color: style.color.opacity(0.0), location: 1.0),
-                        ],
-                        startPoint: .bottom,
-                        endPoint: .top
-                    )
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .mask(
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.65), .black],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                 } else {
                     style.color.opacity(0.25)
                 }

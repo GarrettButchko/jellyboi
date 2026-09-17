@@ -128,9 +128,13 @@ struct Carousel: View {
                     .frame(height: cardHeight)
                     .onAppear {
                         guard !items.isEmpty else { return }
-                        proxy.scrollTo(loopStart, anchor: .center)
-                        currentIndex = loopStart
-                        snappedIndex = loopStart
+                        let target = viewModel.carouselSnappedIndex ?? loopStart
+                        let validTarget = (0..<loopedItems.count).contains(target) ? target : loopStart
+                        if currentIndex != validTarget {
+                            currentIndex = validTarget
+                            snappedIndex = validTarget
+                        }
+                        proxy.scrollTo(validTarget, anchor: .center)
                     }
                     .onChange(of: currentIndex) { _, newValue in
                         guard let newValue, newValue != snappedIndex else { return }
@@ -142,6 +146,7 @@ struct Carousel: View {
                         withAnimation(indexAnimation) {
                             snappedIndex = newValue
                         }
+                        viewModel.carouselSnappedIndex = newValue
                         onSnap?(itemIndex(for: newValue), items[itemIndex(for: newValue)])
 
                         if isAutoScrolling {
@@ -163,6 +168,7 @@ struct Carousel: View {
                         pendingTeleportTarget = nil
                         snappedIndex = target
                         currentIndex = target
+                        viewModel.carouselSnappedIndex = target
                         proxy.scrollTo(target, anchor: .center)
                     }
                     .onChange(of: items.count) { _, newCount in
@@ -171,6 +177,7 @@ struct Carousel: View {
                         pendingTeleportTarget = nil
                         snappedIndex = start
                         currentIndex = start
+                        viewModel.carouselSnappedIndex = start
                         proxy.scrollTo(start, anchor: .center)
                         timerResetTrigger = UUID()
                     }
@@ -292,7 +299,24 @@ private struct CarouselCard: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            backdropImage
+            if let url = backdropURL(item) {
+                WebImage(
+                    url: url,
+                    transaction: Transaction(animation: .easeInOut(duration: 0.3))
+                ) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .transition(.fade(duration: 0.3))
+                    } else {
+                        Color.sub
+                    }
+                }
+            } else {
+                Color.sub
+            }
+
             LinearGradient(
                 colors: [.clear, .black.opacity(0.5)],
                 startPoint: .center,
@@ -306,20 +330,5 @@ private struct CarouselCard: View {
         .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous))
         .clipped()
-    }
-
-    @ViewBuilder
-    private var backdropImage: some View {
-        if let url = backdropURL(item) {
-            WebImage(url: url) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                Color.sub
-            }
-            .frame(width: width, height: height)
-        } else {
-            Color.sub
-                .frame(width: width, height: height)
-        }
     }
 }

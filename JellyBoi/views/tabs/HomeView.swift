@@ -141,9 +141,18 @@ struct HomeView: View {
                         }
                         .padding(.bottom, 8)
                         .background(alignment: .top) {
-                            heroBackdrop
+                            if let item = heroItem ?? viewModel.currentCarouselItem,
+                               let client = serverViewModel.client {
+                                HeroBackdropView(
+                                    url: verticalSizeClass == .compact
+                                        ? libraryViewModel.backgroundURL(for: item, client: client)
+                                        : libraryViewModel.posterURL(for: item, client: client),
+                                    itemID: item.id,
+                                    blurRadius: 30
+                                )
                                 .offset(y: -(headerHeight + safeAreaTop + 500))
                                 .ignoresSafeArea(edges: .top)
+                            }
                         }
                     }
                     .refreshable {
@@ -197,33 +206,6 @@ struct HomeView: View {
         .init(id: "topRated",         title: "Top Rated",         items: viewModel.recommended,       posterStyle: .poster),
         .init(id: "recentlyAdded",    title: "Recently Added",    items: viewModel.recentlyAdded,     posterStyle: .poster),
     ]}
-
-    @ViewBuilder
-    private var heroBackdrop: some View {
-        if let item = heroItem ?? viewModel.carouselItems.first,
-           let client = serverViewModel.client,
-           let url = verticalSizeClass == .compact
-                ? libraryViewModel.backgroundURL(for: item, client: client)
-                : libraryViewModel.posterURL(for: item, client: client) {
-            WebImage(url: url) { image in
-                image.resizable().scaledToFill()
-            } placeholder: { Color.clear }
-            .frame(maxWidth: .infinity)
-            .frame(height: 1150)
-            .blur(radius: 30)
-            .mask(
-                LinearGradient(
-                    colors: [.black, .black.opacity(0.5), .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .ignoresSafeArea(edges: .top)
-            .id(item.id)
-            .transition(.opacity)
-            .animation(.easeInOut(duration: 0.3), value: item.id)
-        }
-    }
 }
 
 

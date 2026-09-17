@@ -27,24 +27,21 @@ struct MediaButtonColumn: View {
     @State private var progressVisible = false
     @Namespace private var glassNamespace
 
+    static func playbackState(for item: BaseItemDto) -> PlaybackState {
+        guard let pct = item.userData?.playedPercentage else { return .unwatched }
+        if pct >= 100 {
+            return .completed
+        } else if pct > 0 {
+            return .inProgress(pct / 100)
+        } else {
+            return .unwatched
+        }
+    }
+
     init(item: BaseItemDto, initialState: PlaybackState? = nil, onOptions: (() -> Void)? = nil) {
         self.onOptions = onOptions
         self.item = item
-        let derived: PlaybackState
-        if let override = initialState {
-            derived = override
-        } else if let pct = item.userData?.playedPercentage {
-            if pct >= 100 {
-                derived = .completed
-            } else if pct > 0 {
-                derived = .inProgress(pct / 100)
-            } else {
-                derived = .unwatched
-            }
-        } else {
-            derived = .unwatched
-        }
-        _state = State(initialValue: derived)
+        _state = State(initialValue: initialState ?? Self.playbackState(for: item))
     }
 
     // MARK: - Computed helpers
@@ -84,9 +81,17 @@ struct MediaButtonColumn: View {
                             .glassEffect(.regular.interactive(), in: Circle())
                             .glassEffectID("progress", in: glassNamespace)
                     }
-                    mainPlayButton
-                        .glassEffect(.regular.tint(.mainOpp.opacity(0.9)).interactive(), in: Circle())
-                        .glassEffectID("play", in: glassNamespace)
+                    Button {
+                        handlePlayTap()
+                    } label: {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.main)
+                            .frame(width: 50, height: 50)
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.tint(.mainOpp.opacity(0.9)).interactive(), in: Circle())
+                    .glassEffectID("play", in: glassNamespace)
                 }
             }
         }
@@ -101,6 +106,9 @@ struct MediaButtonColumn: View {
             withAnimation(.smooth) {
                 progressVisible = newValue != .unwatched
             }
+        }
+        .onChange(of: item.userData?.playedPercentage) { _, _ in
+            state = Self.playbackState(for: item)
         }
     }
 
@@ -139,20 +147,6 @@ struct MediaButtonColumn: View {
             }
             .frame(width: 50, height: 50)
         }
-    }
-
-    // MARK: - Main Play Button
-
-    private var mainPlayButton: some View {
-        Button {
-            handlePlayTap()
-        } label: {
-            Image(systemName: "play.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.main)
-                .frame(width: 50, height: 50)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Interaction

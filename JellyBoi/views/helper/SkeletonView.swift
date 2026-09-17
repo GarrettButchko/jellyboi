@@ -221,11 +221,45 @@ struct SkeletonMediaGrid: View {
     }
 }
 
+// MARK: - Episodes section skeleton
+
+/// Loading placeholder that mirrors the episodes section of a series detail view.
+struct SkeletonEpisodesSection: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.skeletonPulse) private var pulse
+
+    private var cardHeight: CGFloat { sizeClass == .regular ? 140 : 120 }
+    private var cardWidth: CGFloat { cardHeight * (16.0 / 9.0) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SkeletonBlock(cornerRadius: 6)
+                .frame(width: 100, height: 22)
+                .padding(.horizontal, 16)
+
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        SkeletonBlock(cornerRadius: 16)
+                            .frame(width: cardWidth, height: cardHeight)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .scrollIndicators(.hidden)
+            .disabled(true)
+        }
+        .onAppear { pulse.start() }
+    }
+}
+
 // MARK: - Detail content skeleton
 
 /// Loading placeholder that mirrors the content area of `MediaDetailView`
-/// (overview, info chips, cast row, and similar-items row).
+/// (overview, info chips, episodes row if series, cast row, and similar-items row).
 struct SkeletonDetailContent: View {
+    var isSeries: Bool = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             // Overview
@@ -247,6 +281,11 @@ struct SkeletonDetailContent: View {
             }
             .scrollIndicators(.hidden)
             .disabled(true)
+
+            // Episodes bar skeleton (if series)
+            if isSeries {
+                SkeletonEpisodesSection()
+            }
 
             // Cast section
             VStack(alignment: .leading, spacing: 12) {

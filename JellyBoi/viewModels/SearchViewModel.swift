@@ -75,9 +75,91 @@ class SearchViewModel {
             .sorted { ($0.sortName ?? $0.name ?? "") < ($1.sortName ?? $1.name ?? "") }
     }
 
+    /// A mapping of genre names to representative media items for genre card background images.
+    /// Uses maximum bipartite matching to ensure each genre gets a distinct movie/show image.
+    /// If a genre only has one item or all its candidates are exhausted, it safely falls back
+    /// to an available item even if shared.
+    var previewItems: [String: BaseItemDto] {
+        var genreCandidates: [String: [BaseItemDto]] = [:]
+        var itemByID: [String: BaseItemDto] = [:]
+
+        for item in pool {
+            if let id = item.id {
+                itemByID[id] = item
+            }
+            for genre in item.genres ?? [] {
+                genreCandidates[genre, default: []].append(item)
+            }
+        }
+
+        // Prefer items with backdrop images first, keeping deterministic alphabetical sort
+        for (genre, items) in genreCandidates {
+            genreCandidates[genre] = items.sorted { item1, item2 in
+                let b1 = !(item1.backdropImageTags ?? []).isEmpty
+                let b2 = !(item2.backdropImageTags ?? []).isEmpty
+                if b1 != b2 { return b1 && !b2 }
+                return (item1.sortName ?? item1.name ?? "") < (item2.sortName ?? item2.name ?? "")
+            }
+        }
+
+        let allGenres = genres.map(\.name)
+
+        // Sort genres with fewer candidates first to prioritize constrained genres
+        let sortedGenres = allGenres.sorted {
+            let count1 = genreCandidates[$0]?.count ?? 0
+            let count2 = genreCandidates[$1]?.count ?? 0
+            if count1 != count2 { return count1 < count2 }
+            return $0 < $1
+        }
+
+        // Maximum bipartite matching via augmenting paths (Kuhn's algorithm)
+        var match: [String: String] = [:] // itemID -> genre
+
+        func bpm(genre: String, visited: inout Set<String>) -> Bool {
+            guard let candidates = genreCandidates[genre] else { return false }
+            for item in candidates {
+                guard let itemID = item.id else { continue }
+                if visited.contains(itemID) { continue }
+                visited.insert(itemID)
+
+                if let currentGenre = match[itemID] {
+                    if bpm(genre: currentGenre, visited: &visited) {
+                        match[itemID] = genre
+                        return true
+                    }
+                } else {
+                    match[itemID] = genre
+                    return true
+                }
+            }
+            return false
+        }
+
+        for genre in sortedGenres {
+            var visited = Set<String>()
+            _ = bpm(genre: genre, visited: &visited)
+        }
+
+        var result: [String: BaseItemDto] = [:]
+        for (itemID, genre) in match {
+            if let item = itemByID[itemID] {
+                result[genre] = item
+            }
+        }
+
+        // Fallback for any genre that couldn't be matched uniquely (e.g. only 1 item available or all shared)
+        for genre in allGenres {
+            if result[genre] == nil {
+                result[genre] = genreCandidates[genre]?.first
+            }
+        }
+
+        return result
+    }
+
     /// A representative item for a genre, used as a background image on genre cards.
     func previewItem(forGenre name: String) -> BaseItemDto? {
-        pool.first { $0.genres?.contains(name) == true }
+        previewItems[name]
     }
 
     // MARK: State proxies

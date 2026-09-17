@@ -12,42 +12,67 @@ import StatusOverlayKit
 private let overlaySpring: Animation = .spring(response: 0.4, dampingFraction: 0.65)
 
 struct ServerSignInView: View {
+    private enum Field: Hashable {
+        case username
+        case password
+    }
+
     @EnvironmentObject var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel = ServerSignInViewModel()
     @State private var showQuickConnectOverlay = false
     @State private var isOverlayActive = false
+    @FocusState private var focusedField: Field?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color.bg.ignoresSafeArea()
+            Color.bg
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    focusedField = nil
+                    hideKeyboard()
+                }
 
-            VStack(spacing: 0) {
-                serverHeader
-                credentialsSection
-                Spacer()
+            ScrollView {
+                VStack(spacing: 0) {
+                    Text("Sign In")
+                        .font(.system(.title, design: .rounded, weight: .bold))
+                        .foregroundStyle(Color.mainOpp)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+                    credentialsSection
+                    Spacer()
+                }
+                .padding(.top, 60)
             }
-            .padding(.top, 60)
+            .scrollDismissesKeyboard(.interactively)
 
             topSection
 
             quickConnectOverlay
         }
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear { hideKeyboard() }
+        .onDisappear { hideKeyboard() }
         .animation(overlaySpring, value: showQuickConnectOverlay)
         .onChange(of: viewModel.didAuthenticate) { _, authenticated in
             if authenticated {
-                if let token = viewModel.savedToken {
-                    serverViewModel.saveSession(token: token)
+                let hadFocus = focusedField != nil
+                focusedField = nil
+                KeyboardHelper.dismissThen(wasFocused: hadFocus) {
+                    if let token = viewModel.savedToken {
+                        serverViewModel.saveSession(token: token)
+                    }
+                    serverViewModel.currentUser = viewModel.authenticatedUser
+                    withAnimation(overlaySpring) {
+                        showQuickConnectOverlay = false
+                    } completion: {
+                        isOverlayActive = false
+                    }
+                    viewManager.completeSignIn()
                 }
-                serverViewModel.currentUser = viewModel.authenticatedUser
-                withAnimation(overlaySpring) {
-                    showQuickConnectOverlay = false
-                } completion: {
-                    isOverlayActive = false
-                }
-                viewManager.completeSignIn()
             }
         }
     }
@@ -59,7 +84,11 @@ struct ServerSignInView: View {
             HStack {
                 BackButton {
                     viewModel.stopQuickConnect()
-                    dismiss()
+                    let hadFocus = focusedField != nil
+                    focusedField = nil
+                    KeyboardHelper.dismissThen(wasFocused: hadFocus) {
+                        dismiss()
+                    }
                 }
                 .padding(.leading, 20)
 
@@ -86,16 +115,6 @@ struct ServerSignInView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Server Header
-
-    private var serverHeader: some View {
-        Text("Sign In")
-            .font(.system(.title, design: .rounded, weight: .bold))
-            .foregroundStyle(Color.mainOpp)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 8)
-    }
-
     // MARK: - Credentials Section
 
     private var credentialsSection: some View {
@@ -109,6 +128,11 @@ struct ServerSignInView: View {
                     TextField("Username", text: $viewModel.username)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .focused($focusedField, equals: .username)
+                        .submitLabel(.next)
+                        .onSubmit {
+                            focusedField = .password
+                        }
                         .foregroundStyle(Color.mainOpp)
                 }
                 .padding(16)
@@ -121,6 +145,16 @@ struct ServerSignInView: View {
                         .foregroundStyle(.accent)
                         .frame(width: 20)
                     SecureField("Password", text: $viewModel.password)
+                        .focused($focusedField, equals: .password)
+                        .submitLabel(.go)
+                        .onSubmit {
+                            if !viewModel.username.isEmpty && viewModel.signInState != .loading {
+                                handleSignIn()
+                            } else {
+                                focusedField = nil
+                                hideKeyboard()
+                            }
+                        }
                         .foregroundStyle(Color.mainOpp)
                 }
                 .padding(16)
@@ -140,8 +174,7 @@ struct ServerSignInView: View {
 
             // Sign In button
             Button {
-                guard let client = serverViewModel.client else { return }
-                Task { await viewModel.signIn(using: client) }
+                handleSignIn()
             } label: {
                 Group {
                     if case .loading = viewModel.signInState {
@@ -172,6 +205,8 @@ struct ServerSignInView: View {
 
             // Quick Connect button
             Button {
+                focusedField = nil
+                hideKeyboard()
                 if let client = serverViewModel.client {
                     isOverlayActive = true
                     viewModel.startQuickConnect(using: client)
@@ -196,6 +231,13 @@ struct ServerSignInView: View {
         .padding(.horizontal, 24)
         .padding(.top, 24)
         .animation(.default, value: viewModel.signInState)
+    }
+
+    private func handleSignIn() {
+        guard let client = serverViewModel.client else { return }
+        focusedField = nil
+        hideKeyboard()
+        Task { await viewModel.signIn(using: client) }
     }
 
     // MARK: - Quick Connect Overlay

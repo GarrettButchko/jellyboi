@@ -23,6 +23,7 @@ struct MediaDetailView: View {
     @Environment(ServerViewModel.self) var serverViewModel
     @Environment(LibraryViewModel.self) var libraryViewModel
     @Environment(\.verticalSizeClass) var verticalSizeClass
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
 
     @State var detailVM = MediaDetailViewModel()
     @State var isOverviewExpanded = false
@@ -51,9 +52,14 @@ struct MediaDetailView: View {
                 HStack(alignment: .bottom, spacing: 8){
                     heroImage
                         .background(alignment: .top) {
-                            heroBackdrop
-                                .offset(y: -400)
-                                .ignoresSafeArea(edges: .top)
+                            HeroBackdropView(
+                                url: detailVM.backdropURL(client: serverViewModel.client),
+                                itemID: displayItem.id,
+                                blurRadius: 50,
+                                isFlipped: true
+                            )
+                            .offset(y: -400)
+                            .ignoresSafeArea(edges: .top)
                         }
                     MediaButtonColumn(item: displayItem, onOptions: { showOptionsSheet = true })
                 }
@@ -71,7 +77,7 @@ struct MediaDetailView: View {
                                 .foregroundStyle(Color.mainOpp)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 7)
-                                .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
+                                .glassEffect(.regular, in: Capsule())
                         }
                     }
                     .padding(.horizontal, 20)
@@ -79,7 +85,7 @@ struct MediaDetailView: View {
                 }
 
                 SkeletonZone(showsContent: detailVM.detailedItem != nil) {
-                    SkeletonDetailContent()
+                    SkeletonDetailContent(isSeries: displayItem.type == .series)
                 } content: {
                     VStack(alignment: .leading, spacing: 24) {
                         if let overview = displayItem.overview, !overview.isEmpty {
@@ -163,6 +169,9 @@ struct MediaDetailView: View {
                     sourceID: episodeZoomID ?? AnyHashable(episode),
                     in: episodeTransition
                 ))
+        }
+        .onAppear {
+            detailVM.prepare(item: item, client: serverViewModel.client)
         }
         .task {
             guard let client = serverViewModel.client, item.id != nil else { return }

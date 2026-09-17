@@ -29,12 +29,8 @@ extension MediaDetailView {
         if let year = displayItem.productionYear {
             chips.append(.init(icon: "calendar", text: "\(year)"))
         }
-        if let ticks = displayItem.runTimeTicks {
-            let totalSeconds = Int(ticks / 10_000_000)
-            let hours = totalSeconds / 3600
-            let minutes = (totalSeconds % 3600) / 60
-            let label = hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
-            chips.append(.init(icon: "clock", text: label))
+        if let runtime = displayItem.formattedRuntime {
+            chips.append(.init(icon: "clock", text: runtime))
         }
         if let critic = displayItem.criticRating {
             chips.append(.init(emoji: "🍅", text: "\(Int(critic))%"))

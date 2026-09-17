@@ -16,17 +16,21 @@ struct MediaCard: View {
     let namespace: Namespace.ID
     let onSelect: () -> Void
     var zoomID: AnyHashable? = nil
-    var imageAspectRatio: CGFloat = 2.0 / 3.0
+    var imageAspectRatio: CGFloat? = nil
+
+    private var cardAspectRatio: CGFloat {
+        imageAspectRatio ?? item.imageAspectRatio
+    }
 
     @State private var isHovered = false
 
     var body: some View {
         Button(action: onSelect) {
             posterImage
-                .aspectRatio(imageAspectRatio, contentMode: .fit)
+                .aspectRatio(cardAspectRatio, contentMode: .fit)
                 .overlay(alignment: .bottomTrailing) {
                     VStack(alignment: .trailing, spacing: 6) {
-                        if let progress = watchProgress, !isWatched {
+                        if let progress = watchProgress, !isWatched && watching {
                             GlassProgressBar(progress: progress, barWidth: 40)
                         }
                         if let episodeTitle {
@@ -37,7 +41,11 @@ struct MediaCard: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     if isWatched {
-                        watchedBadge
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color.mainOpp)
+                            .padding(6)
+                            .glassEffect(.clear.tint(Color.main.opacity(0.8)), in: Circle())
                             .padding(8)
                     }
                 }
@@ -60,6 +68,10 @@ struct MediaCard: View {
     private var isWatched: Bool {
         (watchProgress ?? 0) >= 0.85
     }
+    
+    private var watching: Bool {
+        (watchProgress ?? 0) >= 0.01
+    }
 
     private var episodeTitle: String? {
         guard item.type == .episode else { return nil }
@@ -81,22 +93,22 @@ struct MediaCard: View {
             .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
     }
 
-    private var watchedBadge: some View {
-        Image(systemName: "checkmark")
-            .font(.system(size: 10, weight: .bold))
-            .foregroundStyle(Color.mainOpp)
-            .padding(6)
-            .glassEffect(.clear.tint(Color.main.opacity(0.8)), in: Circle())
-    }
-
 
     @ViewBuilder
     private var posterImage: some View {
         if let url = posterURL {
-            WebImage(url: url) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                placeholder
+            WebImage(
+                url: url,
+                transaction: Transaction(animation: .easeInOut(duration: 0.3))
+            ) { phase in
+                if let image = phase.image {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .transition(.fade(duration: 0.3))
+                } else {
+                    placeholder
+                }
             }
             .frame(maxWidth: .infinity)
         } else {

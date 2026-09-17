@@ -15,7 +15,7 @@ struct SectionRow: View {
     let title: String
     let items: [BaseItemDto]
     let namespace: Namespace.ID
-    let rowKey: String
+    var rowKey: String? = nil
     let onSelect: (BaseItemDto, AnyHashable) -> Void
     let posterURL: (BaseItemDto) -> URL?
 
@@ -33,7 +33,7 @@ struct SectionRow: View {
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 16) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        let zoomID: AnyHashable = AnyHashable("\(rowKey)-\(index)")
+                        let zoomID: AnyHashable = rowKey.map { AnyHashable("\($0)-\(index)") } ?? AnyHashable(item)
                         MediaCard(
                             item: item,
                             posterURL: posterURL(item),

@@ -25,18 +25,38 @@ struct LetsConnectView: View {
         ZStack(alignment: .topLeading) {
             Color.bg
                 .ignoresSafeArea()
-                
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    urlFieldFocused = false
+                    hideKeyboard()
+                }
 
             ScrollView {
                 VStack(spacing: 0) {
-                    title
+                    Text("Let's Connect!")
+                        .font(.system(.title, design: .rounded, weight: .bold))
+                        .foregroundStyle(Color.mainOpp)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+
                     contentSection
                 }
                 .padding(.top, 60)
             }
             .scrollDismissesKeyboard(.interactively)
 
-            topBar
+            HStack {
+                BackButton {
+                    let hadFocus = urlFieldFocused
+                    urlFieldFocused = false
+                    KeyboardHelper.dismissThen(wasFocused: hadFocus) {
+                        viewManager.dismissSignInFlow()
+                    }
+                }
+                .padding(.leading, 20)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
         }
         .safeAreaInset(edge: .bottom) {
             connectButton
@@ -52,31 +72,12 @@ struct LetsConnectView: View {
                 )
         }
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear { hideKeyboard() }
         .task { viewModel.startDiscovery() }
-        .onDisappear { viewModel.stopDiscovery() }
-    }
-
-    // MARK: - Top Bar
-
-    private var topBar: some View {
-        ZStack(alignment: .center) {
-            HStack {
-                BackButton { viewManager.dismissSignInFlow() }
-                    .padding(.leading, 20)
-                Spacer()
-            }
+        .onDisappear {
+            hideKeyboard()
+            viewModel.stopDiscovery()
         }
-        .frame(maxWidth: .infinity)
-    }
-
-    // MARK: - Title
-
-    private var title: some View {
-        Text("Let's Connect!")
-            .font(.system(.title, design: .rounded, weight: .bold))
-            .foregroundStyle(Color.mainOpp)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 8)
     }
 
     // MARK: - Content
@@ -177,6 +178,15 @@ struct LetsConnectView: View {
             .keyboardType(.URL)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
+            .submitLabel(.done)
+            .onSubmit {
+                if isVerified {
+                    handleConnect()
+                } else {
+                    urlFieldFocused = false
+                    hideKeyboard()
+                }
+            }
             .focused($urlFieldFocused)
             .foregroundStyle(Color.mainOpp)
             .onChange(of: serverURL) { _, newValue in
@@ -214,6 +224,7 @@ struct LetsConnectView: View {
         Button {
             serverURL = server.url.absoluteString
             urlFieldFocused = false
+            hideKeyboard()
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "server.rack")
@@ -243,13 +254,21 @@ struct LetsConnectView: View {
 
     // MARK: - Connect Button
 
+    private func handleConnect() {
+        guard case .verified(let name) = viewModel.serverCheckState,
+              let url = viewModel.verifiedURL else { return }
+        serverViewModel.setServer(url: url, name: name)
+
+        let hadFocus = urlFieldFocused
+        urlFieldFocused = false
+        KeyboardHelper.dismissThen(wasFocused: hadFocus) {
+            viewManager.navigateToServerSignIn()
+        }
+    }
+
     private var connectButton: some View {
         Button {
-            if case .verified(let name) = viewModel.serverCheckState,
-               let url = viewModel.verifiedURL {
-                serverViewModel.setServer(url: url, name: name)
-                viewManager.navigateToServerSignIn()
-            }
+            handleConnect()
         } label: {
             Text("Connect")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))

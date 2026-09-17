@@ -41,6 +41,27 @@ class HomeViewModel: ObservableObject {
     /// has no in-progress movies, so the carousel is never blank.
     var carouselItems: [BaseItemDto] { topWatchedMovies.isEmpty ? recentlyAdded : topWatchedMovies }
 
+    /// Preserved carousel looped index so that navigating to another view and back
+    /// does not reset the carousel back to slide 0.
+    var carouselSnappedIndex: Int? = nil
+
+    /// The item currently selected/focused in the hero carousel based on carouselSnappedIndex.
+    var currentCarouselItem: BaseItemDto? {
+        guard !carouselItems.isEmpty else { return nil }
+        if let snapped = carouselSnappedIndex {
+            let count = carouselItems.count
+            let b = min(5, count)
+            let idx: Int
+            if snapped < b { idx = count - b + snapped }
+            else if snapped >= b + count { idx = snapped - b - count }
+            else { idx = snapped - b }
+            if carouselItems.indices.contains(idx) {
+                return carouselItems[idx]
+            }
+        }
+        return carouselItems.first
+    }
+
     func load(using client: JellyfinClient) async {
         await library.load(using: client)
     }

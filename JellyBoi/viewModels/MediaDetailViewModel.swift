@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 import Observation
 import Get
 import JellyfinAPI
@@ -36,18 +37,51 @@ class MediaDetailViewModel {
 
     private var displayItem: BaseItemDto? { detailedItem ?? sourceItem }
 
+    var heroAspectRatio: CGFloat
+    private(set) var hasDetectedBitmapRatio = false
+
+    init(item: BaseItemDto? = nil, client: JellyfinClient? = nil) {
+        self.sourceItem = item
+        self.client = client
+        self.heroAspectRatio = item?.imageAspectRatio ?? (2.0 / 3.0)
+    }
+
+    func prepare(item: BaseItemDto, client: JellyfinClient?) {
+        if self.sourceItem == nil { self.sourceItem = item }
+        if self.client == nil { self.client = client }
+        if !hasDetectedBitmapRatio && abs(heroAspectRatio - item.imageAspectRatio) > 0.005 {
+            self.heroAspectRatio = item.imageAspectRatio
+        }
+    }
+
+    func updateHeroAspectRatio(from size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        hasDetectedBitmapRatio = true
+        let actualRatio = size.width / size.height
+        if abs(heroAspectRatio - actualRatio) > 0.005 {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                heroAspectRatio = actualRatio
+            }
+        }
+    }
+
     var backdropURL: URL? {
-        guard let client, let id = displayItem?.id else { return nil }
+        backdropURL(client: nil)
+    }
+
+    func backdropURL(client fallbackClient: JellyfinClient? = nil) -> URL? {
+        let activeClient = client ?? fallbackClient
+        guard let activeClient, let id = displayItem?.id else { return nil }
         let hasBackdrop = !(displayItem?.backdropImageTags ?? []).isEmpty
         if hasBackdrop {
-            return client.url(with: Paths.getItemImageByIndex(
+            return activeClient.url(with: Paths.getItemImageByIndex(
                 itemID: id,
                 imageType: "Backdrop",
                 imageIndex: 0,
                 parameters: .init(maxWidth: 800, quality: 90)
             ))
         }
-        return client.url(with: Paths.getItemImage(
+        return activeClient.url(with: Paths.getItemImage(
             itemID: id,
             imageType: "Primary",
             parameters: .init(maxWidth: 800, quality: 90)
@@ -55,8 +89,21 @@ class MediaDetailViewModel {
     }
 
     var posterURL: URL? {
-        guard let client, let id = displayItem?.id else { return nil }
-        return client.url(with: Paths.getItemImage(
+        posterURL(client: nil)
+    }
+
+    func posterURL(client fallbackClient: JellyfinClient? = nil) -> URL? {
+        let activeClient = client ?? fallbackClient
+        guard let activeClient, let id = displayItem?.id else { return nil }
+        if displayItem?.type == .episode {
+            let imageType = displayItem?.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
+            return activeClient.url(with: Paths.getItemImage(
+                itemID: id,
+                imageType: imageType,
+                parameters: .init(maxWidth: 500, quality: 80)
+            ))
+        }
+        return activeClient.url(with: Paths.getItemImage(
             itemID: id,
             imageType: "Primary",
             parameters: .init(maxWidth: 600, quality: 90)
@@ -65,18 +112,6 @@ class MediaDetailViewModel {
 
     func markHeroReady() {
         heroReady = true
-    }
-
-    var logoURL: URL? {
-        guard let client,
-              let item = displayItem,
-              let id = item.id,
-              item.imageTags?["Logo"] != nil else { return nil }
-        return client.url(with: Paths.getItemImage(
-            itemID: id,
-            imageType: "Logo",
-            parameters: .init(maxWidth: 400, quality: 90)
-        ))
     }
 
     func load(item: BaseItemDto, client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel) async {
@@ -95,6 +130,15 @@ class MediaDetailViewModel {
 
         detailedItem = await detailResult
         similarItems = await similarResult
+
+        if !hasDetectedBitmapRatio, let ratio = detailedItem?.primaryImageAspectRatio, ratio > 0 {
+            let newRatio = CGFloat(ratio)
+            if abs(heroAspectRatio - newRatio) > 0.005 {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                    heroAspectRatio = newRatio
+                }
+            }
+        }
 
         if item.type == .series {
             await loadSeasonsAndEpisodes(client: client, userID: userID)
