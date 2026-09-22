@@ -41,6 +41,8 @@ struct MediaDetailView: View {
     @State var selectedEpisode: BaseItemDto?
     @Namespace var episodeTransition
     @State var episodeZoomID: AnyHashable?
+    @State var selectedPerson: BaseItemPerson?
+    @Namespace var personTransition
 
     var isDescriptionTruncated: Bool { overviewFullHeight > overviewLimitedHeight + 1 }
     var displayItem: BaseItemDto { detailVM.detailedItem ?? item }
@@ -168,6 +170,13 @@ struct MediaDetailView: View {
                 .navigationTransition(.zoom(
                     sourceID: episodeZoomID ?? AnyHashable(episode),
                     in: episodeTransition
+                ))
+        }
+        .navigationDestination(item: $selectedPerson) { person in
+            CastCrewView(person: person)
+                .navigationTransition(.zoom(
+                    sourceID: person.id ?? person.name ?? "",
+                    in: personTransition
                 ))
         }
         .onAppear {
