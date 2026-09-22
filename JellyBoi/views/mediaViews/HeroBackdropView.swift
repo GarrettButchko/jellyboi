@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import SDWebImageSwiftUI
+import SDWebImage
 
 /// A full-bleed, blurred backdrop image with top-to-bottom gradient fading.
 /// Shared between the carousel background in `HomeView` and the hero background in `MediaDetailView`.
@@ -18,37 +18,163 @@ struct HeroBackdropView: View {
     var isFlipped: Bool = false
     var gradientColors: [Color] = [.black, .black.opacity(0.5), .clear]
 
+    @State private var imageA: UIImage? = nil
+    @State private var imageB: UIImage? = nil
+    @State private var bOpacity: Double = 0.0
+    @State private var isBTarget: Bool = false
+    @State private var contentOpacity: Double = 0.0
+    @State private var currentLoadedURL: URL? = nil
+
+    private struct BackdropKey: Equatable, Hashable {
+        let url: URL?
+        let itemID: String?
+    }
+
     var body: some View {
-        if let url {
-            WebImage(
-                url: url,
-                transaction: Transaction(animation: .easeInOut(duration: 0.4))
-            ) { phase in
-                if let image = phase.image {
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .scaleEffect(x: isFlipped ? -1 : 1, y: 1)
-                        .transition(.fade(duration: 0.4))
+        ZStack {
+            if let imageA {
+                Image(uiImage: imageA)
+                    .resizable()
+                    .scaledToFill()
+                    .scaleEffect(x: isFlipped ? -1 : 1, y: 1)
+            }
+            if let imageB {
+                Image(uiImage: imageB)
+                    .resizable()
+                    .scaledToFill()
+                    .scaleEffect(x: isFlipped ? -1 : 1, y: 1)
+                    .opacity(bOpacity)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
+        .blur(radius: blurRadius)
+        .mask(
+            LinearGradient(
+                colors: gradientColors,
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .opacity(contentOpacity)
+        .ignoresSafeArea(edges: .top)
+        .task(id: BackdropKey(url: url, itemID: itemID)) {
+            await handleImageChange()
+        }
+    }
+
+    @MainActor
+    private func handleImageChange() async {
+        guard let url else {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                contentOpacity = 0.0
+            }
+            currentLoadedURL = nil
+            return
+        }
+
+        if url == currentLoadedURL && (imageA != nil || imageB != nil) {
+            return
+        }
+
+        guard let newImage = await fetchImage(for: url) else { return }
+        guard !Task.isCancelled else { return }
+
+        currentLoadedURL = url
+
+        // First image being loaded
+        if imageA == nil && imageB == nil {
+            imageA = newImage
+            bOpacity = 0.0
+            isBTarget = false
+            withAnimation(.easeInOut(duration: 0.4)) {
+                contentOpacity = 1.0
+            }
+            return
+        }
+
+        if contentOpacity < 1.0 {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                contentOpacity = 1.0
+            }
+        }
+
+        // Crossfade to the next image without exposing the background:
+        // - One layer stays at 100% opacity underneath.
+        // - The other layer fades in or out on top.
+        // - Total composite opacity is always 100%, seamlessly merging the two images.
+        if isBTarget {
+            // Layer B is currently on top. Load new image into Layer A underneath,
+            // then fade Layer B out from 1.0 to 0.0 to reveal Layer A.
+            imageA = newImage
+            isBTarget = false
+            withAnimation(.easeInOut(duration: 0.45)) {
+                bOpacity = 0.0
+            }
+        } else {
+            // Layer A is currently visible. Load new image into Layer B on top,
+            // then fade Layer B in from 0.0 to 1.0 over Layer A.
+            imageB = newImage
+            isBTarget = true
+            withAnimation(.easeInOut(duration: 0.45)) {
+                bOpacity = 1.0
+            }
+        }
+    }
+
+    private func fetchImage(for url: URL) async -> UIImage? {
+        let cacheKey = SDWebImageManager.shared.cacheKey(for: url)
+        if let cached = SDImageCache.shared.imageFromMemoryCache(forKey: cacheKey) {
+            return cached
+        }
+
+        final class StateBox: @unchecked Sendable {
+            var resumed = false
+            var operation: SDWebImageOperation?
+            let lock = NSLock()
+
+            func resume(with continuation: CheckedContinuation<UIImage?, Never>, image: UIImage?) {
+                lock.lock()
+                defer { lock.unlock() }
+                guard !resumed else { return }
+                resumed = true
+                continuation.resume(returning: image)
+            }
+
+            @MainActor
+            func cancel() {
+                lock.lock()
+                let op = operation
+                lock.unlock()
+                op?.cancel()
+            }
+        }
+
+        let box = StateBox()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let op = SDWebImageManager.shared.loadImage(
+                    with: url,
+                    options: [.avoidAutoSetImage, .retryFailed],
+                    progress: nil
+                ) { image, _, _, _, finished, _ in
+                    if finished {
+                        box.resume(with: continuation, image: image)
+                    }
+                }
+                box.lock.lock()
+                box.operation = op
+                if op == nil {
+                    box.lock.unlock()
+                    box.resume(with: continuation, image: nil)
                 } else {
-                    Color.clear
+                    box.lock.unlock()
                 }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: height)
-            .blur(radius: blurRadius)
-            .mask(
-                LinearGradient(
-                    colors: gradientColors,
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .ignoresSafeArea(edges: .top)
-            .id(itemID ?? url.absoluteString)
-            .animation(.easeInOut(duration: 0.35), value: itemID ?? url.absoluteString)
-        } else {
-            Color.clear
+        } onCancel: {
+            Task { @MainActor in
+                box.cancel()
+            }
         }
     }
 }
