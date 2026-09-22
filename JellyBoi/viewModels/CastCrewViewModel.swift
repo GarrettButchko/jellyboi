@@ -77,6 +77,11 @@ class CastCrewViewModel {
         return nil
     }
 
+    func mapsURL(for location: String) -> URL? {
+        guard let encoded = location.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
+        return URL(string: "https://maps.apple.com/?q=\(encoded)")
+    }
+
     func personImageURL(client: JellyfinClient?) -> URL? {
         guard let client else { return nil }
         if let id = detailedPerson?.id ?? person.id {

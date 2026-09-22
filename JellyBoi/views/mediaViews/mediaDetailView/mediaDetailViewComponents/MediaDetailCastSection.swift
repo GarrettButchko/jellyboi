@@ -34,14 +34,11 @@ extension MediaDetailView {
                         } label: {
                             CastCircle(
                                 person: person,
-                                imageURL: castImageURL(for: person)
+                                imageURL: castImageURL(for: person),
+                                namespace: personTransition
                             )
                         }
                         .buttonStyle(.plain)
-                        .matchedTransitionSource(
-                            id: person.id ?? person.name ?? "",
-                            in: personTransition
-                        )
                     }
                 }
                 .padding(.horizontal, 16)
@@ -67,34 +64,11 @@ extension MediaDetailView {
 struct CastCircle: View {
     let person: BaseItemPerson
     let imageURL: URL?
+    var namespace: Namespace.ID? = nil
 
     var body: some View {
         VStack(spacing: 7) {
-            ZStack {
-                Circle()
-                    .fill(Color.sub)
-                    .frame(width: 70, height: 70)
-
-                if let url = imageURL {
-                    WebImage(
-                        url: url,
-                        transaction: Transaction(animation: .easeInOut(duration: 0.3))
-                    ) { phase in
-                        if let image = phase.image {
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .transition(.fade(duration: 0.3))
-                        } else {
-                            placeholderIcon
-                        }
-                    }
-                    .frame(width: 70, height: 70)
-                    .clipShape(Circle())
-                } else {
-                    placeholderIcon
-                }
-            }
+            avatarView
 
             VStack(spacing: 2) {
                 Text(person.name ?? "")
@@ -123,6 +97,46 @@ struct CastCircle: View {
                         .frame(width: 74)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var avatarView: some View {
+        let circleContent = ZStack {
+            Circle()
+                .fill(Color.sub)
+                .frame(width: 70, height: 70)
+
+            if let url = imageURL {
+                WebImage(
+                    url: url,
+                    transaction: Transaction(animation: .easeInOut(duration: 0.3))
+                ) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .transition(.fade(duration: 0.3))
+                    } else {
+                        placeholderIcon
+                    }
+                }
+                .frame(width: 70, height: 70)
+                .clipShape(Circle())
+            } else {
+                placeholderIcon
+            }
+        }
+        .frame(width: 70, height: 70)
+
+        if let namespace {
+            circleContent
+                .matchedTransitionSource(
+                    id: person.id ?? person.name ?? "",
+                    in: namespace
+                )
+        } else {
+            circleContent
         }
     }
 

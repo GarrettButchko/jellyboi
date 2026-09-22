@@ -22,6 +22,7 @@ struct CastCrewView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.openURL) private var openURL
 
     // Overview truncation state
     @State private var isOverviewExpanded = false
@@ -65,7 +66,12 @@ struct CastCrewView: View {
                             }
                             
                             if let birthplace = viewModel.birthPlaceFormatted {
-                                InfoCapsule(icon: "mappin.and.ellipse", text: birthplace)
+                                Button {
+                                    openMaps(for: birthplace)
+                                } label: {
+                                    InfoCapsule(icon: "mappin.and.ellipse", text: birthplace)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -284,6 +290,14 @@ struct CastCrewView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func openMaps(for location: String) {
+        if let url = viewModel.mapsURL(for: location) {
+            openURL(url)
         }
     }
 }
