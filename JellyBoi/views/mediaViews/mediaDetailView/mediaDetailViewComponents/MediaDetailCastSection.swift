@@ -34,8 +34,7 @@ extension MediaDetailView {
                         } label: {
                             CastCircle(
                                 person: person,
-                                imageURL: castImageURL(for: person),
-                                namespace: personTransition
+                                imageURL: castImageURL(for: person)
                             )
                         }
                         .buttonStyle(.plain)

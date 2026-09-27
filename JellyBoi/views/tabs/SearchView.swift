@@ -226,10 +226,19 @@ private struct GenreChip: View {
             ZStack(alignment: .bottom) {
                 // Backdrop image fills the card
                 if let url = posterURL {
-                    WebImage(url: url) { image in
-                        image.resizable().scaledToFill().tint(style.color)
-                    } placeholder: {
-                        style.color.opacity(0.3)
+                    WebImage(
+                        url: url,
+                        transaction: Transaction(animation: .easeInOut(duration: 0.3))
+                    ) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .tint(style.color)
+                                .transition(.fade(duration: 0.3))
+                        } else {
+                            style.color.opacity(0.3)
+                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     

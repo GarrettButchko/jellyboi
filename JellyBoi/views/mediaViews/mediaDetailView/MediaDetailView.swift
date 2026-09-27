@@ -26,14 +26,10 @@ struct MediaDetailView: View {
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
 
     @State var detailVM = MediaDetailViewModel()
-    @State var isOverviewExpanded = false
-    @State var overviewLimitedHeight: CGFloat = 0
-    @State var overviewFullHeight: CGFloat = 0
     @State var showOptionsSheet = false
     @State var selectedRelatedItem: BaseItemDto?
     @Namespace var relatedTransition
     @State var relatedZoomID: AnyHashable?
-    @State var moreButtonHeight: CGFloat = 0
     @State var backButtonHeight: CGFloat = 0
     @State var isFavorited = false
     @State var isDownloaded = false
@@ -42,9 +38,7 @@ struct MediaDetailView: View {
     @Namespace var episodeTransition
     @State var episodeZoomID: AnyHashable?
     @State var selectedPerson: BaseItemPerson?
-    @Namespace var personTransition
 
-    var isDescriptionTruncated: Bool { overviewFullHeight > overviewLimitedHeight + 1 }
     var displayItem: BaseItemDto { detailVM.detailedItem ?? item }
 
     var body: some View {
@@ -174,10 +168,6 @@ struct MediaDetailView: View {
         }
         .navigationDestination(item: $selectedPerson) { person in
             CastCrewView(person: person)
-                .navigationTransition(.zoom(
-                    sourceID: person.id ?? person.name ?? "",
-                    in: personTransition
-                ))
         }
         .onAppear {
             detailVM.prepare(item: item, client: serverViewModel.client)

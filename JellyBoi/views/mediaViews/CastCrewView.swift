@@ -24,22 +24,12 @@ struct CastCrewView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.openURL) private var openURL
 
-    // Overview truncation state
-    @State private var isOverviewExpanded = false
-    @State private var overviewLimitedHeight: CGFloat = 0
-    @State private var overviewFullHeight: CGFloat = 0
-    @State private var moreButtonHeight: CGFloat = 0
-
     // Navigation state
     @State private var selectedMediaItem: BaseItemDto?
     @Namespace private var mediaZoomTransition
 
     init(person: BaseItemPerson) {
         _viewModel = State(initialValue: CastCrewViewModel(person: person))
-    }
-
-    private var isDescriptionTruncated: Bool {
-        overviewFullHeight > overviewLimitedHeight + 1
     }
 
     private var columns: [GridItem] {
@@ -55,7 +45,7 @@ struct CastCrewView: View {
                     
                     // Overview / description with 3-line truncation and more/less button
                     if let overview = viewModel.overview, !overview.isEmpty {
-                        overviewSection(overview)
+                        ExpandableText(overview, sheetTitle: "Biography")
                             .padding(.horizontal, 16)
                     }
                     
@@ -211,86 +201,6 @@ struct CastCrewView: View {
                     .font(.system(size: 44))
                     .foregroundStyle(Color.subFour)
             }
-    }
-
-    // MARK: - Overview Section (3-line truncation with more/less)
-
-    private func overviewSection(_ overview: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(overview)
-                .font(.system(.body, design: .rounded))
-                .foregroundStyle(Color.mainOpp.opacity(0.85))
-                .lineLimit(isOverviewExpanded ? nil : 3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(.easeInOut(duration: 0.2), value: isOverviewExpanded)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
-                    if !isOverviewExpanded { overviewLimitedHeight = h }
-                }
-                .background(
-                    Text(overview)
-                        .font(.system(.body, design: .rounded))
-                        .lineLimit(nil)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .hidden()
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                            overviewFullHeight = $0
-                        }
-                )
-                .mask {
-                    if isDescriptionTruncated && !isOverviewExpanded {
-                        VStack(spacing: 0) {
-                            Color.black
-
-                            HStack(spacing: 0) {
-                                Color.black
-
-                                LinearGradient(
-                                    colors: [.black, .clear],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                                .frame(width: 80, height: moreButtonHeight)
-                            }
-                            .frame(height: moreButtonHeight)
-                        }
-                    } else {
-                        Color.black
-                    }
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    if isDescriptionTruncated && !isOverviewExpanded {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isOverviewExpanded = true
-                            }
-                        } label: {
-                            Text("more")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundStyle(Color.mainOpp.opacity(0.5))
-                                .padding(.leading, 32)
-                        }
-                        .buttonStyle(.plain)
-                        .onGeometryChange(for: CGFloat.self) { proxy in
-                            proxy.size.height
-                        } action: { newHeight in
-                            moreButtonHeight = newHeight
-                        }
-                    }
-                }
-
-            if isDescriptionTruncated && isOverviewExpanded {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isOverviewExpanded = false
-                    }
-                } label: {
-                    Text("less")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.mainOpp.opacity(0.5))
-                }
-                .buttonStyle(.plain)
-            }
-        }
     }
 
     // MARK: - Actions
