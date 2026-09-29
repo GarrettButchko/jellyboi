@@ -60,6 +60,7 @@ struct MediaButtonColumn: View {
                         progressRingButton
                             .glassEffect(.regular.interactive(), in: Circle())
                             .glassEffectID("progress", in: glassNamespace)
+                            .transition(.opacity)
                     }
                     Button {
                         viewModel.handlePlayTap(

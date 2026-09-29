@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 import Observation
 import Get
 import JellyfinAPI
@@ -74,12 +75,14 @@ class LibraryViewModel {
                 }
             }
         }
-        favoriteToggleTask = Task { [weak self] in
+        favoriteToggleTask = Task { @MainActor [weak self] in
             for await notification in NotificationCenter.default.notifications(named: .mediaFavoriteToggled) {
                 guard let self else { break }
                 if let itemID = notification.object as? String,
                    let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
-                    self.updateFavorite(for: itemID, isFavorite: isFavorite)
+                    withAnimation(.smooth(duration: 0.35)) {
+                        self.updateFavorite(for: itemID, isFavorite: isFavorite)
+                    }
                 }
             }
         }

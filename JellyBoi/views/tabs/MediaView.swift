@@ -35,6 +35,7 @@ struct MediaView: View {
                             regularContent
                         }
                     }
+                    .animation(.smooth(duration: 0.35), value: viewModel.currentFavoriteItems.map(\.id))
                     .animation(.smooth(duration: 0.3), value: viewModel.filter)
                     .animation(.smooth(duration: 0.3), value: viewModel.showFavoritesOnly)
                     .contentMargins(.top, headerHeight, for: .scrollContent)
@@ -127,11 +128,9 @@ struct MediaView: View {
             switch viewModel.filter {
             case .movies:
                 mediaGrid(for: viewModel.favoriteMovies)
-                    .id(viewModel.filter)
 
             case .collections:
                 mediaGrid(for: viewModel.favoriteCollections)
-                    .id(viewModel.filter)
 
             case .tvShows:
                 if !viewModel.favoriteShows.isEmpty && !viewModel.favoriteEpisodes.isEmpty {
@@ -140,14 +139,12 @@ struct MediaView: View {
                         favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
                     }
                     .padding(.bottom, 8)
-                    .transition(.opacity)
                 } else if !viewModel.favoriteShows.isEmpty {
-                    mediaGrid(for: viewModel.favoriteShows)
-                        .id(viewModel.filter)
+                    favoriteSection(title: "Shows", items: viewModel.favoriteShows)
+                        .padding(.bottom, 8)
                 } else {
                     favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
                         .padding(.bottom, 8)
-                        .transition(.opacity)
                 }
             }
         }
@@ -207,6 +204,10 @@ struct MediaView: View {
         LazyVGrid(columns: columns, spacing: 16) {
             ForEach(items, id: \.id) { item in
                 mediaCard(for: item)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                        removal: .opacity.combined(with: .scale(scale: 0.85))
+                    ))
             }
         }
         .padding(.horizontal, 16)

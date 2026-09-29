@@ -209,7 +209,9 @@ struct MediaDetailView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .mediaProgressReset)) { notification in
             if let itemID = notification.object as? String {
-                detailVM.clearProgress(for: itemID)
+                withAnimation(.smooth(duration: 0.35)) {
+                    detailVM.clearProgress(for: itemID)
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .mediaFavoriteToggled)) { notification in
