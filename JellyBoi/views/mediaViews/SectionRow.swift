@@ -24,7 +24,7 @@ struct SectionRow: View {
     private var cardWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
 
     var body: some View {
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(Color.mainOpp)
@@ -49,6 +49,7 @@ struct SectionRow: View {
                 .padding(.horizontal, 16)
                 .scrollTargetLayout()
             }
+            .scrollClipDisabled()
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned)
         }

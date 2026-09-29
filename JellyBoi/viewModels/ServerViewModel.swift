@@ -94,8 +94,31 @@ class ServerViewModel {
         NotificationCenter.default.post(name: .mediaProgressReset, object: itemID)
         onComplete?()
     }
+
+    // MARK: - Favorite Management
+
+    @discardableResult
+    func setFavorite(_ isFavorite: Bool, forItemID itemID: String) async -> UserItemDataDto? {
+        guard let client else { return nil }
+        let userID = currentUser?.id
+        do {
+            let request = isFavorite
+                ? Paths.markFavoriteItem(itemID: itemID, userID: userID)
+                : Paths.unmarkFavoriteItem(itemID: itemID, userID: userID)
+            let userData = try await client.send(request).value
+            NotificationCenter.default.post(
+                name: .mediaFavoriteToggled,
+                object: itemID,
+                userInfo: ["isFavorite": isFavorite, "userData": userData]
+            )
+            return userData
+        } catch {
+            return nil
+        }
+    }
 }
 
 extension Notification.Name {
     static let mediaProgressReset = Notification.Name("mediaProgressReset")
+    static let mediaFavoriteToggled = Notification.Name("mediaFavoriteToggled")
 }

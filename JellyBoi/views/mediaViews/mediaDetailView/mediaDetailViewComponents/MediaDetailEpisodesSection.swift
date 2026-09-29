@@ -64,6 +64,7 @@ extension MediaDetailView {
                     .padding(.horizontal, 16)
                     .scrollTargetLayout()
                 }
+                .scrollClipDisabled()
                 .scrollIndicators(.hidden)
                 .scrollTargetBehavior(.viewAligned)
             }

@@ -36,7 +36,7 @@ class MediaDetailViewModel {
     }
 
     private var client: JellyfinClient?
-    private var sourceItem: BaseItemDto?
+    private(set) var sourceItem: BaseItemDto?
 
     private var displayItem: BaseItemDto? { detailedItem ?? sourceItem }
 
@@ -251,6 +251,47 @@ class MediaDetailViewModel {
         }
         episodes.clearProgress(for: itemID, matchingSeries: true)
         collectionItems.clearProgress(for: itemID)
+    }
+
+    // MARK: - Favorite Management
+
+    var isFavorite: Bool {
+        isFavorite()
+    }
+
+    func isFavorite(fallback: BaseItemDto? = nil) -> Bool {
+        detailedItem?.isFavorite ?? sourceItem?.isFavorite ?? fallback?.isFavorite ?? false
+    }
+
+    func setFavoriteLocally(_ isFavorite: Bool) {
+        detailedItem?.setFavorite(isFavorite)
+        sourceItem?.setFavorite(isFavorite)
+    }
+
+    func toggleFavorite(serverViewModel: ServerViewModel?, fallbackItem: BaseItemDto? = nil) async {
+        if sourceItem == nil, let fallbackItem {
+            sourceItem = fallbackItem
+        }
+        guard let itemID = displayItem?.id ?? fallbackItem?.id, let serverViewModel else { return }
+        let currentFavorite = isFavorite(fallback: fallbackItem)
+        let newFavorite = !currentFavorite
+
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            setFavoriteLocally(newFavorite)
+        }
+
+        let result = await serverViewModel.setFavorite(newFavorite, forItemID: itemID)
+        if result == nil {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                setFavoriteLocally(currentFavorite)
+            }
+        }
+    }
+
+    func handleFavoriteToggled(itemID: String, isFavorite: Bool) {
+        if displayItem?.id == itemID || sourceItem?.id == itemID {
+            setFavoriteLocally(isFavorite)
+        }
     }
 
     // MARK: - Collection Items

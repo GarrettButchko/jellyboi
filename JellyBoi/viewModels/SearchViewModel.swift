@@ -41,9 +41,9 @@ class SearchViewModel {
         return showFavoritesOnly ? all.filter { $0.userData?.isFavorite == true } : all
     }
 
-    /// Full pool including episodes, used when the user is actively searching.
+    /// Full pool including episodes and collections, used when the user is actively searching.
     private var searchPool: [BaseItemDto] {
-        let all = library.movies + library.tvShows + library.episodes
+        let all = library.movies + library.tvShows + library.episodes + library.collections
         return showFavoritesOnly ? all.filter { $0.userData?.isFavorite == true } : all
     }
 

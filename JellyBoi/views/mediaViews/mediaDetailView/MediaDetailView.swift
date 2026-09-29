@@ -153,8 +153,10 @@ struct MediaDetailView: View {
             HStack {
                 BackButton()
                 Spacer()
-                MediaDetailButtonRowTopTrailing {
-                    // TODO
+                MediaDetailButtonRowTopTrailing(isFavorited: detailVM.isFavorite(fallback: item)) {
+                    Task {
+                        await detailVM.toggleFavorite(serverViewModel: serverViewModel, fallbackItem: item)
+                    }
                 } onDownload: {
                     // TODO
                 }
@@ -208,6 +210,12 @@ struct MediaDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .mediaProgressReset)) { notification in
             if let itemID = notification.object as? String {
                 detailVM.clearProgress(for: itemID)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mediaFavoriteToggled)) { notification in
+            if let itemID = notification.object as? String,
+               let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
+                detailVM.handleFavoriteToggled(itemID: itemID, isFavorite: isFavorite)
             }
         }
     }

@@ -199,10 +199,12 @@ struct SearchView: View {
                                     ? libraryViewModel.seriesPosterURL(for: item, client: c)
                                     : libraryViewModel.posterURL(for: item, client: c)
                             },
-                            namespace: zoomTransition
-                        ) {
-                            selectedItem = item
-                        }
+                            namespace: zoomTransition,
+                            onSelect: {
+                                selectedItem = item
+                            },
+                            imageAspectRatio: item.type == .episode ? (2.0 / 3.0) : nil
+                        )
                     }
                 }
                 .padding(.horizontal, 16)

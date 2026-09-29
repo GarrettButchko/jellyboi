@@ -123,6 +123,15 @@ struct MediaCard: View {
                         Label("Start", systemImage: "play.fill")
                     }
                 }
+
+                Button {
+                    viewModel.handleToggleFavorite(serverViewModel: serverViewModel)
+                } label: {
+                    Label(
+                        viewModel.isFavorite ? "Unfavorite" : "Favorite",
+                        systemImage: viewModel.isFavorite ? "star.fill" : "star"
+                    )
+                }
             } header: {
                 if !viewModel.contextMenuTitle.isEmpty {
                     Text(viewModel.contextMenuTitle)
@@ -140,6 +149,12 @@ struct MediaCard: View {
         .onReceive(NotificationCenter.default.publisher(for: .mediaProgressReset)) { notification in
             if let resetID = notification.object as? String {
                 viewModel.handleProgressResetNotification(resetID: resetID)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mediaFavoriteToggled)) { notification in
+            if let itemID = notification.object as? String,
+               let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
+                viewModel.handleFavoriteNotification(itemID: itemID, isFavorite: isFavorite)
             }
         }
     }

@@ -62,6 +62,8 @@ class LibraryViewModel {
 
     @ObservationIgnored
     private var progressResetTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var favoriteToggleTask: Task<Void, Never>?
 
     init() {
         progressResetTask = Task { [weak self] in
@@ -72,10 +74,20 @@ class LibraryViewModel {
                 }
             }
         }
+        favoriteToggleTask = Task { [weak self] in
+            for await notification in NotificationCenter.default.notifications(named: .mediaFavoriteToggled) {
+                guard let self else { break }
+                if let itemID = notification.object as? String,
+                   let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
+                    self.updateFavorite(for: itemID, isFavorite: isFavorite)
+                }
+            }
+        }
     }
 
     deinit {
         progressResetTask?.cancel()
+        favoriteToggleTask?.cancel()
     }
 
     // MARK: - State
@@ -99,22 +111,26 @@ class LibraryViewModel {
             let moviesParams = Paths.GetItemsParameters(
                 isRecursive: true, sortOrder: [.ascending],
                 fields: [.genres, .tags],
-                includeItemTypes: [.movie], sortBy: [.sortName]
+                includeItemTypes: [.movie], sortBy: [.sortName],
+                enableUserData: true
             )
             let showsParams = Paths.GetItemsParameters(
                 isRecursive: true, sortOrder: [.ascending],
                 fields: [.genres, .tags],
-                includeItemTypes: [.series], sortBy: [.sortName]
+                includeItemTypes: [.series], sortBy: [.sortName],
+                enableUserData: true
             )
             let episodesParams = Paths.GetItemsParameters(
                 isRecursive: true, sortOrder: [.ascending],
-                includeItemTypes: [.episode], sortBy: [.sortName]
+                includeItemTypes: [.episode], sortBy: [.sortName],
+                enableUserData: true
             )
             let collectionsParams = Paths.GetItemsParameters(
                 isRecursive: true,
                 sortOrder: [.ascending],
                 includeItemTypes: [.boxSet],
-                sortBy: [.sortName]
+                sortBy: [.sortName],
+                enableUserData: true
             )
             let recommendedParams = Paths.GetItemsParameters(
                 limit: 20, isRecursive: true,
@@ -174,6 +190,31 @@ class LibraryViewModel {
         updateAggregates()
     }
 
+    // MARK: - Favorite Management
+
+    func updateFavorite(for itemID: String, isFavorite: Bool) {
+        var wasFavorite: Bool? = nil
+        let allLists = [movies, tvShows, episodes, collections, recommended, recentlyAdded]
+        for list in allLists {
+            if let found = list.first(where: { $0.id == itemID }) {
+                wasFavorite = found.userData?.isFavorite ?? false
+                break
+            }
+        }
+
+        movies.updateFavorite(for: itemID, isFavorite: isFavorite)
+        tvShows.updateFavorite(for: itemID, isFavorite: isFavorite)
+        episodes.updateFavorite(for: itemID, isFavorite: isFavorite)
+        collections.updateFavorite(for: itemID, isFavorite: isFavorite)
+        recommended.updateFavorite(for: itemID, isFavorite: isFavorite)
+        recentlyAdded.updateFavorite(for: itemID, isFavorite: isFavorite)
+        resumeShows.updateFavorite(for: itemID, isFavorite: isFavorite)
+
+        if wasFavorite != isFavorite {
+            favoritesCount = max(0, favoritesCount + (isFavorite ? 1 : -1))
+        }
+    }
+
     // MARK: - Aggregates
 
     private func updateAggregates() {
@@ -206,6 +247,9 @@ class LibraryViewModel {
 
     func posterURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
         guard let id = item.id else { return nil }
+        if item.type == .episode && (item.imageTags?.keys.contains("Primary") != true) {
+            return seriesPosterURL(for: item, client: client)
+        }
         return client.url(with: Paths.getItemImage(
             itemID: id,
             imageType: "Primary",

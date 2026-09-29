@@ -35,6 +35,23 @@ extension BaseItemDto {
         userData?.isPlayed = false
         userData?.playbackPositionTicks = 0
     }
+
+    /// Indicates whether the item is marked as a favorite.
+    var isFavorite: Bool {
+        get { userData?.isFavorite == true }
+        set {
+            if userData != nil {
+                userData?.isFavorite = newValue
+            } else {
+                userData = UserItemDataDto(isFavorite: newValue, key: id ?? "")
+            }
+        }
+    }
+
+    /// Updates the favorite status on the item's `userData`.
+    mutating func setFavorite(_ isFavorite: Bool) {
+        self.isFavorite = isFavorite
+    }
 }
 
 extension Array where Element == BaseItemDto {
@@ -43,6 +60,15 @@ extension Array where Element == BaseItemDto {
         for index in indices {
             if self[index].id == itemID || (matchingSeries && self[index].seriesID == itemID) {
                 self[index].clearProgress()
+            }
+        }
+    }
+
+    /// Updates the favorite state for all items matching the given ID.
+    mutating func updateFavorite(for itemID: String, isFavorite: Bool) {
+        for index in indices {
+            if self[index].id == itemID {
+                self[index].setFavorite(isFavorite)
             }
         }
     }

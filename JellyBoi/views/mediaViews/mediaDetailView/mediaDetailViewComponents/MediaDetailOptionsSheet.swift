@@ -23,6 +23,15 @@ extension MediaDetailView {
                 .foregroundStyle(Color.mainOpp.opacity(0.12))
 
             VStack(spacing: 0) {
+                optionsRow(
+                    icon: detailVM.isFavorite(fallback: item) ? "star.fill" : "star",
+                    label: detailVM.isFavorite(fallback: item) ? "Remove from Favorites" : "Add to Favorites"
+                ) {
+                    Task {
+                        await detailVM.toggleFavorite(serverViewModel: serverViewModel, fallbackItem: item)
+                    }
+                    showOptionsSheet = false
+                }
                 optionsRow(icon: "play.circle", label: "Play Next") { }
                 optionsRow(icon: "plus.circle", label: "Add to Playlist") { }
                 optionsRow(icon: "square.and.arrow.up", label: "Share") { }

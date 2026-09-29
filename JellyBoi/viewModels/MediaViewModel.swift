@@ -13,11 +13,13 @@ import JellyfinAPI
 enum MediaFilter: CaseIterable, Hashable {
     case movies
     case tvShows
+    case collections
 
     var title: String {
         switch self {
         case .movies: "Movies"
         case .tvShows: "TV Shows"
+        case .collections: "Collections"
         }
     }
 
@@ -25,6 +27,7 @@ enum MediaFilter: CaseIterable, Hashable {
         switch self {
         case .movies: .movie
         case .tvShows: .series
+        case .collections: .boxSet
         }
     }
 }
@@ -40,15 +43,44 @@ class MediaViewModel {
         if let library { self.library = library }
     }
 
-    var currentItems: [BaseItemDto] {
-        let base = filter == .movies ? library.movies : library.tvShows
-        return showFavoritesOnly ? base.filter { $0.userData?.isFavorite == true } : base
+    // MARK: - Regular Browsing Items
+
+    var regularItems: [BaseItemDto] {
+        switch filter {
+        case .movies: library.movies
+        case .tvShows: library.tvShows
+        case .collections: library.collections
+        }
     }
 
-    /// True when the base list (before favorites filter) has items — used to distinguish
-    /// "no favorites yet" from "library failed to load."
-    var hasBaseItems: Bool {
-        !(filter == .movies ? library.movies : library.tvShows).isEmpty
+    // MARK: - Favorite Items
+
+    var favoriteMovies: [BaseItemDto] {
+        library.movies.filter { $0.userData?.isFavorite == true }
+    }
+
+    var favoriteShows: [BaseItemDto] {
+        library.tvShows.filter { $0.userData?.isFavorite == true }
+    }
+
+    var favoriteEpisodes: [BaseItemDto] {
+        library.episodes.filter { $0.userData?.isFavorite == true }
+    }
+
+    var favoriteCollections: [BaseItemDto] {
+        library.collections.filter { $0.userData?.isFavorite == true }
+    }
+
+    var favoriteTvItems: [BaseItemDto] {
+        favoriteShows + favoriteEpisodes
+    }
+
+    var currentFavoriteItems: [BaseItemDto] {
+        switch filter {
+        case .movies: favoriteMovies
+        case .tvShows: favoriteTvItems
+        case .collections: favoriteCollections
+        }
     }
 
     var isLoading: Bool { library.isLoading }

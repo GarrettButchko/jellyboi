@@ -12,81 +12,31 @@ struct MediaView: View {
     @State private var selectedItem: BaseItemDto?
     @State private var sttButtonHeight: CGFloat = 0
     @Namespace private var zoomTransition
-    
+
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
     }
     private let topID = "TopID"
-    
+
     var body: some View {
         @Bindable var viewModel = viewModel
         NavigationStack {
             ScrollViewReader { proxy in
-            ZStack(alignment: .top) {
+                ZStack(alignment: .top) {
                     ScrollView {
                         Color.clear
                             .frame(height: 0)
                             .id(topID)
-                        if viewModel.currentItems.isEmpty {
-                            if viewModel.isLoading {
-                                SkeletonMediaGrid()
-                                    .transition(.opacity)
-                            } else if viewModel.showFavoritesOnly && viewModel.hasBaseItems {
-                                // Library loaded fine — favorites filter just returned nothing.
-                                EmptyStateView(
-                                    icon: "star",
-                                    title: "No Favorites",
-                                    message: "You haven't starred any \(viewModel.filter.title.lowercased()) yet."
-                                )
-                            } else if let error = viewModel.errorMessage {
-                                EmptyStateView(
-                                    icon: "wifi.exclamationmark",
-                                    title: "Couldn't load library",
-                                    message: error,
-                                    buttonTitle: "Try Again"
-                                ) {
-                                    Task {
-                                        if let client = serverViewModel.client {
-                                            await viewModel.refresh(using: client)
-                                        }
-                                    }
-                                }
-                            } else {
-                                EmptyStateView(
-                                    icon: viewModel.filter == .movies ? "film" : "tv",
-                                    title: "No \(viewModel.filter.title)",
-                                    message: "Nothing here yet. Pull to refresh or add media to your Jellyfin server.",
-                                    buttonTitle: "Refresh"
-                                ) {
-                                    Task {
-                                        if let client = serverViewModel.client {
-                                            await viewModel.refresh(using: client)
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            LazyVGrid(columns: columns, spacing: 16) {
-                                ForEach(viewModel.currentItems, id: \.id) { item in
-                                    MediaCard(
-                                        item: item,
-                                        posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
-                                        namespace: zoomTransition
-                                    ) {
-                                        selectedItem = item
-                                    }
-                                }
-                            }
-                            .id(viewModel.filter)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 8)
-                            .transition(.opacity)
-                            
 
+                        if viewModel.showFavoritesOnly {
+                            favoritesContent
+                        } else {
+                            regularContent
                         }
                     }
                     .animation(.smooth(duration: 0.3), value: viewModel.filter)
+                    .animation(.smooth(duration: 0.3), value: viewModel.showFavoritesOnly)
                     .contentMargins(.top, headerHeight, for: .scrollContent)
                     .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
                     .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -99,9 +49,13 @@ struct MediaView: View {
                             await viewModel.refresh(using: client)
                         }
                     }
-                    
+
                     // Fixed top header overlay
-                    TabPageHeader(title: "Library", scrollOffset: scrollOffset, headerHeight: $headerHeight) {
+                    TabPageHeader(
+                        title: viewModel.showFavoritesOnly ? "Favorites" : "Library",
+                        scrollOffset: scrollOffset,
+                        headerHeight: $headerHeight
+                    ) {
                         HStack(spacing: 10) {
                             Picker("Filter", selection: $viewModel.filter) {
                                 ForEach(MediaFilter.allCases, id: \.self) { filter in
@@ -113,7 +67,9 @@ struct MediaView: View {
                             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
 
                             Button {
-                                viewModel.showFavoritesOnly.toggle()
+                                withAnimation(.smooth(duration: 0.25)) {
+                                    viewModel.showFavoritesOnly.toggle()
+                                }
                             } label: {
                                 Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
                                     .font(.system(size: 14, weight: .semibold))
@@ -128,7 +84,9 @@ struct MediaView: View {
                     }
                     .onChange(of: viewModel.filter) { _, _ in
                         proxy.scrollTo(topID, anchor: .top)
-                        viewModel.showFavoritesOnly = false
+                    }
+                    .onChange(of: viewModel.showFavoritesOnly) { _, _ in
+                        proxy.scrollTo(topID, anchor: .top)
                     }
 
                     ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
@@ -139,12 +97,153 @@ struct MediaView: View {
             .navigationDestination(item: $selectedItem) { item in
                 MediaDetailView(item: item)
                     .navigationTransition(.zoom(sourceID: item, in: zoomTransition))
-                    
             }
             .toolbarVisibility(.hidden, for: .navigationBar)
             .background(Color.bg.ignoresSafeArea())
         }
     }
-    
 
+    // MARK: - Favorites Content (Filtered by Movies, TV Shows, Collections)
+
+    @ViewBuilder
+    private var favoritesContent: some View {
+        if viewModel.isLoading && viewModel.currentFavoriteItems.isEmpty {
+            SkeletonMediaGrid()
+                .transition(.opacity)
+        } else if viewModel.currentFavoriteItems.isEmpty {
+            let message: String = {
+                switch viewModel.filter {
+                case .movies: return "You haven't starred any movies yet."
+                case .tvShows: return "You haven't starred any TV shows or episodes yet."
+                case .collections: return "You haven't starred any collections yet."
+                }
+            }()
+            EmptyStateView(
+                icon: "star",
+                title: "No Favorite \(viewModel.filter.title)",
+                message: message
+            )
+        } else {
+            switch viewModel.filter {
+            case .movies:
+                mediaGrid(for: viewModel.favoriteMovies)
+                    .id(viewModel.filter)
+
+            case .collections:
+                mediaGrid(for: viewModel.favoriteCollections)
+                    .id(viewModel.filter)
+
+            case .tvShows:
+                if !viewModel.favoriteShows.isEmpty && !viewModel.favoriteEpisodes.isEmpty {
+                    VStack(alignment: .leading, spacing: 28) {
+                        favoriteSection(title: "Shows", items: viewModel.favoriteShows)
+                        favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
+                    }
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
+                } else if !viewModel.favoriteShows.isEmpty {
+                    mediaGrid(for: viewModel.favoriteShows)
+                        .id(viewModel.filter)
+                } else {
+                    favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
+                        .padding(.bottom, 8)
+                        .transition(.opacity)
+                }
+            }
+        }
+    }
+
+    // MARK: - Regular Library Content
+
+    @ViewBuilder
+    private var regularContent: some View {
+        if viewModel.regularItems.isEmpty {
+            if viewModel.isLoading {
+                SkeletonMediaGrid()
+                    .transition(.opacity)
+            } else if let error = viewModel.errorMessage {
+                EmptyStateView(
+                    icon: "wifi.exclamationmark",
+                    title: "Couldn't load library",
+                    message: error,
+                    buttonTitle: "Try Again"
+                ) {
+                    Task {
+                        if let client = serverViewModel.client {
+                            await viewModel.refresh(using: client)
+                        }
+                    }
+                }
+            } else {
+                let emptyIcon: String = {
+                    switch viewModel.filter {
+                    case .movies: return "film"
+                    case .tvShows: return "tv"
+                    case .collections: return "square.stack.3d.up"
+                    }
+                }()
+                EmptyStateView(
+                    icon: emptyIcon,
+                    title: "No \(viewModel.filter.title)",
+                    message: "Nothing here yet. Pull to refresh or add media to your Jellyfin server.",
+                    buttonTitle: "Refresh"
+                ) {
+                    Task {
+                        if let client = serverViewModel.client {
+                            await viewModel.refresh(using: client)
+                        }
+                    }
+                }
+            }
+        } else {
+            mediaGrid(for: viewModel.regularItems)
+                .id(viewModel.filter)
+        }
+    }
+
+    // MARK: - Reusable Components
+
+    private func mediaGrid(for items: [BaseItemDto]) -> some View {
+        LazyVGrid(columns: columns, spacing: 16) {
+            ForEach(items, id: \.id) { item in
+                mediaCard(for: item)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .transition(.opacity)
+    }
+
+    private func mediaCard(for item: BaseItemDto) -> some View {
+        MediaCard(
+            item: item,
+            posterURL: serverViewModel.client.flatMap { client in
+                posterURL(for: item, client: client)
+            },
+            namespace: zoomTransition,
+            onSelect: {
+                selectedItem = item
+            },
+            imageAspectRatio: item.type == .episode ? (2.0 / 3.0) : nil
+        )
+    }
+
+    private func posterURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
+        if item.type == .episode {
+            return libraryViewModel.seriesPosterURL(for: item, client: client)
+                ?? libraryViewModel.posterURL(for: item, client: client)
+        }
+        return libraryViewModel.posterURL(for: item, client: client)
+    }
+
+    private func favoriteSection(title: String, items: [BaseItemDto]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(Color.mainOpp)
+                .padding(.horizontal, 16)
+
+            mediaGrid(for: items)
+        }
+    }
 }

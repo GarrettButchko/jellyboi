@@ -143,4 +143,29 @@ class MediaCardViewModel {
             }
         }
     }
+
+    // MARK: - Favorite Management
+
+    var isFavorite: Bool {
+        item.isFavorite
+    }
+
+    func handleToggleFavorite(serverViewModel: ServerViewModel?) {
+        guard let serverViewModel, let itemID = item.id else { return }
+        let currentFavorite = isFavorite
+        let newFavorite = !currentFavorite
+        item.setFavorite(newFavorite)
+        Task {
+            let result = await serverViewModel.setFavorite(newFavorite, forItemID: itemID)
+            if result == nil {
+                item.setFavorite(currentFavorite)
+            }
+        }
+    }
+
+    func handleFavoriteNotification(itemID: String, isFavorite: Bool) {
+        if item.id == itemID {
+            item.setFavorite(isFavorite)
+        }
+    }
 }

@@ -11,13 +11,18 @@ import BaseColors
 struct MediaDetailButtonRowTopTrailing: View {
     typealias ButtonItem = (systemName: String, action: () -> Void)
 
+    let isFavorited: Bool
     private let onFavorite: () -> Void
     private let onDownload: () -> Void
 
-    @State private var isFavorited = false
     @Namespace private var namespace
 
-    init(onFavorite: @escaping () -> Void = {}, onDownload: @escaping () -> Void = {}) {
+    init(
+        isFavorited: Bool = false,
+        onFavorite: @escaping () -> Void = {},
+        onDownload: @escaping () -> Void = {}
+    ) {
+        self.isFavorited = isFavorited
         self.onFavorite = onFavorite
         self.onDownload = onDownload
     }
@@ -28,10 +33,7 @@ struct MediaDetailButtonRowTopTrailing: View {
                 buttonView(
                     item: (
                         systemName: isFavorited ? "star.fill" : "star",
-                        action: {
-                            isFavorited.toggle()
-                            onFavorite()
-                        }
+                        action: onFavorite
                     ),
                     tint: isFavorited ? .yellow : Color.mainOpp
                 )
@@ -50,6 +52,7 @@ struct MediaDetailButtonRowTopTrailing: View {
             Image(systemName: item.systemName)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(tint)
+                .contentTransition(.symbolEffect(.replace))
                 .padding(11) // smaller than BackButton because the default rounded-rect glass hugs content tighter than a Circle
         }
         .glassEffect(.regular.interactive())
