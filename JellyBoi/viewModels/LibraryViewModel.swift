@@ -58,6 +58,26 @@ class LibraryViewModel {
         return result
     }
 
+    // MARK: - Lifecycle
+
+    @ObservationIgnored
+    private var progressResetTask: Task<Void, Never>?
+
+    init() {
+        progressResetTask = Task { [weak self] in
+            for await notification in NotificationCenter.default.notifications(named: .mediaProgressReset) {
+                guard let self else { break }
+                if let itemID = notification.object as? String {
+                    self.clearProgress(for: itemID)
+                }
+            }
+        }
+    }
+
+    deinit {
+        progressResetTask?.cancel()
+    }
+
     // MARK: - State
 
     var isLoading = true
@@ -139,6 +159,19 @@ class LibraryViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: - Progress Management
+
+    func clearProgress(for itemID: String) {
+        movies.clearProgress(for: itemID, matchingSeries: true)
+        tvShows.clearProgress(for: itemID, matchingSeries: true)
+        episodes.clearProgress(for: itemID, matchingSeries: true)
+        recentlyAdded.clearProgress(for: itemID, matchingSeries: true)
+        recommended.clearProgress(for: itemID, matchingSeries: true)
+        resumeShows.removeAll { $0.id == itemID || $0.seriesID == itemID }
+
+        updateAggregates()
     }
 
     // MARK: - Aggregates

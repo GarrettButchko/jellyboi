@@ -69,42 +69,80 @@ struct CastCrewView: View {
                     .contentMargins(.horizontal, 16)
                 }
 
-                // Title: same as the movie rows in the homeview
-                Text("Movies & Shows")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Color.mainOpp)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
+                // Content: Movies & Shows, and Episodes
+                if viewModel.isLoading {
+                    Text("Movies & Shows")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(Color.mainOpp)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
 
-                // Grid mimicking media tab
-                if viewModel.mediaItems.isEmpty {
-                    if viewModel.isLoading {
-                        SkeletonMediaGrid()
-                    } else {
-                        EmptyStateView(
-                            icon: "film.stack",
-                            title: "No Media Found",
-                            message: "No movies or TV shows found for \(viewModel.personName)."
-                        )
-                        .padding(.top, 20)
-                    }
+                    SkeletonMediaGrid()
+                } else if viewModel.mediaItems.isEmpty && viewModel.episodeItems.isEmpty {
+                    Text("Movies & Shows")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(Color.mainOpp)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+
+                    EmptyStateView(
+                        icon: "film.stack",
+                        title: "No Media Found",
+                        message: "No movies or TV shows found for \(viewModel.personName)."
+                    )
+                    .padding(.top, 20)
                 } else {
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(viewModel.mediaItems, id: \.id) { item in
-                            MediaCard(
-                                item: item,
-                                posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
-                                namespace: mediaZoomTransition
-                            ) {
-                                selectedMediaItem = item
+                    if !viewModel.mediaItems.isEmpty {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Movies & Shows")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(Color.mainOpp)
+                                .padding(.horizontal, 16)
+                                .padding(.top, 4)
+
+                            LazyVGrid(columns: columns, spacing: 16) {
+                                ForEach(viewModel.mediaItems, id: \.id) { item in
+                                    MediaCard(
+                                        item: item,
+                                        posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
+                                        namespace: mediaZoomTransition
+                                    ) {
+                                        selectedMediaItem = item
+                                    }
+                                }
                             }
+                            .padding(.horizontal, 16)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 24)
+
+                    if !viewModel.episodeItems.isEmpty {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Episodes")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(Color.mainOpp)
+                                .padding(.horizontal, 16)
+                                .padding(.top, 4)
+
+                            LazyVGrid(columns: columns, spacing: 16) {
+                                ForEach(viewModel.episodeItems, id: \.id) { episode in
+                                    MediaCard(
+                                        item: episode,
+                                        posterURL: serverViewModel.client.flatMap { libraryViewModel.seriesPosterURL(for: episode, client: $0) },
+                                        namespace: mediaZoomTransition,
+                                        onSelect: {
+                                            selectedMediaItem = episode
+                                        },
+                                        imageAspectRatio: 2.0 / 3.0
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
                 }
             }
             .padding(.top, safeAreaTop)
+            .padding(.bottom, 24)
         }
         .overlay(alignment: .topLeading){
             HStack {

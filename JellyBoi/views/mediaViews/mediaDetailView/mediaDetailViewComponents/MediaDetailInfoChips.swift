@@ -26,6 +26,12 @@ extension MediaDetailView {
     var infoChipData: [InfoChipItem] {
         var chips: [InfoChipItem] = []
 
+        if displayItem.type == .boxSet {
+            let count = displayItem.childCount ?? (detailVM.collectionItems.isEmpty ? nil : detailVM.collectionItems.count)
+            if let count {
+                chips.append(.init(icon: "film.stack", text: "\(count) \(count == 1 ? "Item" : "Items")"))
+            }
+        }
         if let year = displayItem.productionYear {
             chips.append(.init(icon: "calendar", text: "\(year)"))
         }

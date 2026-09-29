@@ -27,6 +27,9 @@ class MediaDetailViewModel {
     private(set) var episodes: [BaseItemDto] = []
     var selectedSeasonIndex: Int = 0
 
+    private(set) var collectionItems: [BaseItemDto] = []
+    private(set) var isLoadingCollectionItems: Bool = false
+
     var selectedSeason: BaseItemDto? {
         guard seasons.indices.contains(selectedSeasonIndex) else { return nil }
         return seasons[selectedSeasonIndex]
@@ -140,8 +143,10 @@ class MediaDetailViewModel {
             }
         }
 
-        if item.type == .series {
+        if item.type == .series || detailedItem?.type == .series {
             await loadSeasonsAndEpisodes(client: client, userID: userID)
+        } else if item.type == .boxSet || detailedItem?.type == .boxSet {
+            await loadCollectionItems(client: client, userID: userID)
         }
     }
 
@@ -236,6 +241,44 @@ class MediaDetailViewModel {
             imageType: imageType,
             parameters: .init(maxWidth: 600, quality: 90)
         ))
+    }
+
+    // MARK: - Progress Management
+
+    func clearProgress(for itemID: String) {
+        if detailedItem?.id == itemID {
+            detailedItem?.clearProgress()
+        }
+        episodes.clearProgress(for: itemID, matchingSeries: true)
+        collectionItems.clearProgress(for: itemID)
+    }
+
+    // MARK: - Collection Items
+
+    func loadCollectionItems(client: JellyfinClient, userID: String?) async {
+        guard let collectionID = sourceItem?.id ?? detailedItem?.id else { return }
+        isLoadingCollectionItems = true
+        defer { isLoadingCollectionItems = false }
+
+        var params = Paths.GetItemsParameters()
+        params.userID = userID
+        params.parentID = collectionID
+        params.isRecursive = true
+        params.isCollapseBoxSetItems = false
+        params.fields = [.primaryImageAspectRatio, .genres, .tags, .overview]
+        params.enableUserData = userID != nil
+        params.enableImages = true
+
+        let items = (try? await client.send(Paths.getItems(parameters: params)).value.items) ?? []
+
+        collectionItems = items.sorted { a, b in
+            let dateA = a.premiereDate ?? (a.productionYear.flatMap { Calendar.current.date(from: DateComponents(year: $0)) } ?? .distantPast)
+            let dateB = b.premiereDate ?? (b.productionYear.flatMap { Calendar.current.date(from: DateComponents(year: $0)) } ?? .distantPast)
+            if dateA != dateB {
+                return dateA < dateB
+            }
+            return (a.sortName ?? a.name ?? "") < (b.sortName ?? b.name ?? "")
+        }
     }
 
 }

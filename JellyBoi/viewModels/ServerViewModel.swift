@@ -78,4 +78,24 @@ class ServerViewModel {
             return false
         }
     }
+
+    // MARK: - Progress Management
+
+    func resetProgress(for item: BaseItemDto, onComplete: (@MainActor @Sendable () -> Void)? = nil) async {
+        guard let itemID = item.id else { return }
+        await resetProgress(forItemID: itemID, onComplete: onComplete)
+    }
+
+    func resetProgress(forItemID itemID: String, onComplete: (@MainActor @Sendable () -> Void)? = nil) async {
+        if let client {
+            _ = try? await client.send(Paths.markUnplayedItem(itemID: itemID, userID: currentUser?.id))
+        }
+
+        NotificationCenter.default.post(name: .mediaProgressReset, object: itemID)
+        onComplete?()
+    }
+}
+
+extension Notification.Name {
+    static let mediaProgressReset = Notification.Name("mediaProgressReset")
 }

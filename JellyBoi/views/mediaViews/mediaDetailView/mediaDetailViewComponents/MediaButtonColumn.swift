@@ -11,58 +11,38 @@ import JellyfinAPI
 
 struct MediaButtonColumn: View {
 
-    // MARK: - Nested Types
-
-    enum PlaybackState: Equatable {
-        case unwatched
-        case inProgress(Double)   // 0.0 – 1.0
-        case completed
-    }
-
-    // MARK: - Properties
-
     let item: BaseItemDto
     var onOptions: (() -> Void)? = nil
-    @State private var state: PlaybackState
-    @State private var progressVisible = false
+    var onPlay: (() -> Void)? = nil
+    var onContinueWatching: (() -> Void)? = nil
+    var onStartFromBeginning: (() -> Void)? = nil
+    var onResetProgress: (() -> Void)? = nil
+
     @Namespace private var glassNamespace
+    @Environment(ServerViewModel.self) private var serverViewModel: ServerViewModel?
 
-    static func playbackState(for item: BaseItemDto) -> PlaybackState {
-        guard let pct = item.userData?.playedPercentage else { return .unwatched }
-        if pct >= 100 {
-            return .completed
-        } else if pct > 0 {
-            return .inProgress(pct / 100)
-        } else {
-            return .unwatched
-        }
-    }
+    @State private var viewModel: MediaButtonColumnViewModel
 
-    init(item: BaseItemDto, initialState: PlaybackState? = nil, onOptions: (() -> Void)? = nil) {
-        self.onOptions = onOptions
+    init(
+        item: BaseItemDto,
+        onOptions: (() -> Void)? = nil,
+        onPlay: (() -> Void)? = nil,
+        onContinueWatching: (() -> Void)? = nil,
+        onStartFromBeginning: (() -> Void)? = nil,
+        onResetProgress: (() -> Void)? = nil
+    ) {
         self.item = item
-        _state = State(initialValue: initialState ?? Self.playbackState(for: item))
+        self.onOptions = onOptions
+        self.onPlay = onPlay
+        self.onContinueWatching = onContinueWatching
+        self.onStartFromBeginning = onStartFromBeginning
+        self.onResetProgress = onResetProgress
+        _viewModel = State(initialValue: MediaButtonColumnViewModel(item: item))
     }
-
-    // MARK: - Computed helpers
-
-    private var progressValue: Double {
-        switch state {
-        case .unwatched:         return 0
-        case .inProgress(let p): return p
-        case .completed:         return 1
-        }
-    }
-
-    private var percentText: String {
-        "\(Int(progressValue * 100))%"
-    }
-
-    // MARK: - Body
 
     var body: some View {
         VStack(spacing: 12) {
-            if let onOptions {
+            if viewModel.shouldShowOptions(hasOptionsCallback: onOptions != nil), let onOptions {
                 Button(action: onOptions) {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 16, weight: .semibold))
@@ -76,13 +56,17 @@ struct MediaButtonColumn: View {
 
             GlassEffectContainer(spacing: 40) {
                 VStack(spacing: 12) {
-                    if progressVisible {
+                    if viewModel.progressVisible {
                         progressRingButton
                             .glassEffect(.regular.interactive(), in: Circle())
                             .glassEffectID("progress", in: glassNamespace)
                     }
                     Button {
-                        handlePlayTap()
+                        viewModel.handlePlayTap(
+                            onPlay: onPlay,
+                            onContinueWatching: onContinueWatching,
+                            onStartFromBeginning: onStartFromBeginning
+                        )
                     } label: {
                         Image(systemName: "play.fill")
                             .font(.system(size: 16, weight: .semibold))
@@ -92,23 +76,21 @@ struct MediaButtonColumn: View {
                     .buttonStyle(.plain)
                     .glassEffect(.regular.tint(.mainOpp.opacity(0.9)).interactive(), in: Circle())
                     .glassEffectID("play", in: glassNamespace)
+                    .contentShape(.contextMenuPreview, Circle())
+                    .contextMenu {
+                        playbackMenuContent
+                    }
                 }
             }
         }
-        .animation(.smooth, value: progressVisible)
-        .onAppear {
-            guard state != .unwatched else { return }
-            withAnimation(.smooth.delay(0.4)) {
-                progressVisible = true
-            }
+        .animation(.smooth, value: viewModel.progressVisible)
+        .onChange(of: item) { _, newItem in
+            viewModel.updateItem(newItem)
         }
-        .onChange(of: state) { _, newValue in
-            withAnimation(.smooth) {
-                progressVisible = newValue != .unwatched
+        .onReceive(NotificationCenter.default.publisher(for: .mediaProgressReset)) { notification in
+            if let resetID = notification.object as? String {
+                viewModel.handleProgressResetNotification(resetID: resetID)
             }
-        }
-        .onChange(of: item.userData?.playedPercentage) { _, _ in
-            state = Self.playbackState(for: item)
         }
     }
 
@@ -116,31 +98,29 @@ struct MediaButtonColumn: View {
 
     private var progressRingButton: some View {
         Menu {
-            Button("Continue watching") { }
-            Button("Start from beginning") { }
-            Button("Reset progress", role: .destructive) {
-                withAnimation(.smooth) {
-                    state = .unwatched
-                }
-            }
+            playbackMenuContent
         } label: {
             ZStack {
                 Circle()
                     .stroke(Color.mainOpp.opacity(0.1), lineWidth: 5)
                     .frame(width: 35, height: 35)
 
-                Circle()
-                    .trim(from: 0, to: progressValue)
-                    .stroke(Color.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 35, height: 35)
+                if viewModel.isWatched {
+                    Circle()
+                        .stroke(Color.accent, lineWidth: 5)
+                        .frame(width: 35, height: 35)
 
-                if state == .completed {
                     Image(systemName: "checkmark")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.mainOpp)
                 } else {
-                    Text(percentText)
+                    Circle()
+                        .trim(from: 0, to: viewModel.progressValue)
+                        .stroke(Color.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 35, height: 35)
+
+                    Text(viewModel.percentText)
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.mainOpp)
                 }
@@ -149,37 +129,68 @@ struct MediaButtonColumn: View {
         }
     }
 
-    // MARK: - Interaction
+    // MARK: - Playback Menu Content
 
-    private func handlePlayTap() {
-        switch state {
-        case .unwatched:
-            withAnimation(.smooth) {
-                state = .inProgress(0.1)
+    @ViewBuilder
+    private var playbackMenuContent: some View {
+        Section {
+            if viewModel.isInProgress {
+                Button {
+                    viewModel.handleContinueWatching(
+                        onPlay: onPlay,
+                        onContinueWatching: onContinueWatching
+                    )
+                } label: {
+                    Label("Continue watching", systemImage: "play.fill")
+                }
+
+                Button {
+                    viewModel.handleStartFromBeginning(
+                        onStartFromBeginning: onStartFromBeginning
+                    )
+                } label: {
+                    Label("Start from beginning", systemImage: "arrow.counterclockwise")
+                }
+
+                Button(role: .destructive) {
+                    viewModel.handleResetProgress(
+                        serverViewModel: serverViewModel,
+                        onResetProgress: onResetProgress
+                    )
+                } label: {
+                    Label("Reset Progress", systemImage: "xmark.circle")
+                }
+            } else if viewModel.isWatched {
+                Button {
+                    viewModel.handleStartFromBeginning(
+                        onStartFromBeginning: onStartFromBeginning
+                    )
+                } label: {
+                    Label("Start from beginning", systemImage: "arrow.counterclockwise")
+                }
+
+                Button(role: .destructive) {
+                    viewModel.handleResetProgress(
+                        serverViewModel: serverViewModel,
+                        onResetProgress: onResetProgress
+                    )
+                } label: {
+                    Label("Reset Progress", systemImage: "xmark.circle")
+                }
+            } else {
+                Button {
+                    viewModel.handleStart(
+                        onPlay: onPlay,
+                        onStartFromBeginning: onStartFromBeginning
+                    )
+                } label: {
+                    Label("Start", systemImage: "play.fill")
+                }
             }
-        case .inProgress:
-            break
-        case .completed:
-            withAnimation(.smooth) {
-                state = .inProgress(0.02)
+        } header: {
+            if !viewModel.contextMenuTitle.isEmpty {
+                Text(viewModel.contextMenuTitle)
             }
         }
     }
-}
-
-// MARK: - Previews
-
-#Preview("Unwatched") {
-    MediaButtonColumn(item: BaseItemDto(name: "Sample"), initialState: .unwatched)
-        .padding(40)
-}
-
-#Preview("In Progress — 42%") {
-    MediaButtonColumn(item: BaseItemDto(name: "Sample"), initialState: .inProgress(0.42))
-        .padding(40)
-}
-
-#Preview("Completed") {
-    MediaButtonColumn(item: BaseItemDto(name: "Sample"), initialState: .completed)
-        .padding(40)
 }

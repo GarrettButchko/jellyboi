@@ -30,6 +30,8 @@ struct MediaDetailView: View {
     @State var selectedRelatedItem: BaseItemDto?
     @Namespace var relatedTransition
     @State var relatedZoomID: AnyHashable?
+    @State var selectedCollectionItem: BaseItemDto?
+    @Namespace var collectionTransition
     @State var backButtonHeight: CGFloat = 0
     @State var isFavorited = false
     @State var isDownloaded = false
@@ -40,6 +42,11 @@ struct MediaDetailView: View {
     @State var selectedPerson: BaseItemPerson?
 
     var displayItem: BaseItemDto { detailVM.detailedItem ?? item }
+
+    private var shouldShowOptionsButton: Bool {
+        let type = displayItem.type ?? item.type
+        return type != .series && type != .boxSet
+    }
 
     var body: some View {
         ScrollView {
@@ -57,7 +64,10 @@ struct MediaDetailView: View {
                             .offset(y: -400)
                             .ignoresSafeArea(edges: .top)
                         }
-                    MediaButtonColumn(item: displayItem, onOptions: { showOptionsSheet = true })
+                    MediaButtonColumn(
+                        item: displayItem,
+                        onOptions: shouldShowOptionsButton ? { showOptionsSheet = true } : nil
+                    )
                 }
                 .padding(.top, safeAreaTop + backButtonHeight + 8)
                 .padding(.horizontal, 16)
@@ -81,7 +91,10 @@ struct MediaDetailView: View {
                 }
 
                 SkeletonZone(showsContent: detailVM.detailedItem != nil) {
-                    SkeletonDetailContent(isSeries: displayItem.type == .series)
+                    SkeletonDetailContent(
+                        isSeries: displayItem.type == .series,
+                        isCollection: displayItem.type == .boxSet
+                    )
                 } content: {
                     VStack(alignment: .leading, spacing: 24) {
                         if let overview = displayItem.overview, !overview.isEmpty {
@@ -96,6 +109,10 @@ struct MediaDetailView: View {
                         let actors = (displayItem.people ?? []).filter { $0.type == .actor }
                         if !actors.isEmpty {
                             castSection(actors)
+                        }
+
+                        if displayItem.type == .boxSet {
+                            collectionSection
                         }
 
                         if !detailVM.similarItems.isEmpty {
@@ -166,6 +183,13 @@ struct MediaDetailView: View {
                     in: episodeTransition
                 ))
         }
+        .navigationDestination(item: $selectedCollectionItem) { collectionItem in
+            MediaDetailView(item: collectionItem)
+                .navigationTransition(.zoom(
+                    sourceID: collectionItem,
+                    in: collectionTransition
+                ))
+        }
         .navigationDestination(item: $selectedPerson) { person in
             CastCrewView(person: person)
         }
@@ -180,6 +204,11 @@ struct MediaDetailView: View {
                 userID: serverViewModel.currentUser?.id,
                 libraryViewModel: libraryViewModel
             )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mediaProgressReset)) { notification in
+            if let itemID = notification.object as? String {
+                detailVM.clearProgress(for: itemID)
+            }
         }
     }
 }

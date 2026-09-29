@@ -18,6 +18,7 @@ class CastCrewViewModel {
 
     private(set) var detailedPerson: BaseItemDto?
     private(set) var mediaItems: [BaseItemDto] = []
+    private(set) var episodeItems: [BaseItemDto] = []
     private(set) var isLoading: Bool = true
 
     init(person: BaseItemPerson) {
@@ -120,28 +121,58 @@ class CastCrewViewModel {
             }
         }
 
-        // 2. Fetch movies and TV shows for this person
+        let personID = detailedPerson?.id ?? person.id
+        let personName = detailedPerson?.name ?? person.name
+
+        // 2. Fetch movies & TV shows, and episodes concurrently
+        async let fetchedMedia = fetchItems(
+            itemTypes: [.movie, .series],
+            personID: personID,
+            personName: personName,
+            client: client,
+            userID: userID
+        )
+        async let fetchedEpisodes = fetchItems(
+            itemTypes: [.episode],
+            personID: personID,
+            personName: personName,
+            client: client,
+            userID: userID
+        )
+
+        let (items, episodes) = await (fetchedMedia, fetchedEpisodes)
+        mediaItems = items
+        episodeItems = episodes
+    }
+
+    private func fetchItems(
+        itemTypes: [BaseItemKind],
+        personID: String?,
+        personName: String?,
+        client: JellyfinClient,
+        userID: String?
+    ) async -> [BaseItemDto] {
+        var params = Paths.GetItemsParameters(
+            userID: userID,
+            isRecursive: true,
+            sortOrder: [.descending],
+            fields: [.primaryImageAspectRatio, .genres, .tags, .overview],
+            includeItemTypes: itemTypes,
+            sortBy: [.premiereDate, .productionYear, .sortName]
+        )
+
+        if let id = personID, !id.isEmpty {
+            params.personIDs = [id]
+        } else if let name = personName, !name.isEmpty {
+            params.person = name
+        }
+
         do {
-            var params = Paths.GetItemsParameters(
-                userID: userID,
-                isRecursive: true,
-                sortOrder: [.descending],
-                fields: [.primaryImageAspectRatio, .genres, .tags, .overview],
-                includeItemTypes: [.movie, .series],
-                sortBy: [.premiereDate, .productionYear, .sortName]
-            )
-
-            if let id = person.id, !id.isEmpty {
-                params.personIDs = [id]
-            } else if let name = person.name, !name.isEmpty {
-                params.person = name
-            }
-
             let response = try await client.send(Paths.getItems(parameters: params)).value
             var items = response.items ?? []
 
             // Fallback: If personIDs returned empty, try querying by person name
-            if items.isEmpty, let name = person.name, !name.isEmpty, params.personIDs != nil {
+            if items.isEmpty, let name = personName, !name.isEmpty, params.personIDs != nil {
                 var nameParams = params
                 nameParams.personIDs = nil
                 nameParams.person = name
@@ -150,23 +181,32 @@ class CastCrewViewModel {
                 }
             }
 
-            mediaItems = items
+            var seen = Set<String>()
+            return items.filter { item in
+                guard let id = item.id else { return false }
+                return seen.insert(id).inserted
+            }
         } catch {
             // Fallback by name if error
-            if let name = person.name, !name.isEmpty {
+            if let name = personName, !name.isEmpty {
                 let fallbackParams = Paths.GetItemsParameters(
                     userID: userID,
                     isRecursive: true,
                     sortOrder: [.descending],
                     fields: [.primaryImageAspectRatio, .genres, .tags],
-                    includeItemTypes: [.movie, .series],
+                    includeItemTypes: itemTypes,
                     sortBy: [.premiereDate, .sortName],
                     person: name
                 )
                 if let fallbackRes = try? await client.send(Paths.getItems(parameters: fallbackParams)).value {
-                    mediaItems = fallbackRes.items ?? []
+                    var seen = Set<String>()
+                    return (fallbackRes.items ?? []).filter { item in
+                        guard let id = item.id else { return false }
+                        return seen.insert(id).inserted
+                    }
                 }
             }
+            return []
         }
     }
 }

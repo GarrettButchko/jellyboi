@@ -259,6 +259,7 @@ struct SkeletonEpisodesSection: View {
 /// (overview, info chips, episodes row if series, cast row, and similar-items row).
 struct SkeletonDetailContent: View {
     var isSeries: Bool = false
+    var isCollection: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -287,30 +288,41 @@ struct SkeletonDetailContent: View {
                 SkeletonEpisodesSection()
             }
 
-            // Cast section
-            VStack(alignment: .leading, spacing: 12) {
-                SkeletonBlock(cornerRadius: 6)
-                    .frame(width: 110, height: 22)
-                    .padding(.horizontal, 16)
+            if isCollection {
+                // Collection items grid skeleton
+                VStack(alignment: .leading, spacing: 12) {
+                    SkeletonBlock(cornerRadius: 6)
+                        .frame(width: 140, height: 22)
+                        .padding(.horizontal, 16)
 
-                ScrollView(.horizontal) {
-                    HStack(alignment: .top, spacing: 16) {
-                        ForEach(0..<8, id: \.self) { _ in
-                            VStack(spacing: 7) {
-                                SkeletonBlock(cornerRadius: 35).frame(width: 70, height: 70)
-                                SkeletonBlock(cornerRadius: 4).frame(width: 60, height: 10)
-                                SkeletonBlock(cornerRadius: 4).frame(width: 45, height: 9)
+                    SkeletonMediaGrid()
+                }
+            } else {
+                // Cast section
+                VStack(alignment: .leading, spacing: 12) {
+                    SkeletonBlock(cornerRadius: 6)
+                        .frame(width: 110, height: 22)
+                        .padding(.horizontal, 16)
+
+                    ScrollView(.horizontal) {
+                        HStack(alignment: .top, spacing: 16) {
+                            ForEach(0..<8, id: \.self) { _ in
+                                VStack(spacing: 7) {
+                                    SkeletonBlock(cornerRadius: 35).frame(width: 70, height: 70)
+                                    SkeletonBlock(cornerRadius: 4).frame(width: 60, height: 10)
+                                    SkeletonBlock(cornerRadius: 4).frame(width: 45, height: 9)
+                                }
                             }
                         }
+                        .padding(.horizontal, 16)
                     }
-                    .padding(.horizontal, 16)
+                    .scrollIndicators(.hidden)
+                    .disabled(true)
                 }
-                .scrollIndicators(.hidden)
-                .disabled(true)
-            }
 
-            // More Like This
-            SkeletonSectionRow()
+                // More Like This
+                SkeletonSectionRow()
+            }
         }
         .padding(.top, 16)
         .padding(.bottom, 48)
