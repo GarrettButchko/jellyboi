@@ -147,18 +147,12 @@ struct SearchView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 40)
             } else {
-                let previewItems = viewModel.previewItems
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)],
                     spacing: 12
                 ) {
                     ForEach(viewModel.genres) { genre in
-                        GenreChip(
-                            genre: genre,
-                            posterURL: previewItems[genre.name].flatMap { item in
-                                serverViewModel.client.flatMap { libraryViewModel.backgroundURL(for: item, client: $0) }
-                            }
-                        ) {
+                        GenreChip(genre: genre) {
                             selectedGenre = genre.name
                         }
                     }
@@ -219,69 +213,34 @@ struct SearchView: View {
 
 private struct GenreChip: View {
     let genre: GenreCount
-    let posterURL: URL?
     let onTap: () -> Void
 
     var body: some View {
         let style = GenreStyle.forGenre(genre.name)
         Button(action: onTap) {
-            ZStack(alignment: .bottom) {
-                // Backdrop image fills the card
-                if let url = posterURL {
-                    WebImage(
-                        url: url,
-                        transaction: Transaction(animation: .easeInOut(duration: 0.3))
-                    ) { phase in
-                        if let image = phase.image {
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .tint(style.color)
-                                .transition(.fade(duration: 0.3))
-                        } else {
-                            style.color.opacity(0.3)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    
-                    //style.color.opacity(0.5)
+            ZStack(alignment: .bottomLeading) {
+                // Large icon in the top right corner
+                Image(systemName: style.icon)
+                    .font(.system(size: 40, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+                    .padding(.top, 12)
+                    .padding(.trailing, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
 
-                    // Gradient rises from the bottom so text stays readable
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .mask(
-                            LinearGradient(
-                                colors: [.clear, .black.opacity(0.65), .black],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                } else {
-                    style.color.opacity(0.25)
-                }
-
-                // Genre label spans the full bottom edge
-                HStack(spacing: 8) {
-                    Image(systemName: style.icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-
-                    Text(genre.name)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .lineLimit(3)
-                        .layoutPriority(1)
-
-                    Text("\(genre.count) title\(genre.count == 1 ? "" : "s")")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.75))
-                        .fixedSize()
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // Text on the bottom still
+                Text(genre.name)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, minHeight: 95)
+            .background(style.color.gradient)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
