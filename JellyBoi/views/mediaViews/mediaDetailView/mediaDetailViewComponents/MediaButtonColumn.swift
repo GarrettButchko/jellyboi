@@ -54,12 +54,12 @@ struct MediaButtonColumn: View {
                 .glassEffect(.regular.interactive(), in: Circle())
             }
 
-            GlassEffectContainer(spacing: 40) {
-                VStack(spacing: 12) {
+            GlassEffectContainer(spacing: 8) {
+                VStack(spacing: 8) {
                     if viewModel.progressVisible {
                         progressRingButton
-                            .glassEffect(.regular.interactive(), in: Circle())
-                            .glassEffectID("progress", in: glassNamespace)
+                            .glassEffect(.regular.tint(.mainOpp.opacity(0.9)).interactive())
+                            .glassEffectUnion(id: "colBut", namespace: glassNamespace)
                             .transition(.opacity)
                     }
                     Button {
@@ -75,8 +75,8 @@ struct MediaButtonColumn: View {
                             .frame(width: 50, height: 50)
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(.regular.tint(.mainOpp.opacity(0.9)).interactive(), in: Circle())
-                    .glassEffectID("play", in: glassNamespace)
+                    .glassEffect(.regular.tint(.mainOpp.opacity(0.9)).interactive())
+                    .glassEffectUnion(id: "colBut", namespace: glassNamespace)
                     .contentShape(.contextMenuPreview, Circle())
                     .contextMenu {
                         playbackMenuContent
@@ -110,7 +110,7 @@ struct MediaButtonColumn: View {
         } label: {
             ZStack {
                 Circle()
-                    .stroke(Color.mainOpp.opacity(0.1), lineWidth: 5)
+                    .stroke(Color.main.opacity(0.1), lineWidth: 5)
                     .frame(width: 35, height: 35)
 
                 if viewModel.isWatched {
@@ -120,7 +120,7 @@ struct MediaButtonColumn: View {
 
                     Image(systemName: "checkmark")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color.mainOpp)
+                        .foregroundStyle(Color.main)
                 } else {
                     Circle()
                         .trim(from: 0, to: viewModel.progressValue)
@@ -130,7 +130,7 @@ struct MediaButtonColumn: View {
 
                     Text(viewModel.percentText)
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.mainOpp)
+                        .foregroundStyle(Color.main)
                 }
             }
             .frame(width: 50, height: 50)

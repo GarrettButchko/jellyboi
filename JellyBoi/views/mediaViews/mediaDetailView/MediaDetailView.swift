@@ -215,10 +215,15 @@ struct MediaDetailView: View {
                     Button {
                         navigateToOverallShow()
                     } label: {
-                        Image(systemName: "tv")
+                        Image(systemName: "chevron.left")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Color.mainOpp)
                             .padding(14)
+                            .hidden()
+                            .overlay {
+                                Image(systemName: "square.stack.3d.up.fill")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(Color.mainOpp)
+                            }
                     }
                     .glassEffect(.regular.interactive(), in: Circle())
                     .accessibilityLabel("Go to Show")
