@@ -10,6 +10,7 @@ import UIKit
 import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
+import StatusOverlayKit
 
 private var safeAreaTop: CGFloat {
     UIApplication.shared.connectedScenes
@@ -19,9 +20,11 @@ private var safeAreaTop: CGFloat {
 
 struct MediaDetailView: View {
     let item: BaseItemDto
+    var cameFromShow: Bool = false
 
     @Environment(ServerViewModel.self) var serverViewModel
     @Environment(LibraryViewModel.self) var libraryViewModel
+    @Environment(PlaybackManager.self) var playbackManager
     @Environment(\.verticalSizeClass) var verticalSizeClass
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
 
@@ -40,12 +43,59 @@ struct MediaDetailView: View {
     @Namespace var episodeTransition
     @State var episodeZoomID: AnyHashable?
     @State var selectedPerson: BaseItemPerson?
+    @State var selectedSeries: BaseItemDto?
 
     var displayItem: BaseItemDto { detailVM.detailedItem ?? item }
 
     private var shouldShowOptionsButton: Bool {
         let type = displayItem.type ?? item.type
         return type != .series && type != .boxSet
+    }
+
+    private var shouldShowSeriesButton: Bool {
+        let type = displayItem.type ?? item.type
+        guard !cameFromShow && type == .episode else { return false }
+        return (displayItem.seriesID ?? item.seriesID) != nil
+    }
+
+    private var parentSeries: BaseItemDto? {
+        if let series = detailVM.seriesItem {
+            return series
+        }
+        guard let seriesID = displayItem.seriesID ?? item.seriesID else { return nil }
+        if let found = libraryViewModel.tvShows.first(where: { $0.id == seriesID }) {
+            return found
+        }
+        return BaseItemDto(
+            id: seriesID,
+            name: displayItem.seriesName ?? item.seriesName,
+            type: .series
+        )
+    }
+
+    private func navigateToOverallShow() {
+        guard let series = parentSeries else { return }
+        selectedSeries = series
+    }
+
+    private func playMedia(fromBeginning: Bool) {
+        if let itemToPlay = detailVM.nextPlayableEpisode(libraryViewModel: libraryViewModel) {
+            playbackManager.play(
+                item: itemToPlay,
+                fromBeginning: fromBeginning,
+                client: serverViewModel.client,
+                userID: serverViewModel.currentUser?.id,
+                libraryViewModel: libraryViewModel
+            )
+        } else {
+            playbackManager.play(
+                item: displayItem,
+                fromBeginning: fromBeginning,
+                client: serverViewModel.client,
+                userID: serverViewModel.currentUser?.id,
+                libraryViewModel: libraryViewModel
+            )
+        }
     }
 
     var body: some View {
@@ -66,7 +116,16 @@ struct MediaDetailView: View {
                         }
                     MediaButtonColumn(
                         item: displayItem,
-                        onOptions: shouldShowOptionsButton ? { showOptionsSheet = true } : nil
+                        onOptions: shouldShowOptionsButton ? { showOptionsSheet = true } : nil,
+                        onPlay: {
+                            playMedia(fromBeginning: false)
+                        },
+                        onContinueWatching: {
+                            playMedia(fromBeginning: false)
+                        },
+                        onStartFromBeginning: {
+                            playMedia(fromBeginning: true)
+                        }
                     )
                 }
                 .padding(.top, safeAreaTop + backButtonHeight + 8)
@@ -150,8 +209,20 @@ struct MediaDetailView: View {
         .background(Color.bg.ignoresSafeArea())
         .toolbarVisibility(.hidden, for: .navigationBar)
         .overlay(alignment: .top) {
-            HStack {
+            HStack(spacing: 8) {
                 BackButton()
+                if shouldShowSeriesButton {
+                    Button {
+                        navigateToOverallShow()
+                    } label: {
+                        Image(systemName: "tv")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Color.mainOpp)
+                            .padding(14)
+                    }
+                    .glassEffect(.regular.interactive(), in: Circle())
+                    .accessibilityLabel("Go to Show")
+                }
                 Spacer()
                 MediaDetailButtonRowTopTrailing(isFavorited: detailVM.isFavorite(fallback: item)) {
                     Task {
@@ -171,6 +242,9 @@ struct MediaDetailView: View {
         .sheet(isPresented: $showOptionsSheet) {
             optionsSheet
         }
+        .navigationDestination(item: $selectedSeries) { series in
+            MediaDetailView(item: series)
+        }
         .navigationDestination(item: $selectedRelatedItem) { relatedItem in
             MediaDetailView(item: relatedItem)
                 .navigationTransition(.zoom(
@@ -179,7 +253,7 @@ struct MediaDetailView: View {
                 ))
         }
         .navigationDestination(item: $selectedEpisode) { episode in
-            MediaDetailView(item: episode)
+            MediaDetailView(item: episode, cameFromShow: true)
                 .navigationTransition(.zoom(
                     sourceID: episodeZoomID ?? AnyHashable(episode),
                     in: episodeTransition
@@ -195,8 +269,17 @@ struct MediaDetailView: View {
         .navigationDestination(item: $selectedPerson) { person in
             CastCrewView(person: person)
         }
+        .overlay {
+            if playbackManager.isLoading {
+                LoadingOverlay(message: playbackManager.loadingMessage)
+            }
+        }
         .onAppear {
+            playbackManager.isDetailViewPresented = true
             detailVM.prepare(item: item, client: serverViewModel.client)
+        }
+        .onDisappear {
+            playbackManager.isDetailViewPresented = false
         }
         .task {
             guard let client = serverViewModel.client, item.id != nil else { return }
@@ -214,6 +297,13 @@ struct MediaDetailView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .mediaProgressUpdated)) { notification in
+            if let itemID = notification.object as? String,
+               let ticks = notification.userInfo?["positionTicks"] as? Int {
+                let total = notification.userInfo?["durationTicks"] as? Int
+                detailVM.handleProgressUpdated(itemID: itemID, positionTicks: ticks, totalTicks: total)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .mediaFavoriteToggled)) { notification in
             if let itemID = notification.object as? String,
                let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
@@ -226,4 +316,5 @@ struct MediaDetailView: View {
 #Preview {
     MediaDetailView(item: BaseItemDto(name: "Sample Item"))
         .environment(ServerViewModel())
+        .environment(PlaybackManager())
 }

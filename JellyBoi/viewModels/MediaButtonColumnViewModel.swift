@@ -162,4 +162,13 @@ class MediaButtonColumnViewModel {
             }
         }
     }
+
+    func handleProgressUpdatedNotification(itemID: String, positionTicks: Int, totalTicks: Int?) {
+        if itemID == item.id {
+            withAnimation(.smooth) {
+                item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
+                isProgressReset = false
+            }
+        }
+    }
 }

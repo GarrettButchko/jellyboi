@@ -64,6 +64,8 @@ class LibraryViewModel {
     @ObservationIgnored
     private var progressResetTask: Task<Void, Never>?
     @ObservationIgnored
+    private var progressUpdateTask: Task<Void, Never>?
+    @ObservationIgnored
     private var favoriteToggleTask: Task<Void, Never>?
 
     init() {
@@ -72,6 +74,18 @@ class LibraryViewModel {
                 guard let self else { break }
                 if let itemID = notification.object as? String {
                     self.clearProgress(for: itemID)
+                }
+            }
+        }
+        progressUpdateTask = Task { @MainActor [weak self] in
+            for await notification in NotificationCenter.default.notifications(named: .mediaProgressUpdated) {
+                guard let self else { break }
+                if let itemID = notification.object as? String,
+                   let positionTicks = notification.userInfo?["positionTicks"] as? Int {
+                    let totalTicks = notification.userInfo?["durationTicks"] as? Int
+                    withAnimation(.smooth(duration: 0.35)) {
+                        self.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+                    }
                 }
             }
         }
@@ -90,6 +104,7 @@ class LibraryViewModel {
 
     deinit {
         progressResetTask?.cancel()
+        progressUpdateTask?.cancel()
         favoriteToggleTask?.cancel()
     }
 
@@ -189,6 +204,17 @@ class LibraryViewModel {
         recentlyAdded.clearProgress(for: itemID, matchingSeries: true)
         recommended.clearProgress(for: itemID, matchingSeries: true)
         resumeShows.removeAll { $0.id == itemID || $0.seriesID == itemID }
+
+        updateAggregates()
+    }
+
+    func updateProgress(for itemID: String, positionTicks: Int, totalTicks: Int?) {
+        movies.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        tvShows.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        episodes.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        recentlyAdded.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        recommended.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        resumeShows.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
 
         updateAggregates()
     }

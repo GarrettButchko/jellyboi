@@ -6,12 +6,15 @@
 //
 
 import SwiftUI
+import JellyfinAPI
+import StatusOverlayKit
 
 struct TabsView: View {
 
     @EnvironmentObject var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
+    @Environment(PlaybackManager.self) private var playbackManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var homeViewModel: HomeViewModel
     @State private var mediaViewModel: MediaViewModel
@@ -24,6 +27,8 @@ struct TabsView: View {
     }
 
     var body: some View {
+        @Bindable var bindablePlayback = playbackManager
+
         TabView {
             HomeView()
                 .tabItem {
@@ -43,12 +48,71 @@ struct TabsView: View {
         .environment(homeViewModel)
         .environment(mediaViewModel)
         .environment(searchViewModel)
+        .overlay {
+            if playbackManager.isLoading && !playbackManager.isDetailViewPresented {
+                LoadingOverlay(message: playbackManager.loadingMessage)
+            }
+        }
+        .alert(
+            playbackManager.currentError?.title ?? "Playback Error",
+            isPresented: $bindablePlayback.showErrorAlert,
+            presenting: playbackManager.currentError
+        ) { errorInfo in
+            Button("Retry") {
+                errorInfo.retryAction()
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {
+                playbackManager.clearError()
+            }
+        } message: { errorInfo in
+            Text(errorInfo.message)
+        }
+        .fullScreenCover(
+            item: $bindablePlayback.activePlayerViewModel,
+            onDismiss: {
+                #if os(iOS)
+                OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
+                #endif
+                playbackManager.stop()
+            }
+        ) { playerVM in
+            if let player = playerVM.player {
+                NativePlayerView(player: player) {
+                    #if os(iOS)
+                    OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
+                    #endif
+                    playerVM.cleanup()
+                    playbackManager.stop()
+                }
+                .ignoresSafeArea()
+                .statusBarHidden(true)
+                .onAppear {
+                    #if os(iOS)
+                    OrientationHelper.lockOrientation(.allButUpsideDown)
+                    #endif
+                }
+                .onDisappear {
+                    #if os(iOS)
+                    OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
+                    #endif
+                    playerVM.cleanup()
+                    playbackManager.stop()
+                }
+            }
+        }
         .task {
+            playbackManager.client = serverViewModel.client
+            playbackManager.userID = serverViewModel.currentUser?.id
+            playbackManager.libraryViewModel = libraryViewModel
             if let client = serverViewModel.client {
                 await libraryViewModel.load(using: client)
             }
         }
         .onChange(of: serverViewModel.client != nil) { _, hasClient in
+            playbackManager.client = serverViewModel.client
+            playbackManager.userID = serverViewModel.currentUser?.id
+            playbackManager.libraryViewModel = libraryViewModel
             guard hasClient, let client = serverViewModel.client else { return }
             Task { await libraryViewModel.load(using: client) }
         }
@@ -65,4 +129,5 @@ struct TabsView: View {
         .environmentObject(ViewManager())
         .environment(LibraryViewModel())
         .environment(ServerViewModel())
+        .environment(PlaybackManager())
 }

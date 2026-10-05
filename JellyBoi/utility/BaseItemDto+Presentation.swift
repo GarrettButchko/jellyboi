@@ -2,6 +2,7 @@
 //  BaseItemDto+Presentation.swift
 //  JellyBoi
 //
+//  Created by Garrett Butchko on 8/25/26.
 //
 
 import Foundation
@@ -36,6 +37,26 @@ extension BaseItemDto {
         userData?.playbackPositionTicks = 0
     }
 
+    /// Updates playback progress and watch state for the item.
+    mutating func updateProgress(positionTicks: Int, totalTicks: Int?) {
+        let total = totalTicks ?? runTimeTicks.map { Int($0) } ?? 0
+        let percentage = total > 0 ? (Double(positionTicks) / Double(total)) * 100.0 : 0.0
+        let isPlayed = percentage >= 85.0
+        if userData == nil {
+            userData = UserItemDataDto(
+                isPlayed: isPlayed,
+                itemID: id,
+                key: id ?? UUID().uuidString,
+                playbackPositionTicks: positionTicks,
+                playedPercentage: percentage
+            )
+        } else {
+            userData?.playbackPositionTicks = positionTicks
+            userData?.playedPercentage = percentage
+            userData?.isPlayed = isPlayed
+        }
+    }
+
     /// Indicates whether the item is marked as a favorite.
     var isFavorite: Bool {
         get { userData?.isFavorite == true }
@@ -60,6 +81,15 @@ extension Array where Element == BaseItemDto {
         for index in indices {
             if self[index].id == itemID || (matchingSeries && self[index].seriesID == itemID) {
                 self[index].clearProgress()
+            }
+        }
+    }
+
+    /// Updates progress for all items matching the given ID.
+    mutating func updateProgress(for itemID: String, positionTicks: Int, totalTicks: Int?) {
+        for index in indices {
+            if self[index].id == itemID {
+                self[index].updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
             }
         }
     }

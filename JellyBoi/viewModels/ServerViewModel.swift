@@ -120,5 +120,6 @@ class ServerViewModel {
 
 extension Notification.Name {
     static let mediaProgressReset = Notification.Name("mediaProgressReset")
+    static let mediaProgressUpdated = Notification.Name("mediaProgressUpdated")
     static let mediaFavoriteToggled = Notification.Name("mediaFavoriteToggled")
 }

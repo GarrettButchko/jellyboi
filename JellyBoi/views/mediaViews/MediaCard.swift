@@ -23,6 +23,7 @@ struct MediaCard: View {
 
     @Environment(ServerViewModel.self) private var serverViewModel: ServerViewModel?
     @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
+    @Environment(PlaybackManager.self) private var playbackManager: PlaybackManager?
 
     @State private var viewModel: MediaCardViewModel
 
@@ -47,6 +48,16 @@ struct MediaCard: View {
         self.onStartFromBeginning = onStartFromBeginning
         self.onResetProgress = onResetProgress
         _viewModel = State(initialValue: MediaCardViewModel(item: item))
+    }
+
+    private func playAction(fromBeginning: Bool) {
+        if item.type == .movie || item.type == .episode {
+            playbackManager?.play(item: item, fromBeginning: fromBeginning)
+        } else if item.type == .series, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == item.id }) {
+            playbackManager?.play(item: resumeEp, fromBeginning: fromBeginning)
+        } else {
+            onSelect()
+        }
     }
 
     var body: some View {
@@ -82,13 +93,21 @@ struct MediaCard: View {
             Section {
                 if viewModel.isInProgress(in: libraryViewModel) {
                     Button {
-                        viewModel.handleContinueWatching(onSelect: onSelect, onContinueWatching: onContinueWatching)
+                        if let onContinueWatching {
+                            onContinueWatching()
+                        } else {
+                            playAction(fromBeginning: false)
+                        }
                     } label: {
                         Label("Continue watching", systemImage: "play.fill")
                     }
 
                     Button {
-                        viewModel.handleStartFromBeginning(onSelect: onSelect, onStartFromBeginning: onStartFromBeginning)
+                        if let onStartFromBeginning {
+                            onStartFromBeginning()
+                        } else {
+                            playAction(fromBeginning: true)
+                        }
                     } label: {
                         Label("Start from beginning", systemImage: "arrow.counterclockwise")
                     }
@@ -103,7 +122,11 @@ struct MediaCard: View {
                     }
                 } else if viewModel.isWatched {
                     Button {
-                        viewModel.handleStartFromBeginning(onSelect: onSelect, onStartFromBeginning: onStartFromBeginning)
+                        if let onStartFromBeginning {
+                            onStartFromBeginning()
+                        } else {
+                            playAction(fromBeginning: true)
+                        }
                     } label: {
                         Label("Start from beginning", systemImage: "arrow.counterclockwise")
                     }
@@ -118,7 +141,11 @@ struct MediaCard: View {
                     }
                 } else {
                     Button {
-                        viewModel.handleStart(onSelect: onSelect, onStartFromBeginning: onStartFromBeginning)
+                        if let onStartFromBeginning {
+                            onStartFromBeginning()
+                        } else {
+                            playAction(fromBeginning: true)
+                        }
                     } label: {
                         Label("Start", systemImage: "play.fill")
                     }
@@ -149,6 +176,13 @@ struct MediaCard: View {
         .onReceive(NotificationCenter.default.publisher(for: .mediaProgressReset)) { notification in
             if let resetID = notification.object as? String {
                 viewModel.handleProgressResetNotification(resetID: resetID)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mediaProgressUpdated)) { notification in
+            if let updatedID = notification.object as? String,
+               let ticks = notification.userInfo?["positionTicks"] as? Int {
+                let total = notification.userInfo?["durationTicks"] as? Int
+                viewModel.handleProgressUpdatedNotification(itemID: updatedID, positionTicks: ticks, totalTicks: total)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .mediaFavoriteToggled)) { notification in

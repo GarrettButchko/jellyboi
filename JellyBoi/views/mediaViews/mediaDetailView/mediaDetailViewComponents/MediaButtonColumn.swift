@@ -93,6 +93,13 @@ struct MediaButtonColumn: View {
                 viewModel.handleProgressResetNotification(resetID: resetID)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .mediaProgressUpdated)) { notification in
+            if let updatedID = notification.object as? String,
+               let ticks = notification.userInfo?["positionTicks"] as? Int {
+                let total = notification.userInfo?["durationTicks"] as? Int
+                viewModel.handleProgressUpdatedNotification(itemID: updatedID, positionTicks: ticks, totalTicks: total)
+            }
+        }
     }
 
     // MARK: - Progress Ring Button

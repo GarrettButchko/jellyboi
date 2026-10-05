@@ -2,70 +2,78 @@
 //  MediaDetailViewModel.swift
 //  JellyBoi
 //
-//  Created by Garrett Butchko on 8/31/26.
+//  Created by Garrett Butchko on 9/2/26.
 //
 
-import Foundation
 import SwiftUI
 import Observation
 import Get
 import JellyfinAPI
+import BaseColors
 
-/// Loads the full `BaseItemDto` (with people, studios, ratings, tags) and
-/// similar items for the given media item on appear. `MediaDetailView` renders
-/// immediately from the data-poor library item and upgrades when this finishes.
 @Observable
 @MainActor
 class MediaDetailViewModel {
 
-    private(set) var detailedItem: BaseItemDto?
-    private(set) var similarItems: [BaseItemDto] = []
-    private(set) var heroReady: Bool = false
-    var isLoading = false
+    // MARK: - State
 
-    private(set) var seasons: [BaseItemDto] = []
-    private(set) var episodes: [BaseItemDto] = []
+    var detailedItem: BaseItemDto?
+    var sourceItem: BaseItemDto?
+    var seriesItem: BaseItemDto?
+    var similarItems: [BaseItemDto] = []
+    var seasons: [BaseItemDto] = []
+    var episodes: [BaseItemDto] = []
+    var collectionItems: [BaseItemDto] = []
     var selectedSeasonIndex: Int = 0
-
-    private(set) var collectionItems: [BaseItemDto] = []
-    private(set) var isLoadingCollectionItems: Bool = false
-
-    var selectedSeason: BaseItemDto? {
-        guard seasons.indices.contains(selectedSeasonIndex) else { return nil }
-        return seasons[selectedSeasonIndex]
-    }
-
+    var heroAspectRatio: CGFloat = 2.0 / 3.0
+    var hasDetectedBitmapRatio = false
+    var heroReady = false
+    var isLoading = false
+    var isLoadingCollectionItems = false
     private var client: JellyfinClient?
-    private(set) var sourceItem: BaseItemDto?
 
-    private var displayItem: BaseItemDto? { detailedItem ?? sourceItem }
-
-    var heroAspectRatio: CGFloat
-    private(set) var hasDetectedBitmapRatio = false
-
-    init(item: BaseItemDto? = nil, client: JellyfinClient? = nil) {
-        self.sourceItem = item
-        self.client = client
-        self.heroAspectRatio = item?.imageAspectRatio ?? (2.0 / 3.0)
-    }
-
-    func prepare(item: BaseItemDto, client: JellyfinClient?) {
-        if self.sourceItem == nil { self.sourceItem = item }
-        if self.client == nil { self.client = client }
-        if !hasDetectedBitmapRatio && abs(heroAspectRatio - item.imageAspectRatio) > 0.005 {
-            self.heroAspectRatio = item.imageAspectRatio
-        }
-    }
-
-    func updateHeroAspectRatio(from size: CGSize) {
-        guard size.width > 0, size.height > 0 else { return }
-        hasDetectedBitmapRatio = true
-        let actualRatio = size.width / size.height
-        if abs(heroAspectRatio - actualRatio) > 0.005 {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                heroAspectRatio = actualRatio
+    init(item: BaseItemDto? = nil) {
+        if let item {
+            self.sourceItem = item
+            if let ratio = item.primaryImageAspectRatio, ratio > 0 {
+                self.heroAspectRatio = CGFloat(ratio)
+            } else if item.type == .episode {
+                self.heroAspectRatio = 16.0 / 9.0
             }
         }
+    }
+
+    var displayItem: BaseItemDto? {
+        detailedItem ?? sourceItem
+    }
+
+    var isFavorite: Bool {
+        displayItem?.isFavorite ?? false
+    }
+
+    func isFavorite(fallback: BaseItemDto) -> Bool {
+        displayItem?.isFavorite ?? fallback.isFavorite
+    }
+
+    func toggleFavorite(serverViewModel: ServerViewModel?, fallbackItem: BaseItemDto) async {
+        guard let serverViewModel, let itemID = displayItem?.id ?? fallbackItem.id else { return }
+        let current = isFavorite(fallback: fallbackItem)
+        let newFavorite = !current
+        detailedItem?.setFavorite(newFavorite)
+        sourceItem?.setFavorite(newFavorite)
+        let result = await serverViewModel.setFavorite(newFavorite, forItemID: itemID)
+        if result == nil {
+            detailedItem?.setFavorite(current)
+            sourceItem?.setFavorite(current)
+        }
+    }
+
+    var hasBackdrop: Bool {
+        guard let item = displayItem else { return false }
+        if let count = item.backdropImageTags?.count, count > 0 { return true }
+        if item.imageTags?.keys.contains("Backdrop") == true { return true }
+        if item.imageTags?.keys.contains("Thumb") == true { return true }
+        return false
     }
 
     var backdropURL: URL? {
@@ -75,7 +83,14 @@ class MediaDetailViewModel {
     func backdropURL(client fallbackClient: JellyfinClient? = nil) -> URL? {
         let activeClient = client ?? fallbackClient
         guard let activeClient, let id = displayItem?.id else { return nil }
-        let hasBackdrop = !(displayItem?.backdropImageTags ?? []).isEmpty
+        if displayItem?.type == .episode {
+            let imageType = displayItem?.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
+            return activeClient.url(with: Paths.getItemImage(
+                itemID: id,
+                imageType: imageType,
+                parameters: .init(maxWidth: 800, quality: 90)
+            ))
+        }
         if hasBackdrop {
             return activeClient.url(with: Paths.getItemImageByIndex(
                 itemID: id,
@@ -117,6 +132,42 @@ class MediaDetailViewModel {
         heroReady = true
     }
 
+    func updateHeroAspectRatio(from size: CGSize) {
+        guard size.height > 0 else { return }
+        let ratio = size.width / size.height
+        hasDetectedBitmapRatio = true
+        if abs(heroAspectRatio - ratio) > 0.005 {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                heroAspectRatio = ratio
+            }
+        }
+    }
+
+    func prepare(item: BaseItemDto, client: JellyfinClient?) {
+        self.sourceItem = item
+        self.client = client
+        if let ratio = item.primaryImageAspectRatio, ratio > 0 {
+            self.heroAspectRatio = CGFloat(ratio)
+        } else if item.type == .episode {
+            self.heroAspectRatio = 16.0 / 9.0
+        }
+    }
+
+    func clearProgress(for itemID: String) {
+        if displayItem?.id == itemID || displayItem?.seriesID == itemID {
+            detailedItem?.clearProgress()
+            sourceItem?.clearProgress()
+        }
+        episodes.clearProgress(for: itemID, matchingSeries: true)
+    }
+
+    func handleFavoriteToggled(itemID: String, isFavorite: Bool) {
+        if displayItem?.id == itemID {
+            detailedItem?.setFavorite(isFavorite)
+            sourceItem?.setFavorite(isFavorite)
+        }
+    }
+
     func load(item: BaseItemDto, client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel) async {
         guard let itemID = item.id else { return }
         self.client = client
@@ -147,6 +198,21 @@ class MediaDetailViewModel {
             await loadSeasonsAndEpisodes(client: client, userID: userID)
         } else if item.type == .boxSet || detailedItem?.type == .boxSet {
             await loadCollectionItems(client: client, userID: userID)
+        } else if item.type == .episode || detailedItem?.type == .episode {
+            await loadParentSeries(client: client, userID: userID, libraryViewModel: libraryViewModel)
+        }
+    }
+
+    // MARK: - Parent Series
+
+    func loadParentSeries(client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel) async {
+        guard let seriesID = detailedItem?.seriesID ?? sourceItem?.seriesID else { return }
+        if let local = libraryViewModel.tvShows.first(where: { $0.id == seriesID }) {
+            self.seriesItem = local
+            return
+        }
+        if let fetched = try? await client.send(Paths.getItem(itemID: seriesID, userID: userID)).value {
+            self.seriesItem = fetched
         }
     }
 
@@ -233,6 +299,37 @@ class MediaDetailViewModel {
         episodes = result
     }
 
+    func nextPlayableEpisode(libraryViewModel: LibraryViewModel?) -> BaseItemDto? {
+        if displayItem?.type == .episode {
+            return displayItem
+        }
+        if displayItem?.type == .movie {
+            return displayItem
+        }
+        if displayItem?.type == .series {
+            if let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == displayItem?.id }) {
+                return resumeEp
+            }
+            if let unplayed = episodes.first(where: { ($0.userData?.isPlayed ?? false) == false }) {
+                return unplayed
+            }
+            return episodes.first
+        }
+        return displayItem
+    }
+
+    func handleProgressUpdated(itemID: String, positionTicks: Int, totalTicks: Int?) {
+        if itemID == displayItem?.id {
+            if detailedItem?.id == itemID {
+                detailedItem?.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
+            }
+            if sourceItem?.id == itemID {
+                sourceItem?.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
+            }
+        }
+        episodes.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+    }
+
     func episodeThumbnailURL(for episode: BaseItemDto) -> URL? {
         guard let client, let id = episode.id else { return nil }
         let imageType = episode.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
@@ -243,58 +340,26 @@ class MediaDetailViewModel {
         ))
     }
 
-    // MARK: - Progress Management
-
-    func clearProgress(for itemID: String) {
-        if detailedItem?.id == itemID {
-            detailedItem?.clearProgress()
-        }
-        episodes.clearProgress(for: itemID, matchingSeries: true)
-        collectionItems.clearProgress(for: itemID)
-    }
-
-    // MARK: - Favorite Management
-
-    var isFavorite: Bool {
-        isFavorite()
-    }
-
-    func isFavorite(fallback: BaseItemDto? = nil) -> Bool {
-        detailedItem?.isFavorite ?? sourceItem?.isFavorite ?? fallback?.isFavorite ?? false
-    }
-
-    func setFavoriteLocally(_ isFavorite: Bool) {
+    func setFavorite(_ isFavorite: Bool, serverViewModel: ServerViewModel?) {
+        guard let serverViewModel, let itemID = displayItem?.id else { return }
+        let current = self.isFavorite
         detailedItem?.setFavorite(isFavorite)
         sourceItem?.setFavorite(isFavorite)
-    }
-
-    func toggleFavorite(serverViewModel: ServerViewModel?, fallbackItem: BaseItemDto? = nil) async {
-        if sourceItem == nil, let fallbackItem {
-            sourceItem = fallbackItem
-        }
-        guard let itemID = displayItem?.id ?? fallbackItem?.id, let serverViewModel else { return }
-        let currentFavorite = isFavorite(fallback: fallbackItem)
-        let newFavorite = !currentFavorite
-
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            setFavoriteLocally(newFavorite)
-        }
-
-        let result = await serverViewModel.setFavorite(newFavorite, forItemID: itemID)
-        if result == nil {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                setFavoriteLocally(currentFavorite)
+        Task {
+            let result = await serverViewModel.setFavorite(isFavorite, forItemID: itemID)
+            if result == nil {
+                detailedItem?.setFavorite(current)
+                sourceItem?.setFavorite(current)
             }
         }
     }
 
-    func handleFavoriteToggled(itemID: String, isFavorite: Bool) {
-        if displayItem?.id == itemID || sourceItem?.id == itemID {
-            setFavoriteLocally(isFavorite)
+    func handleFavoriteNotification(itemID: String, isFavorite: Bool) {
+        if displayItem?.id == itemID {
+            detailedItem?.setFavorite(isFavorite)
+            sourceItem?.setFavorite(isFavorite)
         }
     }
-
-    // MARK: - Collection Items
 
     func loadCollectionItems(client: JellyfinClient, userID: String?) async {
         guard let collectionID = sourceItem?.id ?? detailedItem?.id else { return }
