@@ -49,10 +49,11 @@ struct TabsView: View {
         .environment(mediaViewModel)
         .environment(searchViewModel)
         .overlay {
-            if playbackManager.isLoading && !playbackManager.isDetailViewPresented {
+            if playbackManager.isLoading {
                 LoadingOverlay(message: playbackManager.loadingMessage)
             }
         }
+        .animation(statusOverlaySpring, value: playbackManager.isLoading)
         .alert(
             playbackManager.currentError?.title ?? "Playback Error",
             isPresented: $bindablePlayback.showErrorAlert,

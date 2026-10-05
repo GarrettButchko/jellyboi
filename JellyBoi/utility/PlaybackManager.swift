@@ -9,6 +9,7 @@ import SwiftUI
 import Observation
 import JellyfinAPI
 import LoggingKit
+import StatusOverlayKit
 
 struct PlaybackErrorInfo: Identifiable {
     let id = UUID()
@@ -42,7 +43,6 @@ final class PlaybackManager {
 
     var isLoading: Bool = false
     var loadingMessage: String = "Loading Stream…"
-    var isDetailViewPresented: Bool = false
     var activePlayerViewModel: PlayerViewModel?
     var currentError: PlaybackErrorInfo?
     var showErrorAlert: Bool = false
@@ -70,7 +70,9 @@ final class PlaybackManager {
         activeTask?.cancel()
         currentError = nil
         showErrorAlert = false
-        isLoading = true
+        withAnimation(statusOverlaySpring) {
+            isLoading = true
+        }
         loadingMessage = "Loading Stream…"
 
         activeTask = Task { @MainActor in
@@ -85,7 +87,9 @@ final class PlaybackManager {
             let success = await vm.prepare()
             guard !Task.isCancelled else { return }
 
-            self.isLoading = false
+            withAnimation(statusOverlaySpring) {
+                self.isLoading = false
+            }
 
             if success {
                 AppLogger.success("Playback prepared successfully, presenting native player", tag: "PlaybackManager")
@@ -121,7 +125,9 @@ final class PlaybackManager {
         activeTask?.cancel()
         currentError = nil
         showErrorAlert = false
-        isLoading = true
+        withAnimation(statusOverlaySpring) {
+            isLoading = true
+        }
         loadingMessage = "Loading Media…"
 
         activeTask = Task { @MainActor in
@@ -136,7 +142,9 @@ final class PlaybackManager {
             let success = await vm.prepare()
             guard !Task.isCancelled else { return }
 
-            self.isLoading = false
+            withAnimation(statusOverlaySpring) {
+                self.isLoading = false
+            }
 
             if success {
                 self.activePlayerViewModel = vm
@@ -165,7 +173,9 @@ final class PlaybackManager {
         #endif
         activeTask?.cancel()
         activeTask = nil
-        isLoading = false
+        withAnimation(statusOverlaySpring) {
+            isLoading = false
+        }
         if let current = activePlayerViewModel {
             AppLogger.info("Stopping playback and releasing resources for '\(current.title)'", tag: "PlaybackManager")
             current.cleanup()

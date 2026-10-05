@@ -144,9 +144,7 @@ struct HomeView: View {
                             if let item = heroItem ?? viewModel.currentCarouselItem,
                                let client = serverViewModel.client {
                                 HeroBackdropView(
-                                    url: verticalSizeClass == .compact
-                                        ? libraryViewModel.backgroundURL(for: item, client: client)
-                                        : libraryViewModel.posterURL(for: item, client: client),
+                                    url: libraryViewModel.backdropURL(for: item, client: client),
                                     itemID: item.id,
                                     blurRadius: 30
                                 )

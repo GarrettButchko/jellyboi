@@ -81,29 +81,7 @@ class MediaDetailViewModel {
     }
 
     func backdropURL(client fallbackClient: JellyfinClient? = nil) -> URL? {
-        let activeClient = client ?? fallbackClient
-        guard let activeClient, let id = displayItem?.id else { return nil }
-        if displayItem?.type == .episode {
-            let imageType = displayItem?.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
-            return activeClient.url(with: Paths.getItemImage(
-                itemID: id,
-                imageType: imageType,
-                parameters: .init(maxWidth: 800, quality: 90)
-            ))
-        }
-        if hasBackdrop {
-            return activeClient.url(with: Paths.getItemImageByIndex(
-                itemID: id,
-                imageType: "Backdrop",
-                imageIndex: 0,
-                parameters: .init(maxWidth: 800, quality: 90)
-            ))
-        }
-        return activeClient.url(with: Paths.getItemImage(
-            itemID: id,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 800, quality: 90)
-        ))
+        posterURL(client: fallbackClient)
     }
 
     var posterURL: URL? {

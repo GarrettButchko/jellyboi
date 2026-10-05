@@ -10,7 +10,6 @@ import UIKit
 import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
-import StatusOverlayKit
 
 private var safeAreaTop: CGFloat {
     UIApplication.shared.connectedScenes
@@ -106,7 +105,7 @@ struct MediaDetailView: View {
                     heroImage
                         .background(alignment: .top) {
                             HeroBackdropView(
-                                url: detailVM.backdropURL(client: serverViewModel.client),
+                                url: heroPosterURL,
                                 itemID: displayItem.id,
                                 blurRadius: 50,
                                 isFlipped: true
@@ -274,17 +273,8 @@ struct MediaDetailView: View {
         .navigationDestination(item: $selectedPerson) { person in
             CastCrewView(person: person)
         }
-        .overlay {
-            if playbackManager.isLoading {
-                LoadingOverlay(message: playbackManager.loadingMessage)
-            }
-        }
         .onAppear {
-            playbackManager.isDetailViewPresented = true
             detailVM.prepare(item: item, client: serverViewModel.client)
-        }
-        .onDisappear {
-            playbackManager.isDetailViewPresented = false
         }
         .task {
             guard let client = serverViewModel.client, item.id != nil else { return }
