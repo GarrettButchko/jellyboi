@@ -32,8 +32,8 @@ struct SectionRow: View {
 
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 16) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        let zoomID: AnyHashable = rowKey.map { AnyHashable("\($0)-\(index)") } ?? AnyHashable(item)
+                    ForEach(items, id: \.id) { item in
+                        let zoomID: AnyHashable = rowKey.map { AnyHashable("\($0)-\(item.id ?? "")") } ?? AnyHashable(item)
                         MediaCard(
                             item: item,
                             posterURL: posterURL(item),
@@ -49,7 +49,6 @@ struct SectionRow: View {
                 .padding(.horizontal, 16)
                 .scrollTargetLayout()
             }
-            .scrollClipDisabled()
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned)
         }

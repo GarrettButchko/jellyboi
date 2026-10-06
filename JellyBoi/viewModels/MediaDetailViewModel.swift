@@ -51,6 +51,18 @@ class MediaDetailViewModel {
         displayItem?.isFavorite ?? false
     }
 
+    #if DEBUG
+    var isOverviewHidden: Bool { DebugSettings.shared.hideOverview }
+    var isCastHidden: Bool { DebugSettings.shared.hideCastAndCrew }
+    var areTagsHidden: Bool { DebugSettings.shared.hideTags }
+    var areSimilarItemsHidden: Bool { DebugSettings.shared.hideSimilarItems }
+    #else
+    var isOverviewHidden: Bool { false }
+    var isCastHidden: Bool { false }
+    var areTagsHidden: Bool { false }
+    var areSimilarItemsHidden: Bool { false }
+    #endif
+
     func isFavorite(fallback: BaseItemDto) -> Bool {
         displayItem?.isFavorite ?? fallback.isFavorite
     }
@@ -81,7 +93,10 @@ class MediaDetailViewModel {
     }
 
     func backdropURL(client fallbackClient: JellyfinClient? = nil) -> URL? {
-        posterURL(client: fallbackClient)
+        #if DEBUG
+        if DebugSettings.shared.hideBackdrop { return nil }
+        #endif
+        return posterURL(client: fallbackClient)
     }
 
     var posterURL: URL? {
@@ -89,6 +104,9 @@ class MediaDetailViewModel {
     }
 
     func posterURL(client fallbackClient: JellyfinClient? = nil) -> URL? {
+        #if DEBUG
+        if DebugSettings.shared.hidePoster { return nil }
+        #endif
         let activeClient = client ?? fallbackClient
         guard let activeClient, let id = displayItem?.id else { return nil }
         if displayItem?.type == .episode {
@@ -277,7 +295,7 @@ class MediaDetailViewModel {
         episodes = result
     }
 
-    func nextPlayableEpisode(libraryViewModel: LibraryViewModel?) -> BaseItemDto? {
+    func nextPlayableEpisode(libraryViewModel: LibraryViewModel?, fromBeginning: Bool = false) -> BaseItemDto? {
         if displayItem?.type == .episode {
             return displayItem
         }
@@ -285,13 +303,38 @@ class MediaDetailViewModel {
             return displayItem
         }
         if displayItem?.type == .series {
-            if let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == displayItem?.id }) {
+            if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == displayItem?.id }) {
                 return resumeEp
             }
-            if let unplayed = episodes.first(where: { ($0.userData?.isPlayed ?? false) == false }) {
+            if !fromBeginning, let unplayed = episodes.first(where: { ($0.userData?.isPlayed ?? false) == false }) {
                 return unplayed
             }
             return episodes.first
+        }
+        if displayItem?.type == .boxSet {
+            guard let firstItem = collectionItems.first(where: { $0.type == .movie || $0.type == .series }) ?? collectionItems.first else {
+                return nil
+            }
+            if firstItem.type == .series {
+                if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == firstItem.id }) {
+                    return resumeEp
+                }
+                let matching = (libraryViewModel?.episodes ?? [])
+                    .filter { $0.seriesID == firstItem.id }
+                    .sorted { a, b in
+                        let sA = a.parentIndexNumber ?? 1
+                        let sB = b.parentIndexNumber ?? 1
+                        if sA != sB { return sA < sB }
+                        return (a.indexNumber ?? 1) < (b.indexNumber ?? 1)
+                    }
+                if !fromBeginning, let unplayed = matching.first(where: { ($0.userData?.isPlayed ?? false) == false }) {
+                    return unplayed
+                }
+                if let firstEp = matching.first {
+                    return firstEp
+                }
+            }
+            return firstItem
         }
         return displayItem
     }

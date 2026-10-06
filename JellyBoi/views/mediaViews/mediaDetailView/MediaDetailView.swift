@@ -34,6 +34,7 @@ struct MediaDetailView: View {
     @State var relatedZoomID: AnyHashable?
     @State var selectedCollectionItem: BaseItemDto?
     @Namespace var collectionTransition
+    @State var scrollOffset: CGFloat = 0
     @State var backButtonHeight: CGFloat = 0
     @State var isFavorited = false
     @State var isDownloaded = false
@@ -78,7 +79,7 @@ struct MediaDetailView: View {
     }
 
     private func playMedia(fromBeginning: Bool) {
-        if let itemToPlay = detailVM.nextPlayableEpisode(libraryViewModel: libraryViewModel) {
+        if let itemToPlay = detailVM.nextPlayableEpisode(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning) {
             playbackManager.play(
                 item: itemToPlay,
                 fromBeginning: fromBeginning,
@@ -127,7 +128,6 @@ struct MediaDetailView: View {
                         }
                     )
                 }
-                .padding(.top, safeAreaTop + backButtonHeight + 8)
                 .padding(.horizontal, 16)
 
                 if displayItem.type == .episode, let episodeName = displayItem.name, !episodeName.isEmpty {
@@ -141,7 +141,7 @@ struct MediaDetailView: View {
                                 .foregroundStyle(Color.mainOpp)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 7)
-                                .glassEffect(.regular, in: Capsule())
+                                .background(Color.mainOpp.opacity(0.08), in: Capsule())
                         }
                     }
                     .padding(.horizontal, 20)
@@ -155,7 +155,7 @@ struct MediaDetailView: View {
                     )
                 } content: {
                     VStack(alignment: .leading, spacing: 24) {
-                        if let overview = displayItem.overview, !overview.isEmpty {
+                        if !detailVM.isOverviewHidden, let overview = displayItem.overview, !overview.isEmpty {
                             overviewSection(overview)
                                 .padding(.horizontal, 20)
                         }
@@ -165,7 +165,7 @@ struct MediaDetailView: View {
                         episodesSection
 
                         let actors = (displayItem.people ?? []).filter { $0.type == .actor }
-                        if !actors.isEmpty {
+                        if !detailVM.isCastHidden && !actors.isEmpty {
                             castSection(actors)
                         }
 
@@ -173,7 +173,7 @@ struct MediaDetailView: View {
                             collectionSection
                         }
 
-                        if !detailVM.similarItems.isEmpty {
+                        if !detailVM.areSimilarItemsHidden && !detailVM.similarItems.isEmpty {
                             SectionRow(
                                 title: "More Like This",
                                 items: detailVM.similarItems,
@@ -189,7 +189,7 @@ struct MediaDetailView: View {
                             }
                         }
 
-                        if let tags = displayItem.tags, !tags.isEmpty {
+                        if !detailVM.areTagsHidden, let tags = displayItem.tags, !tags.isEmpty {
                             tagsSection(tags)
                                 .padding(.horizontal, 20)
                         }
@@ -204,7 +204,13 @@ struct MediaDetailView: View {
                 }
             }
         }
-        .ignoresSafeArea(edges: .top)
+        .contentMargins(.top, backButtonHeight + 8, for: .scrollContent)
+        .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newValue in
+            scrollOffset = newValue
+        }
         .background(Color.bg.ignoresSafeArea())
         .toolbarVisibility(.hidden, for: .navigationBar)
         .overlay(alignment: .top) {

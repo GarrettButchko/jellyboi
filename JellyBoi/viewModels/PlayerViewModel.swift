@@ -165,13 +165,13 @@ final class PlayerViewModel: Identifiable {
         // Configure audio session immediately before preparing player
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo)
-            try AVAudioSession.sharedInstance().setActive(true)
+            try await activateAudioSession()
             AppLogger.debug("Configured AVAudioSession (.playback, .moviePlayback, .longFormVideo)", tag: "Player")
         } catch {
             AppLogger.warning("Long-form video audio session policy failed: \(error.localizedDescription); falling back", tag: "Player")
             do {
                 try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-                try AVAudioSession.sharedInstance().setActive(true)
+                try await activateAudioSession()
             } catch {
                 AppLogger.error("Audio session configuration failed: \(error.localizedDescription)", error, tag: "Player")
             }
@@ -919,18 +919,38 @@ final class PlayerViewModel: Identifiable {
         // Clear HTTP URL cache for streamed media chunks
         URLCache.shared.removeAllCachedResponses()
 
-        // Deactivate audio session to release the audio pipeline immediately
-        do {
-            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        } catch {
-            AppLogger.debug("Audio session deactivation info: \(error.localizedDescription)", tag: "Player")
-        }
+        // Deactivate audio session to release the audio pipeline asynchronously
+        deactivateAudioSession()
 
         // Report stop & update final progress
         let finalTicks = currentPositionTicks
         updateLocalProgress(positionTicks: finalTicks)
         Task {
             await reportPlaybackStopped()
+        }
+    }
+
+    private func activateAudioSession() async throws {
+        if #available(iOS 27.0, *) {
+            try await AVAudioSession.sharedInstance().activate()
+        } else {
+            try await Task.detached {
+                try AVAudioSession.sharedInstance().setActive(true)
+            }.value
+        }
+    }
+
+    private func deactivateAudioSession() {
+        Task.detached {
+            do {
+                if #available(iOS 27.0, *) {
+                    try await AVAudioSession.sharedInstance().deactivate(options: [.notifyOthersOnDeactivation])
+                } else {
+                    try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+                }
+            } catch {
+                AppLogger.debug("Audio session deactivation info: \(error.localizedDescription)", tag: "Player")
+            }
         }
     }
 

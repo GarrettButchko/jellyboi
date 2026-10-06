@@ -50,11 +50,17 @@ class SearchViewModel {
     /// Items matching the current search text, ordered by relevance score descending.
     /// Returns an empty array when `searchText` is empty (genre grid shown instead).
     var results: [BaseItemDto] {
-        ranker.results(for: searchText, in: searchPool)
+        #if DEBUG
+        if DebugSettings.shared.simulateSearchEmptyLibrary || DebugSettings.shared.hideSearchResults { return [] }
+        #endif
+        return ranker.results(for: searchText, in: searchPool)
     }
 
     /// Unique genres derived from movies + shows, sorted by frequency descending then alphabetically.
     var genres: [GenreCount] {
+        #if DEBUG
+        if DebugSettings.shared.simulateSearchEmptyLibrary || DebugSettings.shared.hideSearchGenres { return [] }
+        #endif
         var counts: [String: Int] = [:]
         for item in pool {
             for genre in item.genres ?? [] {
@@ -70,7 +76,10 @@ class SearchViewModel {
 
     /// All items (from the movies+shows pool) that belong to a given genre, sorted A–Z.
     func items(inGenre name: String) -> [BaseItemDto] {
-        pool
+        #if DEBUG
+        if DebugSettings.shared.simulateSearchEmptyLibrary || DebugSettings.shared.hideGenreResults { return [] }
+        #endif
+        return pool
             .filter { $0.genres?.contains(name) == true }
             .sorted { ($0.sortName ?? $0.name ?? "") < ($1.sortName ?? $1.name ?? "") }
     }

@@ -20,13 +20,60 @@ class HomeViewModel: ObservableObject {
         if let library { self.library = library }
     }
 
-    var movies: [BaseItemDto] { library.movies }
-    var collections: [BaseItemDto] { library.collections }
-    var recommended: [BaseItemDto] { library.recommended }
-    var recentlyAdded: [BaseItemDto] { library.recentlyAdded }
-    var inProgressMovies: [BaseItemDto] { library.inProgressMovies }
-    var topWatchedMovies: [BaseItemDto] { library.topWatchedMovies }
-    var resumeShows: [BaseItemDto] { library.resumeShows }
+    var movies: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows { return [] }
+        #endif
+        return library.movies
+    }
+    var collections: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideCollections { return [] }
+        #endif
+        return library.collections
+    }
+    var recommended: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideTopRated { return [] }
+        #endif
+        return library.recommended
+    }
+    var recentlyAddedMovies: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideRecentlyAddedMovies { return [] }
+        #endif
+        return library.recentlyAddedMovies
+    }
+    var recentlyAddedShows: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideRecentlyAddedShows { return [] }
+        #endif
+        return library.recentlyAddedShows
+    }
+    var recentlyAdded: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows { return [] }
+        #endif
+        return library.recentlyAdded
+    }
+    var inProgressMovies: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideContinueWatching { return [] }
+        #endif
+        return library.inProgressMovies
+    }
+    var topWatchedMovies: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideContinueWatching { return [] }
+        #endif
+        return library.topWatchedMovies
+    }
+    var resumeShows: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideContinueShows { return [] }
+        #endif
+        return library.resumeShows
+    }
     var tvSeriesCount: Int { library.tvSeriesCount }
     var episodeCount: Int { library.episodeCount }
     var favoritesCount: Int { library.favoritesCount }
@@ -34,12 +81,55 @@ class HomeViewModel: ObservableObject {
     var watchedHours: Int { library.watchedHours }
 
     var isLoading: Bool { library.isLoading }
-    var errorMessage: String? { library.errorMessage }
-    var isLibraryEmpty: Bool { library.isLibraryEmpty }
+    var errorMessage: String? {
+        #if DEBUG
+        if DebugSettings.shared.simulateLibraryError { return "Debug: Simulated library connection error" }
+        #endif
+        return library.errorMessage
+    }
+    var isLibraryEmpty: Bool {
+        #if DEBUG
+        if DebugSettings.shared.simulateEmptyLibrary { return true }
+        #endif
+        return library.isLibraryEmpty
+    }
 
-    /// Items shown in the hero carousel. Falls back to Recently Added when the user
-    /// has no in-progress movies, so the carousel is never blank.
-    var carouselItems: [BaseItemDto] { topWatchedMovies.isEmpty ? recentlyAdded : topWatchedMovies }
+    // MARK: - Random Featured Carousel Pool
+
+    private var cachedRandomPoolIDs: [String] = []
+    private var cachedRandomItems: [BaseItemDto] = []
+
+    /// 6 random movies and shows from the library, reshuffled on refresh or when the library changes.
+    var randomFeaturedItems: [BaseItemDto] {
+        let pool = library.movies + library.tvShows
+        guard !pool.isEmpty else { return [] }
+
+        let currentPoolIDs = pool.compactMap(\.id)
+        if cachedRandomPoolIDs != currentPoolIDs || cachedRandomItems.isEmpty {
+            cachedRandomPoolIDs = currentPoolIDs
+            cachedRandomItems = Array(pool.shuffled().prefix(6))
+        }
+        return cachedRandomItems
+    }
+
+    func shuffleRandomFeaturedItems() {
+        let pool = library.movies + library.tvShows
+        cachedRandomPoolIDs = pool.compactMap(\.id)
+        cachedRandomItems = Array(pool.shuffled().prefix(6))
+    }
+
+    /// Items shown in the hero carousel.
+    /// Shows `topWatchedMovies` (Continue Watching) if available;
+    /// when Continue Watching disappears or is empty, falls back to 6 random movies and shows.
+    var carouselItems: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows { return [] }
+        #endif
+        if !topWatchedMovies.isEmpty {
+            return Array(topWatchedMovies.prefix(6))
+        }
+        return randomFeaturedItems
+    }
 
     /// Preserved carousel looped index so that navigating to another view and back
     /// does not reset the carousel back to slide 0.
@@ -64,9 +154,11 @@ class HomeViewModel: ObservableObject {
 
     func load(using client: JellyfinClient) async {
         await library.load(using: client)
+        shuffleRandomFeaturedItems()
     }
 
     func refresh(using client: JellyfinClient) async {
         await library.refresh(using: client)
+        shuffleRandomFeaturedItems()
     }
 }

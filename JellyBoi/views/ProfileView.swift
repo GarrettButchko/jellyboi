@@ -18,11 +18,14 @@ struct ProfileView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
 
     var body: some View {
-        ZStack {
-            mainContent
-            headerOverlay
+        NavigationStack {
+            ZStack {
+                mainContent
+                headerOverlay
+            }
+            .background(Color.bg.ignoresSafeArea())
+            .toolbarVisibility(.hidden, for: .navigationBar)
         }
-        .background(Color.bg.ignoresSafeArea())
         .presentationDragIndicator(.visible)
     }
 
@@ -78,6 +81,61 @@ struct ProfileView: View {
                 }
                 .padding(.top, 8)
 
+                // MARK: - Settings
+                #if DEBUG
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Settings")
+                        .font(.system(.footnote, design: .rounded, weight: .bold))
+                        .foregroundStyle(Color.mainOpp.opacity(0.45))
+                        .textCase(.uppercase)
+                        .padding(.horizontal, 4)
+
+                    NavigationLink {
+                        DebugSettingsView()
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color.orange.opacity(0.15))
+                                    .frame(width: 36, height: 36)
+                                Image(systemName: "ladybug.fill")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(.orange)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Debug & Empty States")
+                                    .font(.system(.body, design: .rounded, weight: .semibold))
+                                    .foregroundStyle(Color.mainOpp)
+                                Text("Test missing fields and empty rows")
+                                    .font(.system(.caption, design: .rounded))
+                                    .foregroundStyle(Color.mainOpp.opacity(0.5))
+                            }
+
+                            Spacer()
+
+                            if DebugSettings.shared.isAnyActive {
+                                Text("\(DebugSettings.shared.activeOverrideCount) active")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.orange.opacity(0.15), in: Capsule())
+                            }
+
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.mainOpp.opacity(0.3))
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color.mainOpp.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                #endif
+
                 // Sign out
                 Button {
                     TransientStatusSignal.shared.pending = StatusMessage(
@@ -108,6 +166,7 @@ struct ProfileView: View {
             // push content below the gradient header
             .padding(.top, 80)
         }
+        .scrollEdgeEffectHidden(true, for: .top)
     }
 
     // MARK: - Avatar

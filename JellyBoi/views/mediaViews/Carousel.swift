@@ -7,6 +7,7 @@
 
 import SwiftUI
 import BaseColors
+import SDWebImage
 import SDWebImageSwiftUI
 import JellyfinAPI
 
@@ -80,7 +81,7 @@ struct Carousel: View {
 
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal) {
-                        LazyHStack(spacing: carouselRestingGap) {
+                        HStack(spacing: carouselRestingGap) {
                             ForEach(loopedItems, id: \.id) { (loopedID, item) in
                                 let isRealSection = loopedID >= loopStart && loopedID < loopStart + items.count
                                 let baseScale: CGFloat = snappedIndex == loopedID ? 1.0 : carouselNeighborScale
@@ -223,6 +224,14 @@ struct Carousel: View {
             }
         }
         .sensoryFeedback(.selection, trigger: displayedItemIndex)
+        .onAppear {
+            let urls = items.compactMap { backdropURL($0) }
+            CarouselImageMemoryCache.shared.preloadImages(for: urls)
+        }
+        .onChange(of: items.compactMap(\.id)) { _, _ in
+            let urls = items.compactMap { backdropURL($0) }
+            CarouselImageMemoryCache.shared.preloadImages(for: urls)
+        }
     }
 }
 
@@ -277,6 +286,8 @@ private struct CarouselCard: View {
     let width: CGFloat
     let height: CGFloat
 
+    @State private var displayImage: UIImage? = nil
+
     private let outerCornerRadius: CGFloat = 20
 
     private var watchProgress: Double? {
@@ -298,30 +309,36 @@ private struct CarouselCard: View {
     }
 
     var body: some View {
+        let url = backdropURL(item)
+        let initialCached = url.flatMap { CarouselImageMemoryCache.shared.image(for: $0) }
+        let currentImage = displayImage ?? initialCached
+
         ZStack(alignment: .bottomTrailing) {
-            if let url = backdropURL(item) {
+            if let currentImage {
+                Image(uiImage: currentImage)
+                    .resizable()
+                    .scaledToFill()
+            } else if let url {
                 WebImage(
                     url: url,
-                    transaction: Transaction(animation: .easeInOut(duration: 0.3))
+                    transaction: Transaction(animation: .easeInOut(duration: 0.25))
                 ) { phase in
                     if let image = phase.image {
                         image
                             .resizable()
                             .scaledToFill()
-                            .transition(.fade(duration: 0.3))
                     } else {
                         Color.sub
                     }
+                }
+                .onSuccess { image, _, _ in
+                    displayImage = image
+                    CarouselImageMemoryCache.shared.store(image, for: url)
                 }
             } else {
                 Color.sub
             }
 
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.5)],
-                startPoint: .center,
-                endPoint: .bottom
-            )
             if let progress = watchProgress {
                 GlassProgressBar(progress: progress, label: timeRemainingLabel)
                     .padding(10)
@@ -330,5 +347,74 @@ private struct CarouselCard: View {
         .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous))
         .clipped()
+        .task(id: url) {
+            guard let url else { return }
+            if let cached = CarouselImageMemoryCache.shared.image(for: url) {
+                if displayImage !== cached {
+                    displayImage = cached
+                }
+            } else {
+                CarouselImageMemoryCache.shared.loadImage(for: url) { image in
+                    if let image {
+                        displayImage = image
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Carousel Image Memory Cache
+
+@MainActor
+final class CarouselImageMemoryCache {
+    static let shared = CarouselImageMemoryCache()
+
+    private var memoryCache: [URL: UIImage] = [:]
+
+    private init() {}
+
+    func image(for url: URL) -> UIImage? {
+        if let img = memoryCache[url] {
+            return img
+        }
+        let key = SDWebImageManager.shared.cacheKey(for: url)
+        if let img = SDImageCache.shared.imageFromMemoryCache(forKey: key) {
+            memoryCache[url] = img
+            return img
+        }
+        return nil
+    }
+
+    func store(_ image: UIImage, for url: URL) {
+        memoryCache[url] = image
+        let key = SDWebImageManager.shared.cacheKey(for: url)
+        SDImageCache.shared.store(image, forKey: key, toDisk: true)
+    }
+
+    func preloadImages(for urls: [URL]) {
+        for url in urls {
+            if image(for: url) != nil { continue }
+            loadImage(for: url) { _ in }
+        }
+    }
+
+    func loadImage(for url: URL, completion: (@Sendable @MainActor (UIImage?) -> Void)? = nil) {
+        if let cached = image(for: url) {
+            completion?(cached)
+            return
+        }
+
+        SDWebImageManager.shared.loadImage(
+            with: url,
+            options: [.avoidAutoSetImage, .highPriority],
+            progress: nil
+        ) { [weak self] image, _, _, _, finished, _ in
+            guard let image, finished else { return }
+            Task { @MainActor [weak self] in
+                self?.store(image, for: url)
+                completion?(image)
+            }
+        }
     }
 }

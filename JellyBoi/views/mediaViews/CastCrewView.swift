@@ -26,6 +26,7 @@ struct CastCrewView: View {
 
     // Navigation state
     @State private var selectedMediaItem: BaseItemDto?
+    @State private var scrollOffset: CGFloat = 0
     @Namespace private var mediaZoomTransition
 
     init(person: BaseItemPerson) {
@@ -143,6 +144,12 @@ struct CastCrewView: View {
             }
             .padding(.top, safeAreaTop)
             .padding(.bottom, 24)
+        }
+        .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newValue in
+            scrollOffset = newValue
         }
         .overlay(alignment: .topLeading){
             HStack {

@@ -48,6 +48,7 @@ struct SearchView: View {
                     }
                     .contentMargins(.top, headerHeight, for: .scrollContent)
                     .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
+                    .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
                     .onScrollGeometryChange(for: CGFloat.self) { geometry in
                         geometry.contentOffset.y + geometry.contentInsets.top
                     } action: { _, newValue in
@@ -141,11 +142,11 @@ struct SearchView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 40)
             } else if viewModel.genres.isEmpty {
-                Text("No genres found")
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(Color.mainOpp.opacity(0.4))
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 40)
+                EmptyStateView(
+                    icon: "film.stack",
+                    title: "No Media in Library",
+                    message: "Add movies or TV shows to your Jellyfin server to search and browse genres."
+                )
             } else {
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)],
@@ -169,17 +170,11 @@ struct SearchView: View {
     private var searchResults: some View {
         Group {
             if viewModel.results.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 32, weight: .medium))
-                        .foregroundStyle(Color.mainOpp.opacity(0.25))
-                    Text("No results for \"\(viewModel.searchText)\"")
-                        .font(.system(.footnote, design: .rounded))
-                        .foregroundStyle(Color.mainOpp.opacity(0.4))
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, 40)
-                .padding(.top, 60)
+                EmptyStateView(
+                    icon: "magnifyingglass",
+                    title: "No Results",
+                    message: "No titles found matching \"\(viewModel.searchText)\"."
+                )
                 .transition(.opacity)
             } else {
                 LazyVGrid(columns: columns, spacing: 16) {
@@ -276,11 +271,11 @@ struct GenreResultsView: View {
                     Color.clear.frame(height: 0).id(topID)
 
                     if items.isEmpty {
-                        Text("No titles in this genre")
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(Color.mainOpp.opacity(0.4))
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
+                        EmptyStateView(
+                            icon: "film",
+                            title: "No Titles in Genre",
+                            message: "No movies or shows found for \(genre)."
+                        )
                     } else {
                         LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(items, id: \.id) { item in
@@ -300,6 +295,7 @@ struct GenreResultsView: View {
                 }
                 .contentMargins(.top, headerHeight, for: .scrollContent)
                 .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
+                .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     geometry.contentOffset.y + geometry.contentInsets.top
                 } action: { _, newValue in

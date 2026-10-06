@@ -35,9 +35,35 @@ enum MediaFilter: CaseIterable, Hashable {
 @Observable
 @MainActor
 class MediaViewModel {
-    var filter: MediaFilter = .movies
+    private var _filter: MediaFilter = .movies
+    var filter: MediaFilter {
+        get {
+            if _filter == .collections && !hasCollections {
+                return .movies
+            }
+            return _filter
+        }
+        set {
+            _filter = newValue
+        }
+    }
     var showFavoritesOnly: Bool = false
     var library = LibraryViewModel()
+
+    var hasCollections: Bool {
+        #if DEBUG
+        if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaCollections { return false }
+        #endif
+        return !library.collections.isEmpty
+    }
+
+    var availableFilters: [MediaFilter] {
+        var filters: [MediaFilter] = [.movies, .tvShows]
+        if hasCollections {
+            filters.append(.collections)
+        }
+        return filters
+    }
 
     init(library: LibraryViewModel? = nil) {
         if let library { self.library = library }
@@ -46,29 +72,52 @@ class MediaViewModel {
     // MARK: - Regular Browsing Items
 
     var regularItems: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.simulateMediaEmptyLibrary { return [] }
         switch filter {
-        case .movies: library.movies
-        case .tvShows: library.tvShows
-        case .collections: library.collections
+        case .movies:
+            if DebugSettings.shared.hideMediaMovies { return [] }
+        case .tvShows:
+            if DebugSettings.shared.hideMediaShows { return [] }
+        case .collections:
+            if DebugSettings.shared.hideMediaCollections { return [] }
+        }
+        #endif
+        switch filter {
+        case .movies: return library.movies
+        case .tvShows: return library.tvShows
+        case .collections: return library.collections
         }
     }
 
     // MARK: - Favorite Items
 
     var favoriteMovies: [BaseItemDto] {
-        library.movies.filter { $0.userData?.isFavorite == true }
+        #if DEBUG
+        if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaFavorites { return [] }
+        #endif
+        return library.movies.filter { $0.userData?.isFavorite == true }
     }
 
     var favoriteShows: [BaseItemDto] {
-        library.tvShows.filter { $0.userData?.isFavorite == true }
+        #if DEBUG
+        if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaFavorites { return [] }
+        #endif
+        return library.tvShows.filter { $0.userData?.isFavorite == true }
     }
 
     var favoriteEpisodes: [BaseItemDto] {
-        library.episodes.filter { $0.userData?.isFavorite == true }
+        #if DEBUG
+        if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaFavorites { return [] }
+        #endif
+        return library.episodes.filter { $0.userData?.isFavorite == true }
     }
 
     var favoriteCollections: [BaseItemDto] {
-        library.collections.filter { $0.userData?.isFavorite == true }
+        #if DEBUG
+        if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaFavorites { return [] }
+        #endif
+        return library.collections.filter { $0.userData?.isFavorite == true }
     }
 
     var favoriteTvItems: [BaseItemDto] {
@@ -84,7 +133,12 @@ class MediaViewModel {
     }
 
     var isLoading: Bool { library.isLoading }
-    var errorMessage: String? { library.errorMessage }
+    var errorMessage: String? {
+        #if DEBUG
+        if DebugSettings.shared.simulateMediaError { return "Debug: Simulated media library error" }
+        #endif
+        return library.errorMessage
+    }
 
     func refresh(using client: JellyfinClient) async {
         await library.refresh(using: client)

@@ -35,11 +35,11 @@ struct MediaView: View {
                             regularContent
                         }
                     }
-                    .animation(.smooth(duration: 0.35), value: viewModel.currentFavoriteItems.map(\.id))
-                    .animation(.smooth(duration: 0.3), value: viewModel.filter)
-                    .animation(.smooth(duration: 0.3), value: viewModel.showFavoritesOnly)
+                    .animation(.easeInOut(duration: 0.2), value: viewModel.filter)
+                    .animation(.easeInOut(duration: 0.2), value: viewModel.showFavoritesOnly)
                     .contentMargins(.top, headerHeight, for: .scrollContent)
                     .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
+                    .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
                     .onScrollGeometryChange(for: CGFloat.self) { geometry in
                         geometry.contentOffset.y + geometry.contentInsets.top
                     } action: { _, newValue in
@@ -59,7 +59,7 @@ struct MediaView: View {
                     ) {
                         HStack(spacing: 10) {
                             Picker("Filter", selection: $viewModel.filter) {
-                                ForEach(MediaFilter.allCases, id: \.self) { filter in
+                                ForEach(viewModel.availableFilters, id: \.self) { filter in
                                     Text(filter.title).tag(filter)
                                 }
                             }
@@ -84,10 +84,14 @@ struct MediaView: View {
                         .padding(.horizontal, 16)
                     }
                     .onChange(of: viewModel.filter) { _, _ in
-                        proxy.scrollTo(topID, anchor: .top)
+                        if scrollOffset > 10 {
+                            proxy.scrollTo(topID, anchor: .top)
+                        }
                     }
                     .onChange(of: viewModel.showFavoritesOnly) { _, _ in
-                        proxy.scrollTo(topID, anchor: .top)
+                        if scrollOffset > 10 {
+                            proxy.scrollTo(topID, anchor: .top)
+                        }
                     }
 
                     ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
@@ -125,28 +129,32 @@ struct MediaView: View {
                 message: message
             )
         } else {
-            switch viewModel.filter {
-            case .movies:
-                mediaGrid(for: viewModel.favoriteMovies)
+            Group {
+                switch viewModel.filter {
+                case .movies:
+                    mediaGrid(for: viewModel.favoriteMovies)
 
-            case .collections:
-                mediaGrid(for: viewModel.favoriteCollections)
+                case .collections:
+                    mediaGrid(for: viewModel.favoriteCollections)
 
-            case .tvShows:
-                if !viewModel.favoriteShows.isEmpty && !viewModel.favoriteEpisodes.isEmpty {
-                    VStack(alignment: .leading, spacing: 28) {
+                case .tvShows:
+                    if !viewModel.favoriteShows.isEmpty && !viewModel.favoriteEpisodes.isEmpty {
+                        VStack(alignment: .leading, spacing: 28) {
+                            favoriteSection(title: "Shows", items: viewModel.favoriteShows)
+                            favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
+                        }
+                        .padding(.bottom, 8)
+                    } else if !viewModel.favoriteShows.isEmpty {
                         favoriteSection(title: "Shows", items: viewModel.favoriteShows)
+                            .padding(.bottom, 8)
+                    } else {
                         favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
+                            .padding(.bottom, 8)
                     }
-                    .padding(.bottom, 8)
-                } else if !viewModel.favoriteShows.isEmpty {
-                    favoriteSection(title: "Shows", items: viewModel.favoriteShows)
-                        .padding(.bottom, 8)
-                } else {
-                    favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
-                        .padding(.bottom, 8)
                 }
             }
+            .id(viewModel.filter)
+            .transition(.opacity)
         }
     }
 
@@ -195,6 +203,7 @@ struct MediaView: View {
         } else {
             mediaGrid(for: viewModel.regularItems)
                 .id(viewModel.filter)
+                .transition(.opacity)
         }
     }
 
@@ -204,15 +213,10 @@ struct MediaView: View {
         LazyVGrid(columns: columns, spacing: 16) {
             ForEach(items, id: \.id) { item in
                 mediaCard(for: item)
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.95)),
-                        removal: .opacity.combined(with: .scale(scale: 0.85))
-                    ))
             }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
-        .transition(.opacity)
     }
 
     private func mediaCard(for item: BaseItemDto) -> some View {

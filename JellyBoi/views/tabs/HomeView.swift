@@ -68,7 +68,7 @@ struct HomeView: View {
                                 } content: {
                                     if !viewModel.carouselItems.isEmpty {
                                         Carousel(
-                                            title: viewModel.topWatchedMovies.isEmpty ? "Recently Added" : "Movies",
+                                            title: viewModel.topWatchedMovies.isEmpty ? "Featured" : "Continue Watching",
                                             namespace: zoomTransition
                                         ) { item in
                                             guard let client = serverViewModel.client else { return nil }
@@ -133,6 +133,7 @@ struct HomeView: View {
                                                 }
                                             }
                                             .padding(.top, 16)
+                                            .transition(.opacity)
                                         }
                                     }
                                 }
@@ -150,6 +151,7 @@ struct HomeView: View {
                                 )
                                 .offset(y: -(headerHeight + safeAreaTop + 500))
                                 .ignoresSafeArea(edges: .top)
+                                .allowsHitTesting(false)
                             }
                         }
                     }
@@ -165,6 +167,7 @@ struct HomeView: View {
                     .toolbarVisibility(.hidden, for: .navigationBar)
                     .contentMargins(.top, headerHeight, for: .scrollContent)
                     .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
+                    .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
                     .onScrollGeometryChange(for: CGFloat.self) { geometry in
                         geometry.contentOffset.y + geometry.contentInsets.top
                     } action: { _, newValue in
@@ -198,11 +201,12 @@ struct HomeView: View {
     }
 
     private var sectionRows: [HomeSectionConfig] {[
-        .init(id: "collections",      title: "Collections",       items: viewModel.collections,      posterStyle: .poster),
-        .init(id: "continueWatching", title: "Continue Watching", items: viewModel.inProgressMovies, posterStyle: .poster),
-        .init(id: "continueShows",    title: "Continue Shows",    items: viewModel.resumeShows,       posterStyle: .seriesPoster),
-        .init(id: "topRated",         title: "Top Rated",         items: viewModel.recommended,       posterStyle: .poster),
-        .init(id: "recentlyAdded",    title: "Recently Added",    items: viewModel.recentlyAdded,     posterStyle: .poster),
+        .init(id: "collections",         title: "Collections",           items: viewModel.collections,         posterStyle: .poster),
+        .init(id: "continueWatching",    title: "Continue Watching",     items: viewModel.inProgressMovies,    posterStyle: .poster),
+        .init(id: "continueShows",       title: "Continue Shows",        items: viewModel.resumeShows,          posterStyle: .seriesPoster),
+        .init(id: "topRated",            title: "Top Rated",             items: viewModel.recommended,          posterStyle: .poster),
+        .init(id: "recentlyAddedMovies", title: "Recently Added Movies", items: viewModel.recentlyAddedMovies, posterStyle: .poster),
+        .init(id: "recentlyAddedShows",  title: "Recently Added Shows",  items: viewModel.recentlyAddedShows,  posterStyle: .poster),
     ]}
 }
 

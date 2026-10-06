@@ -29,6 +29,8 @@ class LibraryViewModel {
 
     private(set) var collections: [BaseItemDto] = []
     private(set) var recommended: [BaseItemDto] = []
+    private(set) var recentlyAddedMovies: [BaseItemDto] = []
+    private(set) var recentlyAddedShows: [BaseItemDto] = []
     private(set) var recentlyAdded: [BaseItemDto] = []
     private(set) var resumeShows: [BaseItemDto] = []
     private(set) var inProgressMovies: [BaseItemDto] = []
@@ -122,7 +124,10 @@ class LibraryViewModel {
     }
 
     func refresh(using client: JellyfinClient) async {
-        isLoading = true
+        let isInitialLoad = movies.isEmpty && tvShows.isEmpty
+        if isInitialLoad {
+            isLoading = true
+        }
         defer { isLoading = false }
 
         do {
@@ -156,38 +161,64 @@ class LibraryViewModel {
                 includeItemTypes: [.movie, .series],
                 sortBy: [.communityRating]
             )
-            let recentParams = Paths.GetItemsParameters(
+            let recentMoviesParams = Paths.GetItemsParameters(
                 limit: 20, isRecursive: true,
                 sortOrder: [.descending],
-                includeItemTypes: [.movie, .series],
-                sortBy: [.dateCreated]
+                includeItemTypes: [.movie],
+                sortBy: [.dateCreated],
+                enableUserData: true
+            )
+            let recentShowsParams = Paths.GetItemsParameters(
+                limit: 20, isRecursive: true,
+                sortOrder: [.descending],
+                includeItemTypes: [.series],
+                sortBy: [.dateCreated],
+                enableUserData: true
             )
             let nextUpParams = Paths.GetNextUpParameters(limit: 20, enableResumable: true)
             let favoritesCountParams = Paths.GetItemsParameters(
                 limit: 0, isRecursive: true, filters: [.isFavorite]
             )
 
-            async let moviesResult      = client.send(Paths.getItems(parameters: moviesParams)).value.items
-            async let showsResult       = client.send(Paths.getItems(parameters: showsParams)).value.items
-            async let episodesResult    = client.send(Paths.getItems(parameters: episodesParams)).value.items
-            async let collectionsResult = client.send(Paths.getItems(parameters: collectionsParams)).value.items
-            async let recommendedResult = client.send(Paths.getItems(parameters: recommendedParams)).value.items
-            async let recentResult      = client.send(Paths.getItems(parameters: recentParams)).value.items
-            async let nextUpResult      = client.send(Paths.getNextUp(parameters: nextUpParams)).value.items
-            async let favoritesResult   = client.send(Paths.getItems(parameters: favoritesCountParams)).value.totalRecordCount
+            async let moviesResult        = client.send(Paths.getItems(parameters: moviesParams)).value.items
+            async let showsResult         = client.send(Paths.getItems(parameters: showsParams)).value.items
+            async let episodesResult      = client.send(Paths.getItems(parameters: episodesParams)).value.items
+            async let collectionsResult   = client.send(Paths.getItems(parameters: collectionsParams)).value.items
+            async let recommendedResult   = client.send(Paths.getItems(parameters: recommendedParams)).value.items
+            async let recentMoviesResult  = client.send(Paths.getItems(parameters: recentMoviesParams)).value.items
+            async let recentShowsResult   = client.send(Paths.getItems(parameters: recentShowsParams)).value.items
+            async let nextUpResult        = client.send(Paths.getNextUp(parameters: nextUpParams)).value.items
+            async let favoritesResult     = client.send(Paths.getItems(parameters: favoritesCountParams)).value.totalRecordCount
 
-            movies        = try await moviesResult ?? []
-            tvShows       = try await showsResult ?? []
-            episodes      = try await episodesResult ?? []
-            collections   = try await collectionsResult ?? []
-            recommended   = try await recommendedResult ?? []
-            recentlyAdded = try await recentResult ?? []
-            resumeShows   = try await nextUpResult ?? []
-            favoritesCount = try await favoritesResult ?? 0
-            tvSeriesCount  = tvShows.count
-            episodeCount   = episodes.count
+            let fetchedMovies             = try await moviesResult ?? []
+            let fetchedShows              = try await showsResult ?? []
+            let fetchedEpisodes           = try await episodesResult ?? []
+            let fetchedCollections        = try await collectionsResult ?? []
+            let fetchedRecommended        = try await recommendedResult ?? []
+            let fetchedRecentMovies       = try await recentMoviesResult ?? []
+            let fetchedRecentShows        = try await recentShowsResult ?? []
+            let fetchedRecent             = (fetchedRecentMovies + fetchedRecentShows).sorted {
+                ($0.dateCreated ?? .distantPast) > ($1.dateCreated ?? .distantPast)
+            }
+            let fetchedNextUp             = try await nextUpResult ?? []
+            let fetchedFavorites          = try await favoritesResult ?? 0
 
-            updateAggregates()
+            withAnimation(.smooth(duration: 0.45)) {
+                movies              = fetchedMovies
+                tvShows             = fetchedShows
+                episodes            = fetchedEpisodes
+                collections         = fetchedCollections
+                recommended         = fetchedRecommended
+                recentlyAddedMovies = fetchedRecentMovies
+                recentlyAddedShows  = fetchedRecentShows
+                recentlyAdded       = fetchedRecent
+                resumeShows         = fetchedNextUp
+                favoritesCount      = fetchedFavorites
+                tvSeriesCount       = fetchedShows.count
+                episodeCount        = fetchedEpisodes.count
+
+                updateAggregates()
+            }
 
             errorMessage = nil
         } catch {
@@ -201,6 +232,8 @@ class LibraryViewModel {
         movies.clearProgress(for: itemID, matchingSeries: true)
         tvShows.clearProgress(for: itemID, matchingSeries: true)
         episodes.clearProgress(for: itemID, matchingSeries: true)
+        recentlyAddedMovies.clearProgress(for: itemID, matchingSeries: true)
+        recentlyAddedShows.clearProgress(for: itemID, matchingSeries: true)
         recentlyAdded.clearProgress(for: itemID, matchingSeries: true)
         recommended.clearProgress(for: itemID, matchingSeries: true)
         resumeShows.removeAll { $0.id == itemID || $0.seriesID == itemID }
@@ -212,6 +245,8 @@ class LibraryViewModel {
         movies.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
         tvShows.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
         episodes.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        recentlyAddedMovies.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        recentlyAddedShows.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
         recentlyAdded.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
         recommended.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
         resumeShows.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
@@ -223,7 +258,7 @@ class LibraryViewModel {
 
     func updateFavorite(for itemID: String, isFavorite: Bool) {
         var wasFavorite: Bool? = nil
-        let allLists = [movies, tvShows, episodes, collections, recommended, recentlyAdded]
+        let allLists = [movies, tvShows, episodes, collections, recommended, recentlyAddedMovies, recentlyAddedShows, recentlyAdded]
         for list in allLists {
             if let found = list.first(where: { $0.id == itemID }) {
                 wasFavorite = found.userData?.isFavorite ?? false
@@ -236,6 +271,8 @@ class LibraryViewModel {
         episodes.updateFavorite(for: itemID, isFavorite: isFavorite)
         collections.updateFavorite(for: itemID, isFavorite: isFavorite)
         recommended.updateFavorite(for: itemID, isFavorite: isFavorite)
+        recentlyAddedMovies.updateFavorite(for: itemID, isFavorite: isFavorite)
+        recentlyAddedShows.updateFavorite(for: itemID, isFavorite: isFavorite)
         recentlyAdded.updateFavorite(for: itemID, isFavorite: isFavorite)
         resumeShows.updateFavorite(for: itemID, isFavorite: isFavorite)
 

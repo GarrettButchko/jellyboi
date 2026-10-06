@@ -84,6 +84,9 @@ class CastCrewViewModel {
     }
 
     func personImageURL(client: JellyfinClient?) -> URL? {
+        #if DEBUG
+        if DebugSettings.shared.hidePersonImage { return nil }
+        #endif
         guard let client else { return nil }
         if let id = detailedPerson?.id ?? person.id {
             let tag = detailedPerson?.imageTags?["Primary"] ?? person.primaryImageTag
@@ -141,8 +144,8 @@ class CastCrewViewModel {
         )
 
         let (items, episodes) = await (fetchedMedia, fetchedEpisodes)
-        mediaItems = items
-        episodeItems = episodes
+        _mediaItems = items
+        _episodeItems = episodes
     }
 
     private func fetchItems(

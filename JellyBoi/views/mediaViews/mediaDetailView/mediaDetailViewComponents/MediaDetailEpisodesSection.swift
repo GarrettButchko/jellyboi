@@ -17,7 +17,13 @@ extension MediaDetailView {
 
     @ViewBuilder
     var episodesSection: some View {
-        if displayItem.type == .series, !detailVM.seasons.isEmpty {
+        let showEpisodes: Bool = {
+            #if DEBUG
+            if DebugSettings.shared.hideEpisodes { return false }
+            #endif
+            return true
+        }()
+        if showEpisodes, displayItem.type == .series, !detailVM.seasons.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Episodes")
                     .font(.system(size: 20, weight: .bold))

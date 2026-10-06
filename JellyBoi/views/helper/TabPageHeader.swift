@@ -67,16 +67,6 @@ struct TabPageHeader<Content: View>: View {
                 .padding(.top, isTitleHidden ? 0 : 16)
         }
         .padding(.vertical, 16)
-        .background {
-            if isTitleHidden && showGradient {
-                LinearGradient(
-                    colors: [Color.bg, Color.bg.opacity(0.5), Color.clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea(edges: .top)
-            }
-        }
         .animation(.smooth, value: isTitleHidden)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { newHeight in
             if newHeight > 0 && !isTitleHidden { headerHeight = newHeight }
