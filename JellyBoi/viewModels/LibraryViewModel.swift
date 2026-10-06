@@ -143,10 +143,10 @@ class LibraryViewModel {
                 includeItemTypes: [.series], sortBy: [.sortName],
                 enableUserData: true
             )
-            let episodesParams = Paths.GetItemsParameters(
-                isRecursive: true, sortOrder: [.ascending],
-                includeItemTypes: [.episode], sortBy: [.sortName],
-                enableUserData: true
+            let episodesCountParams = Paths.GetItemsParameters(
+                limit: 0,
+                isRecursive: true,
+                includeItemTypes: [.episode]
             )
             let collectionsParams = Paths.GetItemsParameters(
                 isRecursive: true,
@@ -182,7 +182,7 @@ class LibraryViewModel {
 
             async let moviesResult        = client.send(Paths.getItems(parameters: moviesParams)).value.items
             async let showsResult         = client.send(Paths.getItems(parameters: showsParams)).value.items
-            async let episodesResult      = client.send(Paths.getItems(parameters: episodesParams)).value.items
+            async let episodeCountResult  = client.send(Paths.getItems(parameters: episodesCountParams)).value.totalRecordCount
             async let collectionsResult   = client.send(Paths.getItems(parameters: collectionsParams)).value.items
             async let recommendedResult   = client.send(Paths.getItems(parameters: recommendedParams)).value.items
             async let recentMoviesResult  = client.send(Paths.getItems(parameters: recentMoviesParams)).value.items
@@ -192,7 +192,7 @@ class LibraryViewModel {
 
             let fetchedMovies             = try await moviesResult ?? []
             let fetchedShows              = try await showsResult ?? []
-            let fetchedEpisodes           = try await episodesResult ?? []
+            let fetchedEpisodeCount       = try await episodeCountResult ?? 0
             let fetchedCollections        = try await collectionsResult ?? []
             let fetchedRecommended        = try await recommendedResult ?? []
             let fetchedRecentMovies       = try await recentMoviesResult ?? []
@@ -206,7 +206,7 @@ class LibraryViewModel {
             withAnimation(.smooth(duration: 0.45)) {
                 movies              = fetchedMovies
                 tvShows             = fetchedShows
-                episodes            = fetchedEpisodes
+                episodes            = []
                 collections         = fetchedCollections
                 recommended         = fetchedRecommended
                 recentlyAddedMovies = fetchedRecentMovies
@@ -215,7 +215,7 @@ class LibraryViewModel {
                 resumeShows         = fetchedNextUp
                 favoritesCount      = fetchedFavorites
                 tvSeriesCount       = fetchedShows.count
-                episodeCount        = fetchedEpisodes.count
+                episodeCount        = fetchedEpisodeCount
 
                 updateAggregates()
             }

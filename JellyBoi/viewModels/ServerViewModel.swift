@@ -88,7 +88,14 @@ class ServerViewModel {
 
     func resetProgress(forItemID itemID: String, onComplete: (@MainActor @Sendable () -> Void)? = nil) async {
         if let client {
-            _ = try? await client.send(Paths.markUnplayedItem(itemID: itemID, userID: currentUser?.id))
+            let userID = currentUser?.id
+            _ = try? await client.send(Paths.markUnplayedItem(itemID: itemID, userID: userID))
+            let resetUserData = UpdateUserItemDataDto(
+                isPlayed: false,
+                playbackPositionTicks: 0,
+                playedPercentage: 0
+            )
+            _ = try? await client.send(Paths.updateItemUserData(itemID: itemID, userID: userID, resetUserData))
         }
 
         NotificationCenter.default.post(name: .mediaProgressReset, object: itemID)

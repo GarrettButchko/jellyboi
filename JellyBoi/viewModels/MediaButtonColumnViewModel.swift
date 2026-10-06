@@ -101,8 +101,7 @@ class MediaButtonColumnViewModel {
     }
 
     func shouldShowOptions(hasOptionsCallback: Bool) -> Bool {
-        guard hasOptionsCallback else { return false }
-        return item.type != .series && item.type != .boxSet
+        hasOptionsCallback
     }
 
     // MARK: - Playback Actions

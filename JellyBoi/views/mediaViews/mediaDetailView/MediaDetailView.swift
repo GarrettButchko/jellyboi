@@ -29,6 +29,7 @@ struct MediaDetailView: View {
 
     @State var detailVM = MediaDetailViewModel()
     @State var showOptionsSheet = false
+    @State var optionsSheetHeight: CGFloat = 0
     @State var selectedRelatedItem: BaseItemDto?
     @Namespace var relatedTransition
     @State var relatedZoomID: AnyHashable?
@@ -47,9 +48,18 @@ struct MediaDetailView: View {
 
     var displayItem: BaseItemDto { detailVM.detailedItem ?? item }
 
+    var playableItem: BaseItemDto {
+        if displayItem.type == .series || displayItem.type == .boxSet {
+            return detailVM.nextPlayableEpisode(libraryViewModel: libraryViewModel) ?? displayItem
+        }
+        return displayItem
+    }
+
     private var shouldShowOptionsButton: Bool {
-        let type = displayItem.type ?? item.type
-        return type != .series && type != .boxSet
+        if displayItem.type == .series || displayItem.type == .boxSet {
+            return detailVM.nextPlayableEpisode(libraryViewModel: libraryViewModel) != nil
+        }
+        return true
     }
 
     private var shouldShowSeriesButton: Bool {
@@ -78,24 +88,22 @@ struct MediaDetailView: View {
         selectedSeries = series
     }
 
-    private func playMedia(fromBeginning: Bool) {
-        if let itemToPlay = detailVM.nextPlayableEpisode(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning) {
-            playbackManager.play(
-                item: itemToPlay,
-                fromBeginning: fromBeginning,
-                client: serverViewModel.client,
-                userID: serverViewModel.currentUser?.id,
-                libraryViewModel: libraryViewModel
-            )
-        } else {
-            playbackManager.play(
-                item: displayItem,
-                fromBeginning: fromBeginning,
-                client: serverViewModel.client,
-                userID: serverViewModel.currentUser?.id,
-                libraryViewModel: libraryViewModel
-            )
-        }
+    func playMedia(fromBeginning: Bool) {
+        let itemToPlay = (displayItem.type == .series || displayItem.type == .boxSet)
+            ? (detailVM.nextPlayableEpisode(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning) ?? displayItem)
+            : displayItem
+
+        playbackManager.play(
+            item: itemToPlay,
+            fromBeginning: fromBeginning,
+            client: serverViewModel.client,
+            userID: serverViewModel.currentUser?.id,
+            libraryViewModel: libraryViewModel,
+            mediaSourceID: detailVM.selectedMediaSourceID,
+            audioStreamIndex: detailVM.selectedAudioStreamIndex,
+            subtitleStreamIndex: detailVM.selectedSubtitleStreamIndex,
+            maxHeight: detailVM.selectedMaxHeight
+        )
     }
 
     var body: some View {
@@ -251,6 +259,9 @@ struct MediaDetailView: View {
         }
         .sheet(isPresented: $showOptionsSheet) {
             optionsSheet
+                .presentationDetents(optionsSheetHeight > 0 ? [.height(optionsSheetHeight)] : [.medium])
+                .presentationDragIndicator(.visible)
+                .presentationSizing(.fitted)
         }
         .navigationDestination(item: $selectedSeries) { series in
             MediaDetailView(item: series)

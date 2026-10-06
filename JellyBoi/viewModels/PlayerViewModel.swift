@@ -35,6 +35,8 @@ final class PlayerViewModel: Identifiable {
     private(set) var durationTicks: Int = 0
     private(set) var playSessionID: String?
     private(set) var mediaSourceID: String?
+    private(set) var mediaSource: MediaSourceInfo?
+    private(set) var maxHeight: Int?
 
     private var timeObserverToken: Any?
     private var endObserver: NSObjectProtocol?
@@ -46,6 +48,7 @@ final class PlayerViewModel: Identifiable {
     private var hasReportedStart: Bool = false
     private var isCleanedUp: Bool = false
     private var hasAppliedInitialSeek: Bool = false
+    private var currentPlayMethod: PlayMethod = .directStream
 
     init(
         request: PlaybackManager.PlaybackRequest,
@@ -58,6 +61,8 @@ final class PlayerViewModel: Identifiable {
         self.userID = userID
         self.libraryViewModel = libraryViewModel
         self.durationTicks = request.item.runTimeTicks.map { Int($0) } ?? 0
+        self.mediaSourceID = request.mediaSourceID
+        self.maxHeight = request.maxHeight
         AppLogger.info("Initialized PlayerViewModel for '\(request.item.name ?? "Unknown")' (ID: \(request.item.id ?? "nil"))", tag: "Player")
     }
 
@@ -109,7 +114,8 @@ final class PlayerViewModel: Identifiable {
             subtitleProfiles: [
                 SubtitleProfile(format: "vtt", method: .hls),
                 SubtitleProfile(format: "webvtt", method: .hls),
-                SubtitleProfile(format: "subrip", method: .encode),
+                SubtitleProfile(format: "subrip", method: .hls),
+                SubtitleProfile(format: "srt", method: .hls),
                 SubtitleProfile(format: "ass", method: .encode),
                 SubtitleProfile(format: "ssa", method: .encode)
             ],
@@ -134,6 +140,13 @@ final class PlayerViewModel: Identifiable {
                 )
             ]
         )
+    }
+
+    private func resolveServerURL(path: String, client: JellyfinClient) -> URL? {
+        if path.hasPrefix("http://") || path.hasPrefix("https://") {
+            return URL(string: path)
+        }
+        return client.url(path: path)
     }
 
     private func authorizationHeader(for client: JellyfinClient) -> String {
@@ -196,36 +209,56 @@ final class PlayerViewModel: Identifiable {
             var selectedMediaSource: MediaSourceInfo?
 
             AppLogger.debug("Requesting playback info with Apple DeviceProfile for item \(itemID)", tag: "Player")
+            let targetBitrate: Int? = request.maxHeight.map { height in
+                (height < 720) ? 1_000_000 : ((height < 1080) ? 3_000_000 : 8_000_000)
+            }
+            let allowDirect = request.maxHeight == nil
+            let subIndex = request.subtitleStreamIndex
             let playbackDto = PlaybackInfoDto(
                 allowAudioStreamCopy: true,
-                allowVideoStreamCopy: true,
+                allowVideoStreamCopy: allowDirect,
+                audioStreamIndex: request.audioStreamIndex,
                 deviceProfile: Self.appleDeviceProfile,
-                enableDirectPlay: true,
-                enableDirectStream: true,
+                enableDirectPlay: allowDirect,
+                enableDirectStream: allowDirect,
                 enableTranscoding: true,
+                maxStreamingBitrate: targetBitrate,
+                mediaSourceID: request.mediaSourceID,
                 startTimeTicks: resumeTicks,
+                subtitleStreamIndex: subIndex,
                 userID: userID
             )
 
             do {
                 let playbackInfo = try await client.send(
-                    Paths.getPostedPlaybackInfo(itemID: itemID, parameters: nil, playbackDto)
+                    Paths.getPostedPlaybackInfo(
+                        itemID: itemID,
+                        parameters: .init(userID: userID, maxStreamingBitrate: targetBitrate),
+                        playbackDto
+                    )
                 ).value
                 self.playSessionID = playbackInfo.playSessionID
                 AppLogger.debug("Received playback info. Session ID: \(playbackInfo.playSessionID ?? "nil")", tag: "Player")
 
-                if let first = playbackInfo.mediaSources?.first {
+                let matchingSource = playbackInfo.mediaSources?.first(where: { $0.id == request.mediaSourceID })
+                    ?? playbackInfo.mediaSources?.first
+
+                if let first = matchingSource {
                     selectedMediaSource = first
+                    self.mediaSource = first
                     self.mediaSourceID = first.id
                     AppLogger.debug("Media source container: \(first.container ?? "unknown"), directPlay: \(first.isSupportsDirectPlay ?? false), directStream: \(first.isSupportsDirectStream ?? false), transcoding: \(first.isSupportsTranscoding ?? false)", tag: "Player")
 
                     if let transURL = first.transcodingURL, !transURL.isEmpty {
-                        if transURL.hasPrefix("http://") || transURL.hasPrefix("https://") {
-                            streamURL = URL(string: transURL)
-                        } else {
-                            streamURL = client.url(path: transURL)
+                        currentPlayMethod = (first.isSupportsDirectStream == true && first.isSupportsTranscoding != true) ? .directStream : .transcode
+                        var fullTransURL = transURL
+                        if let maxHeight = request.maxHeight, !fullTransURL.contains("MaxHeight=") {
+                            let sep = fullTransURL.contains("?") ? "&" : "?"
+                            let bitrate: Int = (maxHeight < 720) ? 1_500_000 : ((maxHeight < 1080) ? 4_000_000 : 8_000_000)
+                            fullTransURL += "\(sep)MaxHeight=\(maxHeight)&VideoBitRate=\(bitrate)&MaxStreamingBitrate=\(bitrate)"
                         }
-                        AppLogger.info("Using server-provided transcoding URL: \(transURL)", tag: "Player")
+                        streamURL = resolveServerURL(path: fullTransURL, client: client)
+                        AppLogger.info("Using server-provided transcoding URL: \(streamURL?.absoluteString ?? fullTransURL)", tag: "Player")
                     }
                 }
             } catch {
@@ -236,9 +269,11 @@ final class PlayerViewModel: Identifiable {
             if streamURL == nil {
                 let container = selectedMediaSource?.container?.lowercased() ?? ""
                 let isAppleNativeContainer = ["mp4", "m4v", "mov"].contains(container)
-                let canDirectPlay = selectedMediaSource?.isSupportsDirectPlay == true && isAppleNativeContainer
+                let hasCustomStreams = request.audioStreamIndex != nil || (request.subtitleStreamIndex != nil && request.subtitleStreamIndex! >= 0) || request.maxHeight != nil
+                let canDirectPlay = selectedMediaSource?.isSupportsDirectPlay == true && isAppleNativeContainer && !hasCustomStreams
 
                 if canDirectPlay {
+                    currentPlayMethod = .directPlay
                     AppLogger.info("Media container is '\(container)'; using direct static stream", tag: "Player")
                     streamURL = client.url(
                         with: Paths.getVideoStream(
@@ -252,12 +287,24 @@ final class PlayerViewModel: Identifiable {
                         queryAPIKey: true
                     )
                 } else {
+                    currentPlayMethod = (request.maxHeight != nil) ? .transcode : .directStream
                     AppLogger.info("Container '\(container)' requires HLS remuxing/transcoding for AVPlayer; requesting master.m3u8", tag: "Player")
-                    let sourceID = selectedMediaSource?.id ?? itemID
+                    let sourceID = selectedMediaSource?.id ?? request.mediaSourceID ?? itemID
                     let sessionID = self.playSessionID ?? UUID().uuidString
                     self.playSessionID = sessionID
-                    let hlsPath = "/Videos/\(itemID)/master.m3u8?MediaSourceId=\(sourceID)&PlaySessionId=\(sessionID)&VideoCodec=h264,hevc&AudioCodec=aac,mp3,ac3,eac3&TranscodingMaxAudioChannels=6&SegmentContainer=ts&MinSegments=1&BreakOnNonKeyFrames=True&StartTimeTicks=\(resumeTicks)"
-                    streamURL = client.url(path: hlsPath)
+                    var hlsPath = "/Videos/\(itemID)/master.m3u8?MediaSourceId=\(sourceID)&PlaySessionId=\(sessionID)&VideoCodec=h264,hevc&AudioCodec=aac,mp3,ac3,eac3&TranscodingMaxAudioChannels=6&SegmentContainer=ts&MinSegments=1&BreakOnNonKeyFrames=True&StartTimeTicks=\(resumeTicks)"
+                    if let audioIndex = request.audioStreamIndex {
+                        hlsPath += "&AudioStreamIndex=\(audioIndex)"
+                    }
+                    if let subtitleIndex = request.subtitleStreamIndex {
+                        hlsPath += "&SubtitleStreamIndex=\(subtitleIndex)"
+                    }
+                    if let maxHeight = request.maxHeight {
+                        hlsPath += "&MaxHeight=\(maxHeight)"
+                        let bitrate: Int = (maxHeight < 720) ? 1_500_000 : ((maxHeight < 1080) ? 4_000_000 : 8_000_000)
+                        hlsPath += "&VideoBitRate=\(bitrate)&MaxStreamingBitrate=\(bitrate)"
+                    }
+                    streamURL = resolveServerURL(path: hlsPath, client: client)
                 }
             }
 
@@ -368,9 +415,6 @@ final class PlayerViewModel: Identifiable {
 
         // Start background artwork fetch if artwork was not yet available in cache
         startAsyncArtworkFetchIfNeeded()
-        avPlayer.allowsExternalPlayback = true
-        avPlayer.usesExternalPlaybackWhileExternalScreenIsActive = true
-        self.player = avPlayer
 
         // Observe mute status to ensure CoreAudio/Simulator volume stays in sync
         var lastNonZeroVolume: Float = 1.0
@@ -478,7 +522,7 @@ final class PlayerViewModel: Identifiable {
                     continuation.resume(returning: val)
                 }
 
-                statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] currentItem, _ in
+                statusObserver = playerItem.observe(\.status, options: [.initial, .new]) { [weak self] currentItem, _ in
                     Task { @MainActor [weak self] in
                         guard let self else { return }
                         switch currentItem.status {
@@ -516,6 +560,9 @@ final class PlayerViewModel: Identifiable {
 
     private func applyReadyToPlay() async {
         self.isLoading = false
+        if let current = self.player?.currentItem {
+            selectRequestedSubtitle(in: current)
+        }
         if !self.hasAppliedInitialSeek && self.currentPositionTicks > 0 {
             self.hasAppliedInitialSeek = true
             let seconds = Double(self.currentPositionTicks) / 10_000_000.0
@@ -538,13 +585,45 @@ final class PlayerViewModel: Identifiable {
         }
     }
 
+    // MARK: - Subtitle Selection
+
+    private func selectRequestedSubtitle(in playerItem: AVPlayerItem) {
+        guard let group = playerItem.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else { return }
+
+        if request.subtitleStreamIndex == -1 {
+            playerItem.select(nil, in: group)
+            AppLogger.debug("Deselected subtitle stream group for item (Subtitles Off)", tag: "Player")
+            return
+        }
+
+        if let subIndex = request.subtitleStreamIndex, subIndex >= 0 {
+            let streams = (request.item.mediaStreams ?? []) + (mediaSource?.mediaStreams ?? [])
+            if let stream = streams.first(where: { $0.type == .subtitle && $0.index == subIndex }) {
+                let streamLang = stream.language?.lowercased()
+                if let match = group.options.first(where: { opt in
+                    if let lang = streamLang, (opt.extendedLanguageTag?.lowercased() == lang || opt.locale?.identifier.lowercased().hasPrefix(lang) == true) {
+                        return true
+                    }
+                    if let title = stream.title, opt.displayName.localizedCaseInsensitiveContains(title) {
+                        return true
+                    }
+                    return false
+                }) {
+                    playerItem.select(match, in: group)
+                    AppLogger.debug("Auto-selected subtitle track: \(match.displayName)", tag: "Player")
+                }
+            }
+        }
+    }
+
     // MARK: - Periodic Reporting
 
     private func startPeriodicReporting() {
         periodicReportTimer?.invalidate()
         periodicReportTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                await self?.reportPlaybackProgress()
+                guard let self, self.player?.timeControlStatus != .paused else { return }
+                await self.reportPlaybackProgress()
             }
         }
     }
@@ -553,13 +632,13 @@ final class PlayerViewModel: Identifiable {
 
     func reportPlaybackStart() async {
         guard let client, let itemID = item.id else { return }
-        AppLogger.debug("Reporting playback start to Jellyfin (positionTicks: \(currentPositionTicks))", tag: "Player")
+        AppLogger.debug("Reporting playback start to Jellyfin (positionTicks: \(currentPositionTicks), method: \(currentPlayMethod.rawValue))", tag: "Player")
         let state = PlaybackStateInfo(
             canSeek: true,
             isPaused: false,
             itemID: itemID,
             mediaSourceID: mediaSourceID,
-            playMethod: .directStream,
+            playMethod: currentPlayMethod,
             playSessionID: playSessionID,
             positionTicks: currentPositionTicks
         )
@@ -584,7 +663,7 @@ final class PlayerViewModel: Identifiable {
             isPaused: isPaused,
             itemID: itemID,
             mediaSourceID: mediaSourceID,
-            playMethod: .directStream,
+            playMethod: currentPlayMethod,
             playSessionID: playSessionID,
             positionTicks: currentPositionTicks
         )

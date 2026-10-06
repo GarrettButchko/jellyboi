@@ -29,12 +29,28 @@ final class PlaybackManager {
         let item: BaseItemDto
         let startFromBeginning: Bool
         let localFileURL: URL?
+        let mediaSourceID: String?
+        let audioStreamIndex: Int?
+        let subtitleStreamIndex: Int?
+        let maxHeight: Int?
 
-        init(item: BaseItemDto, startFromBeginning: Bool = false, localFileURL: URL? = nil) {
+        init(
+            item: BaseItemDto,
+            startFromBeginning: Bool = false,
+            localFileURL: URL? = nil,
+            mediaSourceID: String? = nil,
+            audioStreamIndex: Int? = nil,
+            subtitleStreamIndex: Int? = nil,
+            maxHeight: Int? = nil
+        ) {
             self.id = (item.id ?? UUID().uuidString) + (startFromBeginning ? "-start" : "-resume")
             self.item = item
             self.startFromBeginning = startFromBeginning
             self.localFileURL = localFileURL
+            self.mediaSourceID = mediaSourceID
+            self.audioStreamIndex = audioStreamIndex
+            self.subtitleStreamIndex = subtitleStreamIndex
+            self.maxHeight = maxHeight
         }
     }
 
@@ -55,7 +71,11 @@ final class PlaybackManager {
         fromBeginning: Bool = false,
         client: JellyfinClient? = nil,
         userID: String? = nil,
-        libraryViewModel: LibraryViewModel? = nil
+        libraryViewModel: LibraryViewModel? = nil,
+        mediaSourceID: String? = nil,
+        audioStreamIndex: Int? = nil,
+        subtitleStreamIndex: Int? = nil,
+        maxHeight: Int? = nil
     ) {
         guard item.id != nil else {
             AppLogger.warning("Cannot start playback: Item ID is missing", tag: "PlaybackManager")
@@ -100,7 +120,11 @@ final class PlaybackManager {
                                 fromBeginning: fromBeginning,
                                 client: resolvedClient,
                                 userID: resolvedUserID,
-                                libraryViewModel: resolvedLibrary
+                                libraryViewModel: resolvedLibrary,
+                                mediaSourceID: mediaSourceID,
+                                audioStreamIndex: audioStreamIndex,
+                                subtitleStreamIndex: subtitleStreamIndex,
+                                maxHeight: maxHeight
                             )
                         }
                     )
@@ -132,7 +156,11 @@ final class PlaybackManager {
                                 fromBeginning: fromBeginning,
                                 client: resolvedClient,
                                 userID: resolvedUserID,
-                                libraryViewModel: resolvedLibrary
+                                libraryViewModel: resolvedLibrary,
+                                mediaSourceID: mediaSourceID,
+                                audioStreamIndex: audioStreamIndex,
+                                subtitleStreamIndex: subtitleStreamIndex,
+                                maxHeight: maxHeight
                             )
                         }
                     )
@@ -141,7 +169,14 @@ final class PlaybackManager {
                 }
             }
 
-            let request = PlaybackRequest(item: targetItem, startFromBeginning: fromBeginning)
+            let request = PlaybackRequest(
+                item: targetItem,
+                startFromBeginning: fromBeginning,
+                mediaSourceID: mediaSourceID,
+                audioStreamIndex: audioStreamIndex,
+                subtitleStreamIndex: subtitleStreamIndex,
+                maxHeight: maxHeight
+            )
             let vm = PlayerViewModel(
                 request: request,
                 client: resolvedClient,
@@ -171,7 +206,11 @@ final class PlaybackManager {
                             fromBeginning: fromBeginning,
                             client: resolvedClient,
                             userID: resolvedUserID,
-                            libraryViewModel: resolvedLibrary
+                            libraryViewModel: resolvedLibrary,
+                            mediaSourceID: mediaSourceID,
+                            audioStreamIndex: audioStreamIndex,
+                            subtitleStreamIndex: subtitleStreamIndex,
+                            maxHeight: maxHeight
                         )
                     }
                 )
