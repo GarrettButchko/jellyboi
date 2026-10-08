@@ -36,7 +36,7 @@ final class PlayerViewModel: Identifiable {
     private(set) var playSessionID: String?
     private(set) var mediaSourceID: String?
     private(set) var mediaSource: MediaSourceInfo?
-    private(set) var maxHeight: Int?
+    private(set) var maxBitrate: Int?
 
     private var timeObserverToken: Any?
     private var endObserver: NSObjectProtocol?
@@ -62,7 +62,7 @@ final class PlayerViewModel: Identifiable {
         self.libraryViewModel = libraryViewModel
         self.durationTicks = request.item.runTimeTicks.map { Int($0) } ?? 0
         self.mediaSourceID = request.mediaSourceID
-        self.maxHeight = request.maxHeight
+        self.maxBitrate = request.maxBitrate
         AppLogger.info("Initialized PlayerViewModel for '\(request.item.name ?? "Unknown")' (ID: \(request.item.id ?? "nil"))", tag: "Player")
     }
 
@@ -209,10 +209,8 @@ final class PlayerViewModel: Identifiable {
             var selectedMediaSource: MediaSourceInfo?
 
             AppLogger.debug("Requesting playback info with Apple DeviceProfile for item \(itemID)", tag: "Player")
-            let targetBitrate: Int? = request.maxHeight.map { height in
-                (height < 720) ? 1_000_000 : ((height < 1080) ? 3_000_000 : 8_000_000)
-            }
-            let allowDirect = request.maxHeight == nil
+            let targetBitrate: Int? = request.maxBitrate
+            let allowDirect = request.maxBitrate == nil
             let subIndex = request.subtitleStreamIndex
             let playbackDto = PlaybackInfoDto(
                 allowAudioStreamCopy: true,
@@ -250,12 +248,11 @@ final class PlayerViewModel: Identifiable {
                     AppLogger.debug("Media source container: \(first.container ?? "unknown"), directPlay: \(first.isSupportsDirectPlay ?? false), directStream: \(first.isSupportsDirectStream ?? false), transcoding: \(first.isSupportsTranscoding ?? false)", tag: "Player")
 
                     if let transURL = first.transcodingURL, !transURL.isEmpty {
-                        currentPlayMethod = (first.isSupportsDirectStream == true && first.isSupportsTranscoding != true) ? .directStream : .transcode
+                        currentPlayMethod = (request.maxBitrate != nil) ? .transcode : ((first.isSupportsDirectStream == true && first.isSupportsTranscoding != true) ? .directStream : .transcode)
                         var fullTransURL = transURL
-                        if let maxHeight = request.maxHeight, !fullTransURL.contains("MaxHeight=") {
+                        if let maxBitrate = request.maxBitrate, !fullTransURL.contains("MaxStreamingBitrate=") {
                             let sep = fullTransURL.contains("?") ? "&" : "?"
-                            let bitrate: Int = (maxHeight < 720) ? 1_500_000 : ((maxHeight < 1080) ? 4_000_000 : 8_000_000)
-                            fullTransURL += "\(sep)MaxHeight=\(maxHeight)&VideoBitRate=\(bitrate)&MaxStreamingBitrate=\(bitrate)"
+                            fullTransURL += "\(sep)VideoBitRate=\(maxBitrate)&MaxStreamingBitrate=\(maxBitrate)"
                         }
                         streamURL = resolveServerURL(path: fullTransURL, client: client)
                         AppLogger.info("Using server-provided transcoding URL: \(streamURL?.absoluteString ?? fullTransURL)", tag: "Player")
@@ -269,7 +266,7 @@ final class PlayerViewModel: Identifiable {
             if streamURL == nil {
                 let container = selectedMediaSource?.container?.lowercased() ?? ""
                 let isAppleNativeContainer = ["mp4", "m4v", "mov"].contains(container)
-                let hasCustomStreams = request.audioStreamIndex != nil || (request.subtitleStreamIndex != nil && request.subtitleStreamIndex! >= 0) || request.maxHeight != nil
+                let hasCustomStreams = request.audioStreamIndex != nil || (request.subtitleStreamIndex != nil && request.subtitleStreamIndex! >= 0) || request.maxBitrate != nil
                 let canDirectPlay = selectedMediaSource?.isSupportsDirectPlay == true && isAppleNativeContainer && !hasCustomStreams
 
                 if canDirectPlay {
@@ -287,7 +284,7 @@ final class PlayerViewModel: Identifiable {
                         queryAPIKey: true
                     )
                 } else {
-                    currentPlayMethod = (request.maxHeight != nil) ? .transcode : .directStream
+                    currentPlayMethod = (request.maxBitrate != nil) ? .transcode : .directStream
                     AppLogger.info("Container '\(container)' requires HLS remuxing/transcoding for AVPlayer; requesting master.m3u8", tag: "Player")
                     let sourceID = selectedMediaSource?.id ?? request.mediaSourceID ?? itemID
                     let sessionID = self.playSessionID ?? UUID().uuidString
@@ -299,10 +296,8 @@ final class PlayerViewModel: Identifiable {
                     if let subtitleIndex = request.subtitleStreamIndex {
                         hlsPath += "&SubtitleStreamIndex=\(subtitleIndex)"
                     }
-                    if let maxHeight = request.maxHeight {
-                        hlsPath += "&MaxHeight=\(maxHeight)"
-                        let bitrate: Int = (maxHeight < 720) ? 1_500_000 : ((maxHeight < 1080) ? 4_000_000 : 8_000_000)
-                        hlsPath += "&VideoBitRate=\(bitrate)&MaxStreamingBitrate=\(bitrate)"
+                    if let maxBitrate = request.maxBitrate {
+                        hlsPath += "&VideoBitRate=\(maxBitrate)&MaxStreamingBitrate=\(maxBitrate)"
                     }
                     streamURL = resolveServerURL(path: hlsPath, client: client)
                 }

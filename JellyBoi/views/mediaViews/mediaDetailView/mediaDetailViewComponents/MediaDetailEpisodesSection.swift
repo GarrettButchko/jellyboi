@@ -23,7 +23,7 @@ extension MediaDetailView {
             #endif
             return true
         }()
-        if showEpisodes, displayItem.type == .series, !detailVM.seasons.isEmpty {
+        if showEpisodes, displayItem.type == .series, (!detailVM.seasons.isEmpty || detailVM.isLoadingEpisodes) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Episodes")
                     .font(.system(size: 20, weight: .bold))
@@ -47,39 +47,48 @@ extension MediaDetailView {
                     }
                 }
 
-                ScrollView(.horizontal) {
-                    LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(Array(detailVM.episodes.enumerated()), id: \.element.id) { index, episode in
-                            let cardWidth = episodeCardHeight * episode.imageAspectRatio
-                            let zoomID: AnyHashable = AnyHashable("episode-\(detailVM.selectedSeasonIndex)-\(index)")
-
-                            MediaCard(
-                                item: episode,
-                                posterURL: detailVM.episodeThumbnailURL(for: episode),
-                                namespace: episodeTransition,
-                                onSelect: {
-                                    episodeZoomID = zoomID
-                                    selectedEpisode = episode
-                                },
-                                zoomID: zoomID,
-                                imageAspectRatio: episode.imageAspectRatio,
-                                onContinueWatching: {
-                                    playbackManager.play(item: episode, fromBeginning: false)
-                                },
-                                onStartFromBeginning: {
-                                    playbackManager.play(item: episode, fromBeginning: true)
-                                }
-                            )
-                            .frame(width: cardWidth, height: episodeCardHeight)
-                        }
+                if detailVM.episodes.isEmpty {
+                    if detailVM.isLoadingEpisodes {
+                        SkeletonEpisodesRow()
+                            .transition(.opacity)
                     }
-                    .padding(.horizontal, 16)
-                    .scrollTargetLayout()
+                } else {
+                    ScrollView(.horizontal) {
+                        LazyHStack(alignment: .top, spacing: 12) {
+                            ForEach(Array(detailVM.episodes.enumerated()), id: \.element.id) { index, episode in
+                                let cardWidth = episodeCardHeight * episode.imageAspectRatio
+                                let zoomID: AnyHashable = AnyHashable("episode-\(detailVM.selectedSeasonIndex)-\(index)")
+
+                                MediaCard(
+                                    item: episode,
+                                    posterURL: detailVM.episodeThumbnailURL(for: episode),
+                                    namespace: episodeTransition,
+                                    onSelect: {
+                                        episodeZoomID = zoomID
+                                        selectedEpisode = episode
+                                    },
+                                    zoomID: zoomID,
+                                    imageAspectRatio: episode.imageAspectRatio,
+                                    onContinueWatching: {
+                                        playbackManager.play(item: episode, fromBeginning: false)
+                                    },
+                                    onStartFromBeginning: {
+                                        playbackManager.play(item: episode, fromBeginning: true)
+                                    }
+                                )
+                                .frame(width: cardWidth, height: episodeCardHeight)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .scrollTargetLayout()
+                    }
+                    .scrollClipDisabled()
+                    .scrollIndicators(.hidden)
+                    .scrollTargetBehavior(.viewAligned)
+                    .transition(.opacity)
                 }
-                .scrollClipDisabled()
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.viewAligned)
             }
+            .animation(.easeInOut(duration: 0.3), value: detailVM.episodes.isEmpty)
         }
     }
 

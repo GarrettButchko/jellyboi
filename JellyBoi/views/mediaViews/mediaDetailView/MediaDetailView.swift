@@ -11,15 +11,16 @@ import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
 
-private var safeAreaTop: CGFloat {
-    UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .first?.keyWindow?.safeAreaInsets.top ?? 0
-}
 
 struct MediaDetailView: View {
     let item: BaseItemDto
     var cameFromShow: Bool = false
+
+    init(item: BaseItemDto, cameFromShow: Bool = false) {
+        self.item = item
+        self.cameFromShow = cameFromShow
+        _detailVM = State(initialValue: MediaDetailViewModel(item: item))
+    }
 
     @Environment(ServerViewModel.self) var serverViewModel
     @Environment(LibraryViewModel.self) var libraryViewModel
@@ -37,9 +38,6 @@ struct MediaDetailView: View {
     @Namespace var collectionTransition
     @State var scrollOffset: CGFloat = 0
     @State var backButtonHeight: CGFloat = 0
-    @State var isFavorited = false
-    @State var isDownloaded = false
-    @Namespace var actionNamespace
     @State var selectedEpisode: BaseItemDto?
     @Namespace var episodeTransition
     @State var episodeZoomID: AnyHashable?
@@ -102,7 +100,7 @@ struct MediaDetailView: View {
             mediaSourceID: detailVM.selectedMediaSourceID,
             audioStreamIndex: detailVM.selectedAudioStreamIndex,
             subtitleStreamIndex: detailVM.selectedSubtitleStreamIndex,
-            maxHeight: detailVM.selectedMaxHeight
+            maxBitrate: detailVM.selectedMaxBitrate
         )
     }
 
@@ -233,7 +231,7 @@ struct MediaDetailView: View {
                             .padding(14)
                             .hidden()
                             .overlay {
-                                Image(systemName: "square.stack.3d.up.fill")
+                                Image(systemName: "tv")
                                     .font(.system(size: 17, weight: .semibold))
                                     .foregroundStyle(Color.mainOpp)
                             }

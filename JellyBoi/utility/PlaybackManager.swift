@@ -32,7 +32,7 @@ final class PlaybackManager {
         let mediaSourceID: String?
         let audioStreamIndex: Int?
         let subtitleStreamIndex: Int?
-        let maxHeight: Int?
+        let maxBitrate: Int?
 
         init(
             item: BaseItemDto,
@@ -41,7 +41,7 @@ final class PlaybackManager {
             mediaSourceID: String? = nil,
             audioStreamIndex: Int? = nil,
             subtitleStreamIndex: Int? = nil,
-            maxHeight: Int? = nil
+            maxBitrate: Int? = nil
         ) {
             self.id = (item.id ?? UUID().uuidString) + (startFromBeginning ? "-start" : "-resume")
             self.item = item
@@ -50,7 +50,7 @@ final class PlaybackManager {
             self.mediaSourceID = mediaSourceID
             self.audioStreamIndex = audioStreamIndex
             self.subtitleStreamIndex = subtitleStreamIndex
-            self.maxHeight = maxHeight
+            self.maxBitrate = maxBitrate
         }
     }
 
@@ -75,7 +75,7 @@ final class PlaybackManager {
         mediaSourceID: String? = nil,
         audioStreamIndex: Int? = nil,
         subtitleStreamIndex: Int? = nil,
-        maxHeight: Int? = nil
+        maxBitrate: Int? = nil
     ) {
         guard item.id != nil else {
             AppLogger.warning("Cannot start playback: Item ID is missing", tag: "PlaybackManager")
@@ -124,7 +124,7 @@ final class PlaybackManager {
                                 mediaSourceID: mediaSourceID,
                                 audioStreamIndex: audioStreamIndex,
                                 subtitleStreamIndex: subtitleStreamIndex,
-                                maxHeight: maxHeight
+                                maxBitrate: maxBitrate
                             )
                         }
                     )
@@ -160,7 +160,7 @@ final class PlaybackManager {
                                 mediaSourceID: mediaSourceID,
                                 audioStreamIndex: audioStreamIndex,
                                 subtitleStreamIndex: subtitleStreamIndex,
-                                maxHeight: maxHeight
+                                maxBitrate: maxBitrate
                             )
                         }
                     )
@@ -175,7 +175,7 @@ final class PlaybackManager {
                 mediaSourceID: mediaSourceID,
                 audioStreamIndex: audioStreamIndex,
                 subtitleStreamIndex: subtitleStreamIndex,
-                maxHeight: maxHeight
+                maxBitrate: maxBitrate
             )
             let vm = PlayerViewModel(
                 request: request,
@@ -210,7 +210,7 @@ final class PlaybackManager {
                             mediaSourceID: mediaSourceID,
                             audioStreamIndex: audioStreamIndex,
                             subtitleStreamIndex: subtitleStreamIndex,
-                            maxHeight: maxHeight
+                            maxBitrate: maxBitrate
                         )
                     }
                 )

@@ -38,26 +38,26 @@ extension EnvironmentValues {
 /// skeleton to the real content once `showsContent` flips true.
 struct SkeletonZone<Content: View, Placeholder: View>: View {
     let showsContent: Bool
-    let placeholder: Placeholder
-    let content: Content
+    let placeholder: () -> Placeholder
+    let content: () -> Content
 
     init(
         showsContent: Bool,
-        @ViewBuilder placeholder: () -> Placeholder,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder placeholder: @escaping () -> Placeholder,
+        @ViewBuilder content: @escaping () -> Content
     ) {
         self.showsContent = showsContent
-        self.placeholder = placeholder()
-        self.content = content()
+        self.placeholder = placeholder
+        self.content = content
     }
 
     var body: some View {
         VStack(spacing: 0) {
             if showsContent {
-                content
+                content()
                     .transition(.opacity)
             } else {
-                placeholder
+                placeholder()
                     .transition(.opacity)
             }
         }
@@ -221,10 +221,10 @@ struct SkeletonMediaGrid: View {
     }
 }
 
-// MARK: - Episodes section skeleton
+// MARK: - Episodes row skeleton
 
-/// Loading placeholder that mirrors the episodes section of a series detail view.
-struct SkeletonEpisodesSection: View {
+/// Loading placeholder for the horizontal scrolling episodes row.
+struct SkeletonEpisodesRow: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.skeletonPulse) private var pulse
 
@@ -232,24 +232,34 @@ struct SkeletonEpisodesSection: View {
     private var cardWidth: CGFloat { cardHeight * (16.0 / 9.0) }
 
     var body: some View {
+        ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(0..<5, id: \.self) { _ in
+                    SkeletonBlock(cornerRadius: 16)
+                        .frame(width: cardWidth, height: cardHeight)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .scrollClipDisabled()
+        .scrollIndicators(.hidden)
+        .disabled(true)
+        .onAppear { pulse.start() }
+    }
+}
+
+// MARK: - Episodes section skeleton
+
+/// Loading placeholder that mirrors the episodes section of a series detail view.
+struct SkeletonEpisodesSection: View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SkeletonBlock(cornerRadius: 6)
                 .frame(width: 100, height: 22)
                 .padding(.horizontal, 16)
 
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(0..<5, id: \.self) { _ in
-                        SkeletonBlock(cornerRadius: 16)
-                            .frame(width: cardWidth, height: cardHeight)
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-            .scrollIndicators(.hidden)
-            .disabled(true)
+            SkeletonEpisodesRow()
         }
-        .onAppear { pulse.start() }
     }
 }
 

@@ -31,20 +31,21 @@ class MediaDetailViewModel {
     var heroReady = false
     var isLoading = false
     var isLoadingCollectionItems = false
+    var isLoadingEpisodes = false
     private var client: JellyfinClient?
 
-    // MARK: - Playback Configuration (Video Quality, Audio, Subtitles)
+    // MARK: - Playback Configuration (Video Quality / Bitrate, Audio, Subtitles)
 
-    struct ResolutionOption: Identifiable, Hashable {
+    struct QualityOption: Identifiable, Hashable {
         let id: String
         let label: String
         let mediaSourceID: String?
-        let maxHeight: Int?
+        let maxBitrate: Int?
     }
 
     var mediaSources: [MediaSourceInfo] = []
     var selectedMediaSourceID: String?
-    var selectedMaxHeight: Int?
+    var selectedMaxBitrate: Int?
     var selectedAudioStreamIndex: Int?
     var selectedSubtitleStreamIndex: Int? = -1
     var isLoadingPlaybackOptions = false
@@ -52,6 +53,9 @@ class MediaDetailViewModel {
     init(item: BaseItemDto? = nil) {
         if let item {
             self.sourceItem = item
+            if item.type == .series {
+                self.isLoadingEpisodes = true
+            }
             if let ratio = item.primaryImageAspectRatio, ratio > 0 {
                 self.heroAspectRatio = CGFloat(ratio)
             } else if item.type == .episode {
@@ -163,6 +167,9 @@ class MediaDetailViewModel {
     func prepare(item: BaseItemDto, client: JellyfinClient?) {
         self.sourceItem = item
         self.client = client
+        if item.type == .series {
+            self.isLoadingEpisodes = true
+        }
         if let ratio = item.primaryImageAspectRatio, ratio > 0 {
             self.heroAspectRatio = CGFloat(ratio)
         } else if item.type == .episode {
@@ -222,10 +229,13 @@ class MediaDetailViewModel {
 
         if item.type == .series || detailedItem?.type == .series {
             await loadSeasonsAndEpisodes(client: client, userID: userID)
-        } else if item.type == .boxSet || detailedItem?.type == .boxSet {
-            await loadCollectionItems(client: client, userID: userID)
-        } else if item.type == .episode || detailedItem?.type == .episode {
-            await loadParentSeries(client: client, userID: userID, libraryViewModel: libraryViewModel)
+        } else {
+            isLoadingEpisodes = false
+            if item.type == .boxSet || detailedItem?.type == .boxSet {
+                await loadCollectionItems(client: client, userID: userID)
+            } else if item.type == .episode || detailedItem?.type == .episode {
+                await loadParentSeries(client: client, userID: userID, libraryViewModel: libraryViewModel)
+            }
         }
     }
 
@@ -245,7 +255,12 @@ class MediaDetailViewModel {
     // MARK: - Seasons & Episodes
 
     func loadSeasonsAndEpisodes(client: JellyfinClient, userID: String?) async {
-        guard let seriesID = sourceItem?.id else { return }
+        guard let seriesID = sourceItem?.id else {
+            isLoadingEpisodes = false
+            return
+        }
+        isLoadingEpisodes = true
+        defer { isLoadingEpisodes = false }
 
         let seasonResult = (try? await client.send(
             Paths.getSeasons(
@@ -308,6 +323,8 @@ class MediaDetailViewModel {
 
     func selectSeason(_ index: Int, client: JellyfinClient, userID: String?) async {
         guard seasons.indices.contains(index), index != selectedSeasonIndex else { return }
+        isLoadingEpisodes = true
+        defer { isLoadingEpisodes = false }
         episodes = []
         selectedSeasonIndex = index
         let result = (try? await client.send(
@@ -391,20 +408,6 @@ class MediaDetailViewModel {
         ))
     }
 
-    func setFavorite(_ isFavorite: Bool, serverViewModel: ServerViewModel?) {
-        guard let serverViewModel, let itemID = displayItem?.id else { return }
-        let current = self.isFavorite
-        detailedItem?.setFavorite(isFavorite)
-        sourceItem?.setFavorite(isFavorite)
-        Task {
-            let result = await serverViewModel.setFavorite(isFavorite, forItemID: itemID)
-            if result == nil {
-                detailedItem?.setFavorite(current)
-                sourceItem?.setFavorite(current)
-            }
-        }
-    }
-
     func handleFavoriteNotification(itemID: String, isFavorite: Bool) {
         if displayItem?.id == itemID {
             detailedItem?.setFavorite(isFavorite)
@@ -462,89 +465,145 @@ class MediaDetailViewModel {
         return (source.mediaStreams ?? []).first(where: { $0.type == .video })
     }
 
-    func resolutionLabel(for height: Int?) -> String {
-        guard let height else { return "1080p" }
-        if height >= 2160 { return "4K" }
-        if height >= 1440 { return "1440p" }
-        if height >= 1080 { return "1080p" }
-        if height >= 720 { return "720p" }
-        if height >= 480 { return "480p" }
-        return "\(height)p"
+    static let standardBitratePresets: [Int] = [
+        120_000_000,
+        80_000_000,
+        60_000_000,
+        40_000_000,
+        20_000_000,
+        15_000_000,
+        10_000_000,
+        8_000_000,
+        6_000_000,
+        4_000_000,
+        3_000_000,
+        2_000_000,
+        1_500_000,
+        1_000_000,
+        720_000,
+        420_000
+    ]
+
+    static let fallbackBitratePresets: [Int] = [
+        20_000_000,
+        10_000_000,
+        8_000_000,
+        6_000_000,
+        4_000_000,
+        3_000_000,
+        2_000_000,
+        1_500_000,
+        1_000_000,
+        720_000,
+        420_000
+    ]
+
+    func formatBitrate(_ bps: Int) -> String {
+        guard bps > 0 else { return "0 bps" }
+        if bps >= 1_000_000 {
+            let mbps = Double(bps) / 1_000_000.0
+            if mbps >= 10 {
+                return String(format: "%.0f Mbps", mbps)
+            } else if mbps.truncatingRemainder(dividingBy: 1) == 0 {
+                return String(format: "%.0f Mbps", mbps)
+            } else {
+                return String(format: "%.1f Mbps", mbps)
+            }
+        } else {
+            let kbps = Int(round(Double(bps) / 1_000.0))
+            return "\(kbps) Kbps"
+        }
     }
 
-    var availableResolutions: [ResolutionOption] {
-        let originalHeight = currentVideoStream?.height ?? 1080
-        var options: [ResolutionOption] = []
+    var currentBitrate: Int? {
+        if let b = selectedMediaSource?.bitrate, b > 0 { return b }
+        if let b = currentVideoStream?.bitRate, b > 0 { return b }
+        return nil
+    }
+
+    var availableQualities: [QualityOption] {
+        var options: [QualityOption] = []
 
         if mediaSources.count > 1 {
             for source in mediaSources {
-                let vStream = (source.mediaStreams ?? []).first(where: { $0.type == .video })
-                let resName = resolutionLabel(for: vStream?.height)
+                let sBitrate = (source.bitrate.flatMap { $0 > 0 ? $0 : nil })
+                    ?? (source.mediaStreams ?? []).first(where: { $0.type == .video })?.bitRate.flatMap { $0 > 0 ? $0 : nil }
+                let bitText = sBitrate.map { " (\(formatBitrate($0)))" } ?? ""
                 let name: String
-                if let sName = source.name, !sName.isEmpty, sName.lowercased() != resName.lowercased() {
-                    name = "\(resName) - \(sName)"
+                if let sName = source.name, !sName.isEmpty {
+                    name = "\(sName)\(bitText)"
+                } else if sBitrate != nil {
+                    name = "Original\(bitText)"
                 } else {
-                    name = resName
+                    name = "Version"
                 }
-                options.append(ResolutionOption(
+                options.append(QualityOption(
                     id: source.id ?? UUID().uuidString,
                     label: name,
                     mediaSourceID: source.id,
-                    maxHeight: nil
+                    maxBitrate: nil
                 ))
             }
         } else {
-            let origLabel = resolutionLabel(for: originalHeight)
-            options.append(ResolutionOption(
+            let origLabel: String
+            if let origBitrate = currentBitrate {
+                origLabel = "Original (\(formatBitrate(origBitrate)))"
+            } else {
+                origLabel = "Auto (Original)"
+            }
+            options.append(QualityOption(
                 id: "orig",
                 label: origLabel,
                 mediaSourceID: selectedMediaSourceID,
-                maxHeight: nil
+                maxBitrate: nil
             ))
         }
 
-        let downscalePresets: [(Int, String)] = [
-            (1080, "1080p"),
-            (720, "720p"),
-            (480, "480p")
-        ]
+        let presetsToShow: [Int]
+        if let origBitrate = currentBitrate {
+            let threshold = Int(Double(origBitrate) * 0.9)
+            presetsToShow = Self.standardBitratePresets.filter { $0 <= threshold }
+        } else {
+            presetsToShow = Self.fallbackBitratePresets
+        }
 
-        for preset in downscalePresets {
-            if originalHeight > preset.0 {
-                if !options.contains(where: { $0.label == preset.1 }) {
-                    options.append(ResolutionOption(
-                        id: "res-\(preset.0)",
-                        label: preset.1,
-                        mediaSourceID: selectedMediaSourceID,
-                        maxHeight: preset.0
-                    ))
-                }
-            }
+        for preset in presetsToShow {
+            let label = formatBitrate(preset)
+            options.append(QualityOption(
+                id: "bitrate-\(preset)",
+                label: label,
+                mediaSourceID: selectedMediaSourceID,
+                maxBitrate: preset
+            ))
         }
 
         return options
     }
 
-    var selectedResolutionLabel: String {
-        if let maxHeight = selectedMaxHeight {
-            return resolutionLabel(for: maxHeight)
+    var selectedQualityLabel: String {
+        if let maxBitrate = selectedMaxBitrate {
+            return formatBitrate(maxBitrate)
         }
         if mediaSources.count > 1, let source = selectedMediaSource {
-            let vStream = (source.mediaStreams ?? []).first(where: { $0.type == .video })
-            let resName = resolutionLabel(for: vStream?.height)
-            if let sName = source.name, !sName.isEmpty, sName.lowercased() != resName.lowercased() {
-                return "\(resName) - \(sName)"
+            let sBitrate = (source.bitrate.flatMap { $0 > 0 ? $0 : nil })
+                ?? currentVideoStream?.bitRate.flatMap { $0 > 0 ? $0 : nil }
+            let bitText = sBitrate.map { " (\(formatBitrate($0)))" } ?? ""
+            if let sName = source.name, !sName.isEmpty {
+                return "\(sName)\(bitText)"
             }
-            return resName
+            return sBitrate.map { "Original (\(formatBitrate($0)))" } ?? "Original"
         }
-        return resolutionLabel(for: currentVideoStream?.height)
+        if let origBitrate = currentBitrate {
+            return "Original (\(formatBitrate(origBitrate)))"
+        }
+        return "Auto"
     }
 
-    func selectResolution(_ option: ResolutionOption) {
+    func selectQuality(_ option: QualityOption) {
         if let sourceID = option.mediaSourceID {
             selectMediaSource(sourceID)
         }
-        selectedMaxHeight = option.maxHeight
+        selectedMaxBitrate = option.maxBitrate
     }
 
     func audioStreamLabel(for stream: MediaStream) -> String {
@@ -661,7 +720,7 @@ class MediaDetailViewModel {
     func selectMediaSource(_ sourceID: String?) {
         guard selectedMediaSourceID != sourceID else { return }
         selectedMediaSourceID = sourceID
-        selectedMaxHeight = nil
+        selectedMaxBitrate = nil
         guard let source = selectedMediaSource else { return }
 
         let audios = (source.mediaStreams ?? []).filter { $0.type == .audio }
@@ -686,7 +745,7 @@ class MediaDetailViewModel {
     }
 
     func resetToDefaults() {
-        selectedMaxHeight = nil
+        selectedMaxBitrate = nil
         selectedMediaSourceID = mediaSources.first?.id
         guard let source = selectedMediaSource else {
             selectedAudioStreamIndex = nil

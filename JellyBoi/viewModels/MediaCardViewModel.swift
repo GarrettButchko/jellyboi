@@ -98,30 +98,6 @@ class MediaCardViewModel {
         return item.name ?? ""
     }
 
-    func handleStart(onSelect: () -> Void, onStartFromBeginning: (() -> Void)?) {
-        if let onStartFromBeginning {
-            onStartFromBeginning()
-        } else {
-            onSelect()
-        }
-    }
-
-    func handleContinueWatching(onSelect: () -> Void, onContinueWatching: (() -> Void)?) {
-        if let onContinueWatching {
-            onContinueWatching()
-        } else {
-            onSelect()
-        }
-    }
-
-    func handleStartFromBeginning(onSelect: () -> Void, onStartFromBeginning: (() -> Void)?) {
-        if let onStartFromBeginning {
-            onStartFromBeginning()
-        } else {
-            onSelect()
-        }
-    }
-
     func handleResetProgress(
         serverViewModel: ServerViewModel?,
         onResetProgress: (() -> Void)? = nil

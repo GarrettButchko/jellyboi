@@ -12,43 +12,40 @@ import JellyfinAPI
 extension MediaDetailView {
 
     var optionsSheet: some View {
-        
-            VStack(alignment: .leading, spacing: 18) {
-                if detailVM.isLoadingPlaybackOptions {
-                    HStack(spacing: 12) {
-                        ProgressView()
-                            .tint(Color.mainOpp)
-                        Text("Loading media streams…")
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(Color.mainOpp.opacity(0.7))
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 36)
-                } else {
-                    // Dropdown 1: Video Quality / Resolution
-                    qualityDropdown
-
-                    // Dropdown 2: Audio Track
-                    audioDropdown
-
-                    // Dropdown 3: Subtitles
-                    subtitlesDropdown
-
-                    // Reset Button
-                    resetButton
+        VStack(alignment: .leading, spacing: 18) {
+            if detailVM.isLoadingPlaybackOptions {
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .tint(Color.mainOpp)
+                    Text("Loading media streams…")
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(Color.mainOpp.opacity(0.7))
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 36)
+            } else {
+                // Dropdown 1: Video Quality / Bitrate
+                qualityDropdown
+
+                // Dropdown 2: Audio Track
+                audioDropdown
+
+                // Dropdown 3: Subtitles
+                subtitlesDropdown
+
+                // Reset Button
+                resetButton
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 24)
-            .fixedSize(horizontal: false, vertical: true)
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.size.height + proxy.safeAreaInsets.bottom
-            } action: { newHeight in
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    optionsSheetHeight = newHeight
-                }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { newHeight in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                optionsSheetHeight = newHeight
             }
-        
+        }
         .task(id: playableItem.id) {
             let target = playableItem
             await detailVM.loadPlaybackOptions(
@@ -69,11 +66,11 @@ extension MediaDetailView {
                 .padding(.horizontal, 4)
 
             Menu {
-                ForEach(detailVM.availableResolutions) { option in
+                ForEach(detailVM.availableQualities) { option in
                     Button {
-                        detailVM.selectResolution(option)
+                        detailVM.selectQuality(option)
                     } label: {
-                        if isResolutionSelected(option) {
+                        if isQualitySelected(option) {
                             Label(option.label, systemImage: "checkmark")
                         } else {
                             Text(option.label)
@@ -83,18 +80,18 @@ extension MediaDetailView {
             } label: {
                 dropdownLabel(
                     icon: "film",
-                    value: detailVM.selectedResolutionLabel
+                    value: detailVM.selectedQualityLabel
                 )
             }
             .menuStyle(.button)
         }
     }
 
-    private func isResolutionSelected(_ option: MediaDetailViewModel.ResolutionOption) -> Bool {
-        if let maxHeight = option.maxHeight {
-            return detailVM.selectedMaxHeight == maxHeight
+    private func isQualitySelected(_ option: MediaDetailViewModel.QualityOption) -> Bool {
+        if let maxBitrate = option.maxBitrate {
+            return detailVM.selectedMaxBitrate == maxBitrate
         }
-        if detailVM.selectedMaxHeight != nil {
+        if detailVM.selectedMaxBitrate != nil {
             return false
         }
         if let sourceID = option.mediaSourceID {
@@ -154,7 +151,6 @@ extension MediaDetailView {
                 .padding(.horizontal, 4)
 
             Menu {
-                // "Off" option
                 let isOff = (detailVM.selectedSubtitleStreamIndex == nil || detailVM.selectedSubtitleStreamIndex == -1)
                 Button {
                     detailVM.selectSubtitleStream(index: -1)

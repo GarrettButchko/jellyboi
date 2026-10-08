@@ -53,10 +53,6 @@ class MediaButtonColumnViewModel {
         return hasProgress
     }
 
-    var isUnwatched: Bool {
-        !isInProgress && !isWatched
-    }
-
     var progressVisible: Bool {
         isInProgress || isWatched
     }

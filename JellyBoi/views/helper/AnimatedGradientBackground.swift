@@ -9,8 +9,6 @@ import SwiftUI
 
 struct AnimatedGradientBackground: View {
 
-    @State private var phase: CGFloat = 0
-
     var body: some View {
         TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate

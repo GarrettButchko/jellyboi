@@ -23,13 +23,6 @@ enum MediaFilter: CaseIterable, Hashable {
         }
     }
 
-    var itemType: BaseItemKind {
-        switch self {
-        case .movies: .movie
-        case .tvShows: .series
-        case .collections: .boxSet
-        }
-    }
 }
 
 @Observable

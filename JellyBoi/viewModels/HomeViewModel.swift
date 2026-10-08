@@ -50,12 +50,6 @@ class HomeViewModel: ObservableObject {
         #endif
         return library.recentlyAddedShows
     }
-    var recentlyAdded: [BaseItemDto] {
-        #if DEBUG
-        if DebugSettings.shared.hideAllHomeRows { return [] }
-        #endif
-        return library.recentlyAdded
-    }
     var inProgressMovies: [BaseItemDto] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideContinueWatching { return [] }

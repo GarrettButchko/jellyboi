@@ -28,6 +28,7 @@ struct HeroBackdropView: View {
     private struct BackdropKey: Equatable, Hashable {
         let url: URL?
         let itemID: String?
+        let blurRadius: CGFloat
     }
 
     var body: some View {
@@ -48,7 +49,6 @@ struct HeroBackdropView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: height)
-        .blur(radius: blurRadius)
         .mask(
             LinearGradient(
                 colors: gradientColors,
@@ -58,7 +58,7 @@ struct HeroBackdropView: View {
         )
         .opacity(contentOpacity)
         .ignoresSafeArea(edges: .top)
-        .task(id: BackdropKey(url: url, itemID: itemID)) {
+        .task(id: BackdropKey(url: url, itemID: itemID, blurRadius: blurRadius)) {
             await handleImageChange()
         }
     }
@@ -123,7 +123,9 @@ struct HeroBackdropView: View {
     }
 
     private func fetchImage(for url: URL) async -> UIImage? {
-        let cacheKey = SDWebImageManager.shared.cacheKey(for: url)
+        let transformer = blurRadius > 0 ? SDImageBlurTransformer(radius: blurRadius) : nil
+        let context: [SDWebImageContextOption: Any]? = transformer.map { [.imageTransformer: $0] }
+        let cacheKey = SDWebImageManager.shared.cacheKey(for: url, context: context)
         if let cached = SDImageCache.shared.imageFromMemoryCache(forKey: cacheKey) {
             return cached
         }
@@ -156,6 +158,7 @@ struct HeroBackdropView: View {
                 let op = SDWebImageManager.shared.loadImage(
                     with: url,
                     options: [.avoidAutoSetImage, .retryFailed],
+                    context: context,
                     progress: nil
                 ) { image, _, _, _, finished, _ in
                     if finished {

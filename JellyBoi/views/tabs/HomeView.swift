@@ -20,7 +20,13 @@ struct HomeView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
-    @State private var scrollOffset: CGFloat = 0
+    private struct HomeScrollState: Equatable {
+        var isPastTop: Bool = false
+        var isHeaderCollapsed: Bool = false
+        var showScrollToTop: Bool = false
+    }
+
+    @State private var scrollState = HomeScrollState()
     @State private var headerHeight: CGFloat = 120
     @State private var heroItem: BaseItemDto?
     @State private var safeAreaTop: CGFloat = 0
@@ -35,7 +41,7 @@ struct HomeView: View {
                 ZStack(alignment: .top) {
                     ScrollView {
                         Color.clear.frame(height: 0).id(homeTopID)
-                        VStack(alignment: .leading) {
+                        LazyVStack(alignment: .leading, spacing: 8) {
                             if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
                                 EmptyStateView(
                                     icon: "wifi.exclamationmark",
@@ -167,17 +173,22 @@ struct HomeView: View {
                     .toolbarVisibility(.hidden, for: .navigationBar)
                     .contentMargins(.top, headerHeight, for: .scrollContent)
                     .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
-                    .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
-                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.contentOffset.y + geometry.contentInsets.top
-                    } action: { _, newValue in
-                        scrollOffset = newValue
+                    .scrollEdgeEffectHidden(!scrollState.isPastTop, for: .top)
+                    .onScrollGeometryChange(for: HomeScrollState.self) { geometry in
+                        let offset = geometry.contentOffset.y + geometry.contentInsets.top
+                        return HomeScrollState(
+                            isPastTop: offset > 0,
+                            isHeaderCollapsed: offset > 40,
+                            showScrollToTop: offset > 300
+                        )
+                    } action: { _, newState in
+                        scrollState = newState
                     }
                     
                     
-                    TabPageHeader(title: "Home", scrollOffset: scrollOffset, headerHeight: $headerHeight, showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact)
+                    TabPageHeader(title: "Home", scrollOffset: scrollState.isHeaderCollapsed ? 100 : 0, headerHeight: $headerHeight, showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact)
                     
-                    ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
+                    ScrollToTopOverlay(scrollOffset: scrollState.showScrollToTop ? 301 : 0, STTButtonHeight: $sttButtonHeight) {
                         withAnimation { proxy.scrollTo(homeTopID, anchor: .top) }
                     }
                 }

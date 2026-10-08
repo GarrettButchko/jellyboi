@@ -49,6 +49,7 @@ struct SectionRow: View {
                 .padding(.horizontal, 16)
                 .scrollTargetLayout()
             }
+            .scrollClipDisabled()
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned)
         }
