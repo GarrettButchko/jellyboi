@@ -276,23 +276,30 @@ class MediaDetailViewModel {
 
         // Filter out specials and missing-season placeholders
         let filtered = seasonResult.filter { season in
-            guard season.parentIndexNumber != 0 else { return false }
+            let num = season.indexNumber ?? season.parentIndexNumber ?? 0
+            guard num != 0 else { return false }
             return season.type == .season
         }
-        seasons = filtered.isEmpty ? seasonResult : filtered
+        let sortedSeasons = (filtered.isEmpty ? seasonResult : filtered).sorted {
+            let s0 = $0.indexNumber ?? $0.parentIndexNumber ?? 0
+            let s1 = $1.indexNumber ?? $1.parentIndexNumber ?? 0
+            return s0 < s1
+        }
+        seasons = sortedSeasons
         guard !seasons.isEmpty else { return }
 
-        // Load all seasons' episodes in parallel to find the in-progress one
+        // Load all seasons' episodes in parallel to build continuous list
         let allEpisodes = await withTaskGroup(of: (Int, [BaseItemDto]).self) { group in
             for (index, season) in seasons.enumerated() {
                 group.addTask {
+                    let seasonNum = season.indexNumber ?? season.parentIndexNumber
                     let eps = (try? await client.send(
                         Paths.getEpisodes(
                             seriesID: seriesID,
                             parameters: .init(
                                 userID: userID,
                                 fields: [.primaryImageAspectRatio, .mediaSources, .mediaStreams],
-                                season: season.parentIndexNumber,
+                                season: seasonNum,
                                 enableImages: true,
                                 enableUserData: true
                             )
@@ -308,38 +315,72 @@ class MediaDetailViewModel {
             return dict.sorted { $0.key < $1.key }.map(\.value)
         }
 
-        // Default to the season containing an in-progress episode, else Season 1
-        let inProgressIndex = allEpisodes.enumerated().first { _, eps in
-            eps.contains { episode in
-                guard let percent = episode.userData?.playedPercentage,
-                      let isPlayed = episode.userData?.isPlayed else { return false }
-                return percent > 0 && percent < 85 && !isPlayed
+        episodes = allEpisodes.flatMap { $0 }.sorted { a, b in
+            let sA = seasonNumber(for: a)
+            let sB = seasonNumber(for: b)
+            if sA != sB {
+                return sA < sB
             }
-        }?.offset ?? 0
+            let eA = a.indexNumber ?? 1
+            let eB = b.indexNumber ?? 1
+            if eA != eB {
+                return eA < eB
+            }
+            return (a.premiereDate ?? .distantPast) < (b.premiereDate ?? .distantPast)
+        }
 
-        selectedSeasonIndex = inProgressIndex
-        episodes = allEpisodes.indices.contains(selectedSeasonIndex) ? allEpisodes[selectedSeasonIndex] : []
+        if let nextEp = nextPlayableEpisode(libraryViewModel: nil),
+           let sIdx = seasonIndex(for: nextEp) {
+            selectedSeasonIndex = sIdx
+        } else {
+            selectedSeasonIndex = 0
+        }
     }
 
-    func selectSeason(_ index: Int, client: JellyfinClient, userID: String?) async {
-        guard seasons.indices.contains(index), index != selectedSeasonIndex else { return }
-        isLoadingEpisodes = true
-        defer { isLoadingEpisodes = false }
-        episodes = []
+    func selectSeason(_ index: Int, client: JellyfinClient? = nil, userID: String? = nil) async {
+        guard seasons.indices.contains(index) else { return }
         selectedSeasonIndex = index
-        let result = (try? await client.send(
-            Paths.getEpisodes(
-                seriesID: sourceItem?.id ?? "",
-                parameters: .init(
-                    userID: userID,
-                    fields: [.primaryImageAspectRatio, .mediaSources, .mediaStreams],
-                    season: seasons[index].parentIndexNumber,
-                    enableImages: true,
-                    enableUserData: true
-                )
-            )
-        ).value.items) ?? []
-        episodes = result
+    }
+
+    func seasonNumber(for episode: BaseItemDto) -> Int {
+        if let p = episode.parentIndexNumber { return p }
+        if let sID = episode.seasonID,
+           let s = seasons.first(where: { $0.id == sID }) {
+            return s.indexNumber ?? s.parentIndexNumber ?? 1
+        }
+        return 1
+    }
+
+    func seasonIndex(for episode: BaseItemDto) -> Int? {
+        if let sID = episode.seasonID, let idx = seasons.firstIndex(where: { $0.id == sID }) {
+            return idx
+        }
+        let epSeasonNum = seasonNumber(for: episode)
+        if let idx = seasons.firstIndex(where: { ($0.indexNumber ?? $0.parentIndexNumber) == epSeasonNum }) {
+            return idx
+        }
+        if let sName = episode.seasonName, let idx = seasons.firstIndex(where: { $0.name == sName }) {
+            return idx
+        }
+        return nil
+    }
+
+    func firstEpisode(forSeasonIndex index: Int) -> BaseItemDto? {
+        guard seasons.indices.contains(index) else { return nil }
+        let season = seasons[index]
+        let targetSeasonNum = season.indexNumber ?? season.parentIndexNumber
+        return episodes.first { ep in
+            if let sID = season.id, let epSeasonID = ep.seasonID, sID == epSeasonID {
+                return true
+            }
+            if let targetSeasonNum, seasonNumber(for: ep) == targetSeasonNum {
+                return true
+            }
+            if let sName = season.name, let epSeasonName = ep.seasonName, !sName.isEmpty, sName == epSeasonName {
+                return true
+            }
+            return false
+        }
     }
 
     func nextPlayableEpisode(libraryViewModel: LibraryViewModel?, fromBeginning: Bool = false) -> BaseItemDto? {
@@ -351,7 +392,17 @@ class MediaDetailViewModel {
         }
         if displayItem?.type == .series {
             if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == displayItem?.id }) {
+                if let matched = episodes.first(where: { $0.id == resumeEp.id }) {
+                    return matched
+                }
                 return resumeEp
+            }
+            if !fromBeginning, let inProgress = episodes.first(where: {
+                let percent = $0.userData?.playedPercentage ?? 0
+                let isPlayed = $0.userData?.isPlayed ?? false
+                return percent > 0 && percent < 85 && !isPlayed
+            }) {
+                return inProgress
             }
             if !fromBeginning, let unplayed = episodes.first(where: { ($0.userData?.isPlayed ?? false) == false }) {
                 return unplayed

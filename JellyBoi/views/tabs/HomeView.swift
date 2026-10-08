@@ -153,7 +153,7 @@ struct HomeView: View {
                                 HeroBackdropView(
                                     url: libraryViewModel.backdropURL(for: item, client: client),
                                     itemID: item.id,
-                                    blurRadius: 30
+                                    blurRadius: 10
                                 )
                                 .offset(y: -(headerHeight + safeAreaTop + 500))
                                 .ignoresSafeArea(edges: .top)

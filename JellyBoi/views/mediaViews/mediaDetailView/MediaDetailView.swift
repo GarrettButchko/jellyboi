@@ -41,6 +41,8 @@ struct MediaDetailView: View {
     @State var selectedEpisode: BaseItemDto?
     @Namespace var episodeTransition
     @State var episodeZoomID: AnyHashable?
+    @State var scrolledEpisodeID: String?
+    @State var hasInitialEpisodeScrolled: Bool = false
     @State var selectedPerson: BaseItemPerson?
     @State var selectedSeries: BaseItemDto?
 
@@ -114,7 +116,7 @@ struct MediaDetailView: View {
                             HeroBackdropView(
                                 url: heroPosterURL,
                                 itemID: displayItem.id,
-                                blurRadius: 50,
+                                blurRadius: 40,
                                 isFlipped: true
                             )
                             .offset(y: -400)
@@ -291,7 +293,9 @@ struct MediaDetailView: View {
         .onAppear {
             detailVM.prepare(item: item, client: serverViewModel.client)
         }
-        .task {
+        .task(id: item.id) {
+            hasInitialEpisodeScrolled = false
+            scrolledEpisodeID = nil
             guard let client = serverViewModel.client, item.id != nil else { return }
             await detailVM.load(
                 item: item,
