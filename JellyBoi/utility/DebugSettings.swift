@@ -29,7 +29,6 @@ public final class DebugSettings {
     public var simulateMediaEmptyLibrary = false
     public var hideMediaMovies = false
     public var hideMediaShows = false
-    public var hideMediaCollections = false
     public var hideMediaFavorites = false
     public var simulateMediaError = false
 
@@ -69,7 +68,6 @@ public final class DebugSettings {
         if simulateMediaEmptyLibrary { count += 1 }
         if hideMediaMovies { count += 1 }
         if hideMediaShows { count += 1 }
-        if hideMediaCollections { count += 1 }
         if hideMediaFavorites { count += 1 }
         if simulateMediaError { count += 1 }
         // Search
@@ -110,7 +108,6 @@ public final class DebugSettings {
         simulateMediaEmptyLibrary = false
         hideMediaMovies = false
         hideMediaShows = false
-        hideMediaCollections = false
         hideMediaFavorites = false
         simulateMediaError = false
 
@@ -190,15 +187,13 @@ public struct DebugSettingsView: View {
                     .disabled(debugSettings.simulateMediaEmptyLibrary)
                 Toggle("Hide TV Shows", isOn: $debugSettings.hideMediaShows)
                     .disabled(debugSettings.simulateMediaEmptyLibrary)
-                Toggle("Hide Collections", isOn: $debugSettings.hideMediaCollections)
-                    .disabled(debugSettings.simulateMediaEmptyLibrary)
                 Toggle("Hide Favorites", isOn: $debugSettings.hideMediaFavorites)
                     .disabled(debugSettings.simulateMediaEmptyLibrary)
                 Toggle("Simulate Media Tab Error", isOn: $debugSettings.simulateMediaError)
             } header: {
                 Label("Media Tab", systemImage: "film")
             } footer: {
-                Text("Simulates empty library or category states ('No Movies', 'No TV Shows', 'No Collections', and 'No Favorite...').")
+                Text("Simulates empty library or category states ('No Movies', 'No TV Shows', and 'No Favorite...').")
             }
 
             // MARK: - Search Tab

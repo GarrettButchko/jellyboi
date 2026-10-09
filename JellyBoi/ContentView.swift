@@ -7,17 +7,20 @@
 
 import SwiftUI
 import BaseColors
+import JellyfinAPI
 
 struct ContentView: View {
 
     @EnvironmentObject var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
+    @Environment(LibraryViewModel.self) private var libraryViewModel
+    @Environment(PlaybackManager.self) private var playbackManager
 
     var body: some View {
         ZStack {
             Group {
                 if viewManager.isSignedIn {
-                    TabsView()
+                    TabsView(libraryViewModel: libraryViewModel)
                 } else {
                     GetStartedView()
                 }
@@ -42,7 +45,14 @@ struct ContentView: View {
         .task {
             guard viewManager.isSignedIn else { return }
             let ok = await serverViewModel.restoreSession()
-            if !ok { viewManager.signOut() }
+            if ok, let client = serverViewModel.client {
+                playbackManager.client = client
+                playbackManager.userID = serverViewModel.currentUser?.id
+                playbackManager.libraryViewModel = libraryViewModel
+                await libraryViewModel.load(using: client, userID: serverViewModel.currentUser?.id)
+            } else if !ok {
+                viewManager.signOut()
+            }
         }
     }
 }

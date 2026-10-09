@@ -11,6 +11,10 @@ import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
 
+private enum DownloadAlertAction {
+    case cancel
+    case delete
+}
 
 struct MediaDetailView: View {
     let item: BaseItemDto
@@ -25,12 +29,15 @@ struct MediaDetailView: View {
     @Environment(ServerViewModel.self) var serverViewModel
     @Environment(LibraryViewModel.self) var libraryViewModel
     @Environment(PlaybackManager.self) var playbackManager
+    @Environment(DownloadManager.self) var downloadManager
     @Environment(\.verticalSizeClass) var verticalSizeClass
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
 
     @State var detailVM = MediaDetailViewModel()
     @State var showOptionsSheet = false
     @State var optionsSheetHeight: CGFloat = 0
+    @State private var showDownloadsSheet: Bool = false
+    @State private var downloadAlertAction: DownloadAlertAction?
     @State var selectedRelatedItem: BaseItemDto?
     @Namespace var relatedTransition
     @State var relatedZoomID: AnyHashable?
@@ -86,6 +93,95 @@ struct MediaDetailView: View {
     private func navigateToOverallShow() {
         guard let series = parentSeries else { return }
         selectedSeries = series
+    }
+
+    // MARK: - Show Download Aggregation
+
+    private var isShowFullyDownloaded: Bool {
+        guard displayItem.type == .series else { return false }
+        let showID = displayItem.id ?? item.id
+        guard let showID else { return false }
+
+        if !detailVM.episodes.isEmpty {
+            return detailVM.episodes.allSatisfy { ep in
+                guard let epID = ep.id else { return false }
+                return downloadManager.isDownloaded(id: epID)
+            }
+        }
+
+        let total = displayItem.recursiveItemCount ?? item.recursiveItemCount ?? (libraryViewModel.tvShows.first(where: { $0.id == showID })?.recursiveItemCount)
+        if let total, total > 0 {
+            let downloadedCount = downloadManager.completedDownloads.filter {
+                $0.item.seriesID == showID || $0.item.parentBackdropItemID == showID
+            }.count
+            return downloadedCount >= total
+        }
+
+        return false
+    }
+
+    private var isShowDownloading: Bool {
+        guard displayItem.type == .series else { return false }
+        let showID = displayItem.id ?? item.id
+        guard let showID else { return false }
+
+        if !detailVM.episodes.isEmpty {
+            return detailVM.episodes.contains { ep in
+                guard let epID = ep.id else { return false }
+                return downloadManager.isDownloading(id: epID)
+            }
+        }
+
+        return downloadManager.activeDownloads.contains {
+            $0.item.seriesID == showID || $0.item.parentBackdropItemID == showID
+        }
+    }
+
+    private var showEpisodesLeft: Int {
+        guard displayItem.type == .series else { return 0 }
+        let showID = displayItem.id ?? item.id
+        guard let showID else { return 0 }
+
+        return downloadManager.activeDownloads.filter {
+            $0.item.seriesID == showID ||
+            $0.item.parentBackdropItemID == showID ||
+            ($0.item.type == .episode && $0.item.seriesName == (displayItem.name ?? item.name))
+        }.count
+    }
+
+    private var showDownloadProgress: Double {
+        guard displayItem.type == .series else { return 0 }
+        let showID = displayItem.id ?? item.id
+        guard let showID else { return 0 }
+
+        let downloading = downloadManager.activeDownloads.filter {
+            $0.item.seriesID == showID || $0.item.parentBackdropItemID == showID
+        }
+        guard !downloading.isEmpty else { return 0 }
+
+        let totalProgress = downloading.reduce(0.0) { $0 + $1.progress }
+        return totalProgress / Double(downloading.count)
+    }
+
+    private var isDetailDownloaded: Bool {
+        if displayItem.type == .series {
+            return isShowFullyDownloaded
+        }
+        return downloadManager.isDownloaded(id: playableItem.id ?? "")
+    }
+
+    private var isDetailDownloading: Bool {
+        if displayItem.type == .series {
+            return isShowDownloading
+        }
+        return downloadManager.isDownloading(id: playableItem.id ?? "")
+    }
+
+    private var detailDownloadProgress: Double {
+        if displayItem.type == .series {
+            return showDownloadProgress
+        }
+        return downloadManager.progress(for: playableItem.id ?? "") ?? 0.0
     }
 
     func playMedia(fromBeginning: Bool) {
@@ -242,12 +338,43 @@ struct MediaDetailView: View {
                     .accessibilityLabel("Go to Show")
                 }
                 Spacer()
-                MediaDetailButtonRowTopTrailing(isFavorited: detailVM.isFavorite(fallback: item)) {
+                MediaDetailButtonRowTopTrailing(
+                    isFavorited: detailVM.isFavorite(fallback: item),
+                    isDownloaded: isDetailDownloaded,
+                    isDownloading: isDetailDownloading,
+                    downloadProgress: detailDownloadProgress,
+                    episodesLeft: displayItem.type == .series ? showEpisodesLeft : nil,
+                    onOpenSheet: {
+                        showDownloadsSheet = true
+                    }
+                ) {
                     Task {
                         await detailVM.toggleFavorite(serverViewModel: serverViewModel, fallbackItem: item)
                     }
                 } onDownload: {
-                    // TODO
+                    if displayItem.type == .series {
+                        if isShowFullyDownloaded {
+                            downloadAlertAction = .delete
+                        } else if isShowDownloading {
+                            downloadAlertAction = .cancel
+                        } else if let client = serverViewModel.client {
+                            Task {
+                                for ep in detailVM.episodes {
+                                    if let epID = ep.id, !downloadManager.isDownloaded(id: epID), !downloadManager.isDownloading(id: epID) {
+                                        downloadManager.startDownload(item: ep, client: client)
+                                    }
+                                }
+                            }
+                        }
+                    } else if let itemID = playableItem.id {
+                        if downloadManager.isDownloaded(id: itemID) {
+                            downloadAlertAction = .delete
+                        } else if downloadManager.isDownloading(id: itemID) {
+                            downloadAlertAction = .cancel
+                        } else if let client = serverViewModel.client {
+                            downloadManager.startDownload(item: playableItem, client: client)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -262,6 +389,55 @@ struct MediaDetailView: View {
                 .presentationDetents(optionsSheetHeight > 0 ? [.height(optionsSheetHeight)] : [.medium])
                 .presentationDragIndicator(.visible)
                 .presentationSizing(.fitted)
+        }
+        .sheet(isPresented: $showDownloadsSheet) {
+            if let showID = displayItem.id ?? item.id {
+                ShowDownloadsSheet(seriesID: showID, seriesName: displayItem.name ?? item.name ?? "Show")
+            }
+        }
+        .alert(
+            downloadAlertAction == .cancel ? "Cancel Download?" : "Remove Download?",
+            isPresented: Binding(
+                get: { downloadAlertAction != nil },
+                set: { if !$0 { downloadAlertAction = nil } }
+            )
+        ) {
+            if downloadAlertAction == .cancel {
+                Button("Cancel Download", role: .destructive) {
+                    withAnimation(.smooth(duration: 0.25)) {
+                        if displayItem.type == .series {
+                            let showID = displayItem.id ?? item.id
+                            for active in downloadManager.activeDownloads where (active.item.seriesID == showID || active.item.parentBackdropItemID == showID) {
+                                downloadManager.cancelDownload(id: active.id)
+                            }
+                        } else if let itemID = playableItem.id {
+                            downloadManager.cancelDownload(id: itemID)
+                        }
+                    }
+                }
+                Button("Keep Downloading", role: .cancel) { }
+            } else {
+                Button("Remove", role: .destructive) {
+                    withAnimation(.smooth(duration: 0.25)) {
+                        if displayItem.type == .series {
+                            let showID = displayItem.id ?? item.id
+                            for completed in downloadManager.completedDownloads where (completed.item.seriesID == showID || completed.item.parentBackdropItemID == showID) {
+                                downloadManager.deleteDownload(id: completed.id)
+                            }
+                        } else if let itemID = playableItem.id {
+                            downloadManager.deleteDownload(id: itemID)
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) { }
+            }
+        } message: {
+            let itemName = (displayItem.type == .series ? displayItem.name : playableItem.name) ?? "this item"
+            if downloadAlertAction == .cancel {
+                Text("Are you sure you want to stop downloading '\(itemName)'?")
+            } else {
+                Text("Are you sure you want to remove '\(itemName)' from your downloads?")
+            }
         }
         .navigationDestination(item: $selectedSeries) { series in
             MediaDetailView(item: series)
@@ -330,5 +506,7 @@ struct MediaDetailView: View {
 #Preview {
     MediaDetailView(item: BaseItemDto(name: "Sample Item"))
         .environment(ServerViewModel())
+        .environment(LibraryViewModel())
         .environment(PlaybackManager())
+        .environment(DownloadManager.shared)
 }

@@ -16,6 +16,7 @@ struct SectionRow: View {
     let items: [BaseItemDto]
     let namespace: Namespace.ID
     var rowKey: String? = nil
+    var onTitleTap: (() -> Void)? = nil
     let onSelect: (BaseItemDto, AnyHashable) -> Void
     let posterURL: (BaseItemDto) -> URL?
 
@@ -25,10 +26,25 @@ struct SectionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(Color.mainOpp)
-                .padding(.horizontal, 16)
+            if let onTitleTap {
+                Button(action: onTitleTap) {
+                    HStack(spacing: 6) {
+                        Text(title)
+                            .font(.system(size: 20, weight: .bold))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 15, weight: .bold))
+                    }
+                    .foregroundStyle(Color.mainOpp)
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 16)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(title)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(Color.mainOpp)
+                    .padding(.horizontal, 16)
+            }
 
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 16) {

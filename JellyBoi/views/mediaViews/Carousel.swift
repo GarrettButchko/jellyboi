@@ -317,6 +317,7 @@ private struct CarouselCard: View {
             if let currentImage {
                 Image(uiImage: currentImage)
                     .resizable()
+                    .interpolation(.high)
                     .scaledToFill()
             } else if let url {
                 WebImage(
@@ -326,6 +327,7 @@ private struct CarouselCard: View {
                     if let image = phase.image {
                         image
                             .resizable()
+                            .interpolation(.high)
                             .scaledToFill()
                     } else {
                         Color.sub
@@ -383,13 +385,15 @@ final class CarouselImageMemoryCache {
             memoryCache[url] = img
             return img
         }
+        if let img = SDImageCache.shared.imageFromDiskCache(forKey: key) {
+            memoryCache[url] = img
+            return img
+        }
         return nil
     }
 
     func store(_ image: UIImage, for url: URL) {
         memoryCache[url] = image
-        let key = SDWebImageManager.shared.cacheKey(for: url)
-        SDImageCache.shared.store(image, forKey: key, toDisk: true)
     }
 
     func preloadImages(for urls: [URL]) {

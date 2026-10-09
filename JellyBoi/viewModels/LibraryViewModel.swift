@@ -69,6 +69,10 @@ class LibraryViewModel {
     private var progressUpdateTask: Task<Void, Never>?
     @ObservationIgnored
     private var favoriteToggleTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var isFetching = false
+    @ObservationIgnored
+    private var currentUserID: String?
 
     init() {
         progressResetTask = Task { [weak self] in
@@ -118,95 +122,131 @@ class LibraryViewModel {
     /// True when no media of any kind has been fetched yet (brand-new or fully empty library).
     var isLibraryEmpty: Bool { movies.isEmpty && tvShows.isEmpty && episodes.isEmpty }
 
-    func load(using client: JellyfinClient) async {
-        guard movies.isEmpty && tvShows.isEmpty else { return }
-        await refresh(using: client)
+    func load(using client: JellyfinClient, userID: String? = nil) async {
+        guard movies.isEmpty && tvShows.isEmpty && episodes.isEmpty else { return }
+        guard !isFetching else { return }
+        await refresh(using: client, userID: userID)
     }
 
-    func refresh(using client: JellyfinClient) async {
-        let isInitialLoad = movies.isEmpty && tvShows.isEmpty
+    func refresh(using client: JellyfinClient, userID: String? = nil) async {
+        guard !isFetching else { return }
+        isFetching = true
+        defer { isFetching = false }
+
+        if let userID {
+            self.currentUserID = userID
+        }
+        let effectiveUserID = userID ?? currentUserID
+
+        let isInitialLoad = movies.isEmpty && tvShows.isEmpty && episodes.isEmpty
         if isInitialLoad {
             isLoading = true
         }
         defer { isLoading = false }
 
         do {
-            let moviesParams = Paths.GetItemsParameters(
+            var moviesParams = Paths.GetItemsParameters(
                 isRecursive: true, sortOrder: [.ascending],
-                fields: [.genres, .tags],
+                fields: [.genres, .tags, .overview, .primaryImageAspectRatio],
                 includeItemTypes: [.movie], sortBy: [.sortName],
                 enableUserData: true
             )
-            let showsParams = Paths.GetItemsParameters(
+            moviesParams.userID = effectiveUserID
+
+            var showsParams = Paths.GetItemsParameters(
                 isRecursive: true, sortOrder: [.ascending],
-                fields: [.genres, .tags],
+                fields: [.genres, .tags, .overview, .childCount, .recursiveItemCount, .primaryImageAspectRatio],
                 includeItemTypes: [.series], sortBy: [.sortName],
                 enableUserData: true
             )
-            let episodesCountParams = Paths.GetItemsParameters(
+            showsParams.userID = effectiveUserID
+
+            var episodesParams = Paths.GetItemsParameters(
+                isRecursive: true, sortOrder: [.ascending],
+                fields: [.genres, .tags, .overview, .primaryImageAspectRatio],
+                includeItemTypes: [.episode], sortBy: [.seriesSortName, .sortName],
+                enableUserData: true
+            )
+            episodesParams.userID = effectiveUserID
+
+            var episodesCountParams = Paths.GetItemsParameters(
                 limit: 0,
                 isRecursive: true,
                 includeItemTypes: [.episode]
             )
-            let collectionsParams = Paths.GetItemsParameters(
+            episodesCountParams.userID = effectiveUserID
+
+            var collectionsParams = Paths.GetItemsParameters(
                 isRecursive: true,
                 sortOrder: [.ascending],
+                fields: [.genres, .tags, .overview, .primaryImageAspectRatio],
                 includeItemTypes: [.boxSet],
                 sortBy: [.sortName],
                 enableUserData: true
             )
-            let recommendedParams = Paths.GetItemsParameters(
+            collectionsParams.userID = effectiveUserID
+
+            var recommendedParams = Paths.GetItemsParameters(
                 limit: 20, isRecursive: true,
                 sortOrder: [.descending],
                 includeItemTypes: [.movie, .series],
                 sortBy: [.communityRating]
             )
-            let recentMoviesParams = Paths.GetItemsParameters(
+            recommendedParams.userID = effectiveUserID
+
+            var recentMoviesParams = Paths.GetItemsParameters(
                 limit: 20, isRecursive: true,
                 sortOrder: [.descending],
                 includeItemTypes: [.movie],
                 sortBy: [.dateCreated],
                 enableUserData: true
             )
-            let recentShowsParams = Paths.GetItemsParameters(
+            recentMoviesParams.userID = effectiveUserID
+
+            var recentShowsParams = Paths.GetItemsParameters(
                 limit: 20, isRecursive: true,
                 sortOrder: [.descending],
                 includeItemTypes: [.series],
                 sortBy: [.dateCreated],
                 enableUserData: true
             )
+            recentShowsParams.userID = effectiveUserID
+
             let nextUpParams = Paths.GetNextUpParameters(limit: 20, enableResumable: true)
-            let favoritesCountParams = Paths.GetItemsParameters(
+            var favoritesCountParams = Paths.GetItemsParameters(
                 limit: 0, isRecursive: true, filters: [.isFavorite]
             )
+            favoritesCountParams.userID = effectiveUserID
 
-            async let moviesResult        = client.send(Paths.getItems(parameters: moviesParams)).value.items
-            async let showsResult         = client.send(Paths.getItems(parameters: showsParams)).value.items
-            async let episodeCountResult  = client.send(Paths.getItems(parameters: episodesCountParams)).value.totalRecordCount
-            async let collectionsResult   = client.send(Paths.getItems(parameters: collectionsParams)).value.items
-            async let recommendedResult   = client.send(Paths.getItems(parameters: recommendedParams)).value.items
-            async let recentMoviesResult  = client.send(Paths.getItems(parameters: recentMoviesParams)).value.items
-            async let recentShowsResult   = client.send(Paths.getItems(parameters: recentShowsParams)).value.items
-            async let nextUpResult        = client.send(Paths.getNextUp(parameters: nextUpParams)).value.items
-            async let favoritesResult     = client.send(Paths.getItems(parameters: favoritesCountParams)).value.totalRecordCount
+            async let moviesResponse       = client.send(Paths.getItems(parameters: moviesParams))
+            async let showsResponse        = client.send(Paths.getItems(parameters: showsParams))
+            async let episodesResponse     = try? client.send(Paths.getItems(parameters: episodesParams))
+            async let episodeCountResponse = try? client.send(Paths.getItems(parameters: episodesCountParams))
+            async let collectionsResponse  = try? client.send(Paths.getItems(parameters: collectionsParams))
+            async let recommendedResponse  = try? client.send(Paths.getItems(parameters: recommendedParams))
+            async let recentMoviesResponse = try? client.send(Paths.getItems(parameters: recentMoviesParams))
+            async let recentShowsResponse  = try? client.send(Paths.getItems(parameters: recentShowsParams))
+            async let nextUpResponse       = try? client.send(Paths.getNextUp(parameters: nextUpParams))
+            async let favoritesResponse    = try? client.send(Paths.getItems(parameters: favoritesCountParams))
 
-            let fetchedMovies             = try await moviesResult ?? []
-            let fetchedShows              = try await showsResult ?? []
-            let fetchedEpisodeCount       = try await episodeCountResult ?? 0
-            let fetchedCollections        = try await collectionsResult ?? []
-            let fetchedRecommended        = try await recommendedResult ?? []
-            let fetchedRecentMovies       = try await recentMoviesResult ?? []
-            let fetchedRecentShows        = try await recentShowsResult ?? []
-            let fetchedRecent             = (fetchedRecentMovies + fetchedRecentShows).sorted {
+            let fetchedMovies        = (try await moviesResponse).value.items ?? []
+            let fetchedShows         = (try await showsResponse).value.items ?? []
+            let fetchedEpisodes      = (await episodesResponse)?.value.items ?? []
+            let fetchedEpisodeCount  = (await episodeCountResponse)?.value.totalRecordCount ?? 0
+            let fetchedCollections   = (await collectionsResponse)?.value.items ?? []
+            let fetchedRecommended   = (await recommendedResponse)?.value.items ?? []
+            let fetchedRecentMovies  = (await recentMoviesResponse)?.value.items ?? []
+            let fetchedRecentShows   = (await recentShowsResponse)?.value.items ?? []
+            let fetchedRecent        = (fetchedRecentMovies + fetchedRecentShows).sorted {
                 ($0.dateCreated ?? .distantPast) > ($1.dateCreated ?? .distantPast)
             }
-            let fetchedNextUp             = try await nextUpResult ?? []
-            let fetchedFavorites          = try await favoritesResult ?? 0
+            let fetchedNextUp        = (await nextUpResponse)?.value.items ?? []
+            let fetchedFavorites     = (await favoritesResponse)?.value.totalRecordCount ?? 0
 
             withAnimation(.smooth(duration: 0.45)) {
                 movies              = fetchedMovies
                 tvShows             = fetchedShows
-                episodes            = []
+                episodes            = fetchedEpisodes
                 collections         = fetchedCollections
                 recommended         = fetchedRecommended
                 recentlyAddedMovies = fetchedRecentMovies
@@ -215,7 +255,7 @@ class LibraryViewModel {
                 resumeShows         = fetchedNextUp
                 favoritesCount      = fetchedFavorites
                 tvSeriesCount       = fetchedShows.count
-                episodeCount        = fetchedEpisodeCount
+                episodeCount        = fetchedEpisodes.count > 0 ? fetchedEpisodes.count : fetchedEpisodeCount
 
                 updateAggregates()
             }
@@ -324,12 +364,7 @@ class LibraryViewModel {
     }
 
     func backgroundURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
-        guard let id = item.id else { return nil }
-        return client.url(with: Paths.getItemImage(
-            itemID: id,
-            imageType: "Backdrop",
-            parameters: .init(maxWidth: 800, quality: 80)
-        ))
+        backdropURL(for: item, client: client)
     }
 
     func seriesPosterURL(for episode: BaseItemDto, client: JellyfinClient) -> URL? {
@@ -344,20 +379,42 @@ class LibraryViewModel {
 
     func backdropURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
         guard let id = item.id else { return nil }
-        let imageType = item.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Backdrop"
+        let hasThumb = item.imageTags?.keys.contains("Thumb") == true
+        let hasBackdrop = !(item.backdropImageTags ?? []).isEmpty || item.imageTags?.keys.contains("Backdrop") == true
+        let imageType: String
+        let targetID: String
+
+        if hasThumb {
+            imageType = "Thumb"
+            targetID = id
+        } else if hasBackdrop {
+            imageType = "Backdrop"
+            targetID = id
+        } else if item.type == .episode, item.imageTags?.keys.contains("Primary") == true {
+            imageType = "Primary"
+            targetID = id
+        } else if let seriesID = item.seriesID {
+            imageType = "Thumb"
+            targetID = seriesID
+        } else {
+            imageType = "Backdrop"
+            targetID = id
+        }
+
         return client.url(with: Paths.getItemImage(
-            itemID: id,
+            itemID: targetID,
             imageType: imageType,
-            parameters: .init(maxWidth: 600, quality: 85)
+            parameters: .init(maxWidth: 1920, quality: 96)
         ))
     }
 
     // MARK: - Prefetching
 
-    func prefetchBackdrops(around index: Int, client: JellyfinClient) {
+    func prefetchBackdrops(around index: Int, items: [BaseItemDto]? = nil, client: JellyfinClient) {
+        let targetItems = items ?? movies
         let neighbors = [index - 1, index, index + 1]
-            .filter { $0 >= 0 && $0 < movies.count }
-        let urls = neighbors.compactMap { backgroundURL(for: movies[$0], client: client) }
+            .filter { $0 >= 0 && $0 < targetItems.count }
+        let urls = neighbors.compactMap { backdropURL(for: targetItems[$0], client: client) }
         SDWebImagePrefetcher.shared.prefetchURLs(urls)
     }
 

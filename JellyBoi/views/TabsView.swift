@@ -20,30 +20,46 @@ struct TabsView: View {
     @State private var mediaViewModel: MediaViewModel
     @State private var searchViewModel: SearchViewModel
 
-    init() {
-        _homeViewModel = State(initialValue: HomeViewModel())
-        _mediaViewModel = State(initialValue: MediaViewModel())
-        _searchViewModel = State(initialValue: SearchViewModel())
+    init(libraryViewModel: LibraryViewModel? = nil) {
+        let lib = libraryViewModel ?? LibraryViewModel()
+        _homeViewModel = State(initialValue: HomeViewModel(library: lib))
+        _mediaViewModel = State(initialValue: MediaViewModel(library: lib))
+        _searchViewModel = State(initialValue: SearchViewModel(library: lib))
+    }
+
+    private func syncViewModels() {
+        if homeViewModel.library !== libraryViewModel {
+            homeViewModel.library = libraryViewModel
+        }
+        if mediaViewModel.library !== libraryViewModel {
+            mediaViewModel.library = libraryViewModel
+        }
+        if searchViewModel.library !== libraryViewModel {
+            searchViewModel.library = libraryViewModel
+        }
     }
 
     var body: some View {
         @Bindable var bindablePlayback = playbackManager
 
-        TabView {
+        TabView(selection: $viewManager.selectedTab) {
             HomeView()
                 .tabItem {
                     Label("Home", systemImage: "house")
                 }
+                .tag(AppTab.home)
 
             MediaView()
                 .tabItem {
                     Label("Media", systemImage: "rectangle.stack")
                 }
+                .tag(AppTab.media)
 
             SearchView()
                 .tabItem {
                     Label("Search", systemImage: "magnifyingglass")
                 }
+                .tag(AppTab.search)
         }
         .environment(homeViewModel)
         .environment(mediaViewModel)
@@ -98,37 +114,30 @@ struct TabsView: View {
                     OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
                     #endif
                     playerVM.cleanup()
-                    playbackManager.stop()
                 }
             }
         }
         .task {
+            syncViewModels()
             playbackManager.client = serverViewModel.client
             playbackManager.userID = serverViewModel.currentUser?.id
             playbackManager.libraryViewModel = libraryViewModel
             if let client = serverViewModel.client {
-                await libraryViewModel.load(using: client)
+                await libraryViewModel.load(using: client, userID: serverViewModel.currentUser?.id)
             }
         }
+        .onAppear {
+            syncViewModels()
+        }
         .onChange(of: serverViewModel.client != nil) { _, hasClient in
+            syncViewModels()
             playbackManager.client = serverViewModel.client
             playbackManager.userID = serverViewModel.currentUser?.id
-            playbackManager.libraryViewModel = libraryViewModel
-            guard hasClient, let client = serverViewModel.client else { return }
-            Task { await libraryViewModel.load(using: client) }
-        }
-        .onAppear {
-            homeViewModel.library = libraryViewModel
-            mediaViewModel.library = libraryViewModel
-            searchViewModel.library = libraryViewModel
+            if hasClient, let client = serverViewModel.client {
+                Task {
+                    await libraryViewModel.load(using: client, userID: serverViewModel.currentUser?.id)
+                }
+            }
         }
     }
-}
-
-#Preview {
-    TabsView()
-        .environmentObject(ViewManager())
-        .environment(LibraryViewModel())
-        .environment(ServerViewModel())
-        .environment(PlaybackManager())
 }

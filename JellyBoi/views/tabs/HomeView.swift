@@ -32,6 +32,7 @@ struct HomeView: View {
     @State private var safeAreaTop: CGFloat = 0
     @State private var zoomSourceID: AnyHashable?
     @State private var sttButtonHeight: CGFloat = 0
+    @State private var isShowingCollections: Bool = false
     
     private let homeTopID = "homeTop"
     
@@ -85,7 +86,7 @@ struct HomeView: View {
                                         } onSnap: { index, item in
                                             withAnimation(.smooth(duration: 0.4)) { heroItem = item }
                                             if let client = serverViewModel.client {
-                                                libraryViewModel.prefetchBackdrops(around: index, client: client)
+                                                libraryViewModel.prefetchBackdrops(around: index, items: viewModel.carouselItems, client: client)
                                                 libraryViewModel.prefetchPosters(around: index, client: client)
                                             }
                                         }
@@ -127,6 +128,7 @@ struct HomeView: View {
                                                 items: config.items,
                                                 namespace: zoomTransition,
                                                 rowKey: config.id,
+                                                onTitleTap: config.onTitleTap,
                                                 onSelect: { item, zoomID in
                                                     zoomSourceID = zoomID
                                                     viewManager.navigateToMedia(item)
@@ -153,7 +155,7 @@ struct HomeView: View {
                                 HeroBackdropView(
                                     url: libraryViewModel.backdropURL(for: item, client: client),
                                     itemID: item.id,
-                                    blurRadius: 10
+                                    blurRadius: 30
                                 )
                                 .offset(y: -(headerHeight + safeAreaTop + 500))
                                 .ignoresSafeArea(edges: .top)
@@ -169,6 +171,12 @@ struct HomeView: View {
                     .navigationDestination(item: $viewManager.selectedMediaItem) { item in
                         MediaDetailView(item: item)
                             .navigationTransition(.zoom(sourceID: zoomSourceID ?? AnyHashable(item), in: zoomTransition))
+                    }
+                    .navigationDestination(isPresented: $isShowingCollections) {
+                        MediaResultsView(collections: viewModel.collections)
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
+                        isShowingCollections = false
                     }
                     .toolbarVisibility(.hidden, for: .navigationBar)
                     .contentMargins(.top, headerHeight, for: .scrollContent)
@@ -209,10 +217,11 @@ struct HomeView: View {
         let title: String
         let items: [BaseItemDto]
         let posterStyle: PosterStyle
+        var onTitleTap: (() -> Void)? = nil
     }
 
     private var sectionRows: [HomeSectionConfig] {[
-        .init(id: "collections",         title: "Collections",           items: viewModel.collections,         posterStyle: .poster),
+        .init(id: "collections",         title: "Collections",           items: viewModel.collections,         posterStyle: .poster, onTitleTap: { isShowingCollections = true }),
         .init(id: "continueWatching",    title: "Continue Watching",     items: viewModel.inProgressMovies,    posterStyle: .poster),
         .init(id: "continueShows",       title: "Continue Shows",        items: viewModel.resumeShows,          posterStyle: .seriesPoster),
         .init(id: "topRated",            title: "Top Rated",             items: viewModel.recommended,          posterStyle: .poster),
@@ -308,3 +317,4 @@ private struct HomeStatsDoubleBubble: View {
     HomeView()
         .environment(LibraryViewModel())
 }
+

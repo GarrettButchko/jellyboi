@@ -72,6 +72,7 @@ final class PlaybackManager {
         client: JellyfinClient? = nil,
         userID: String? = nil,
         libraryViewModel: LibraryViewModel? = nil,
+        localFileURL: URL? = nil,
         mediaSourceID: String? = nil,
         audioStreamIndex: Int? = nil,
         subtitleStreamIndex: Int? = nil,
@@ -121,6 +122,7 @@ final class PlaybackManager {
                                 client: resolvedClient,
                                 userID: resolvedUserID,
                                 libraryViewModel: resolvedLibrary,
+                                localFileURL: localFileURL,
                                 mediaSourceID: mediaSourceID,
                                 audioStreamIndex: audioStreamIndex,
                                 subtitleStreamIndex: subtitleStreamIndex,
@@ -157,6 +159,7 @@ final class PlaybackManager {
                                 client: resolvedClient,
                                 userID: resolvedUserID,
                                 libraryViewModel: resolvedLibrary,
+                                localFileURL: localFileURL,
                                 mediaSourceID: mediaSourceID,
                                 audioStreamIndex: audioStreamIndex,
                                 subtitleStreamIndex: subtitleStreamIndex,
@@ -169,9 +172,11 @@ final class PlaybackManager {
                 }
             }
 
+            let resolvedLocalURL = localFileURL ?? targetItem.id.flatMap { DownloadManager.shared.localFileURL(for: $0) }
             let request = PlaybackRequest(
                 item: targetItem,
                 startFromBeginning: fromBeginning,
+                localFileURL: resolvedLocalURL,
                 mediaSourceID: mediaSourceID,
                 audioStreamIndex: audioStreamIndex,
                 subtitleStreamIndex: subtitleStreamIndex,
@@ -207,6 +212,7 @@ final class PlaybackManager {
                             client: resolvedClient,
                             userID: resolvedUserID,
                             libraryViewModel: resolvedLibrary,
+                            localFileURL: localFileURL,
                             mediaSourceID: mediaSourceID,
                             audioStreamIndex: audioStreamIndex,
                             subtitleStreamIndex: subtitleStreamIndex,

@@ -9,6 +9,16 @@ import SwiftUI
 import JellyfinAPI
 internal import Combine
 
+public enum AppTab: Int, Hashable, Sendable {
+    case home = 0
+    case media = 1
+    case search = 2
+}
+
+extension Notification.Name {
+    static let dismissMediaDetailToRoot = Notification.Name("dismissMediaDetailToRoot")
+}
+
 @MainActor
 class ViewManager: ObservableObject {
 
@@ -16,6 +26,7 @@ class ViewManager: ObservableObject {
     @Published var showSignInFlow: Bool = false
     @Published var showServerSignIn: Bool = false
     @Published var selectedMediaItem: BaseItemDto?
+    @Published var selectedTab: AppTab = .home
 
     init() {
         isSignedIn = KeychainStore.read(for: "jellyfinSession") != nil
@@ -51,5 +62,15 @@ class ViewManager: ObservableObject {
 
     func dismissMedia() {
         selectedMediaItem = nil
+    }
+
+    func navigateToDownloads() {
+        selectedTab = .media
+        dismissToRoot()
+    }
+
+    func dismissToRoot() {
+        selectedMediaItem = nil
+        NotificationCenter.default.post(name: .dismissMediaDetailToRoot, object: nil)
     }
 }

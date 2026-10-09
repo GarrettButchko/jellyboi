@@ -13,49 +13,25 @@ import JellyfinAPI
 enum MediaFilter: CaseIterable, Hashable {
     case movies
     case tvShows
-    case collections
 
     var title: String {
         switch self {
         case .movies: "Movies"
         case .tvShows: "TV Shows"
-        case .collections: "Collections"
         }
     }
-
 }
 
 @Observable
 @MainActor
 class MediaViewModel {
-    private var _filter: MediaFilter = .movies
-    var filter: MediaFilter {
-        get {
-            if _filter == .collections && !hasCollections {
-                return .movies
-            }
-            return _filter
-        }
-        set {
-            _filter = newValue
-        }
-    }
+    var filter: MediaFilter = .movies
     var showFavoritesOnly: Bool = false
+    var showDownloadsOnly: Bool = false
     var library = LibraryViewModel()
 
-    var hasCollections: Bool {
-        #if DEBUG
-        if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaCollections { return false }
-        #endif
-        return !library.collections.isEmpty
-    }
-
     var availableFilters: [MediaFilter] {
-        var filters: [MediaFilter] = [.movies, .tvShows]
-        if hasCollections {
-            filters.append(.collections)
-        }
-        return filters
+        MediaFilter.allCases
     }
 
     init(library: LibraryViewModel? = nil) {
@@ -72,14 +48,11 @@ class MediaViewModel {
             if DebugSettings.shared.hideMediaMovies { return [] }
         case .tvShows:
             if DebugSettings.shared.hideMediaShows { return [] }
-        case .collections:
-            if DebugSettings.shared.hideMediaCollections { return [] }
         }
         #endif
         switch filter {
         case .movies: return library.movies
         case .tvShows: return library.tvShows
-        case .collections: return library.collections
         }
     }
 
@@ -99,18 +72,20 @@ class MediaViewModel {
         return library.tvShows.filter { $0.userData?.isFavorite == true }
     }
 
+    /// Only show favorite episodes if the whole show isn't starred.
     var favoriteEpisodes: [BaseItemDto] {
         #if DEBUG
         if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaFavorites { return [] }
         #endif
-        return library.episodes.filter { $0.userData?.isFavorite == true }
-    }
-
-    var favoriteCollections: [BaseItemDto] {
-        #if DEBUG
-        if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaFavorites { return [] }
-        #endif
-        return library.collections.filter { $0.userData?.isFavorite == true }
+        let starredShowIDs = Set(favoriteShows.compactMap(\.id))
+        return library.episodes.filter { ep in
+            guard ep.userData?.isFavorite == true else { return false }
+            let showID = ep.seriesID ?? ep.parentBackdropItemID
+            if let showID, starredShowIDs.contains(showID) {
+                return false
+            }
+            return true
+        }
     }
 
     var favoriteTvItems: [BaseItemDto] {
@@ -121,9 +96,88 @@ class MediaViewModel {
         switch filter {
         case .movies: favoriteMovies
         case .tvShows: favoriteTvItems
-        case .collections: favoriteCollections
         }
     }
+
+    // MARK: - Download State & Filtering
+
+    /// Determines if all episodes of a TV show are downloaded.
+    func isShowFullyDownloaded(_ seriesID: String, downloadManager: DownloadManager) -> Bool {
+        let episodesForShow = library.episodes.filter {
+            ($0.seriesID ?? $0.parentBackdropItemID) == seriesID
+        }
+        if !episodesForShow.isEmpty {
+            let completedIDs = Set(downloadManager.completedDownloads.compactMap(\.item.id))
+            return episodesForShow.allSatisfy { ep in
+                guard let id = ep.id else { return false }
+                return completedIDs.contains(id)
+            }
+        }
+
+        let showItem = library.tvShows.first(where: { $0.id == seriesID })
+        let total = showItem?.recursiveItemCount ?? showItem?.childCount
+        if let total, total > 0 {
+            let downloadedCount = downloadManager.completedDownloads.filter {
+                ($0.item.seriesID ?? $0.item.parentBackdropItemID) == seriesID
+            }.count
+            return downloadedCount >= total
+        }
+
+        if downloadManager.completedDownloads.contains(where: { $0.item.type == .series && $0.item.id == seriesID }) {
+            return true
+        }
+
+        return false
+    }
+
+    /// Returns shows that are fully downloaded.
+    func downloadedShows(downloadManager: DownloadManager) -> [BaseItemDto] {
+        var candidateShowIDs = Set<String>()
+        var showNames: [String: String] = [:]
+
+        for download in downloadManager.completedDownloads {
+            if download.item.type == .series, let id = download.item.id {
+                candidateShowIDs.insert(id)
+                if let name = download.item.name { showNames[id] = name }
+            }
+            if download.item.type == .episode || download.item.seriesName != nil {
+                let showID = download.item.seriesID ?? download.item.parentBackdropItemID
+                if let showID {
+                    candidateShowIDs.insert(showID)
+                    if let name = download.item.seriesName { showNames[showID] = name }
+                }
+            }
+        }
+
+        var results: [BaseItemDto] = []
+        for showID in candidateShowIDs {
+            if isShowFullyDownloaded(showID, downloadManager: downloadManager) {
+                if let show = library.tvShows.first(where: { $0.id == showID }) {
+                    results.append(show)
+                } else {
+                    results.append(BaseItemDto(
+                        id: showID,
+                        name: showNames[showID] ?? "Show",
+                        type: .series
+                    ))
+                }
+            }
+        }
+        return results.sorted { ($0.name ?? "") < ($1.name ?? "") }
+    }
+
+    /// Only returns downloaded episodes if their whole show isn't downloaded.
+    func downloadedEpisodes(downloadManager: DownloadManager) -> [BaseItemDto] {
+        downloadManager.completedDownloads
+            .map(\.item)
+            .filter { item in
+                guard item.type == .episode || item.seriesName != nil else { return false }
+                guard let showID = item.seriesID ?? item.parentBackdropItemID else { return true }
+                return !isShowFullyDownloaded(showID, downloadManager: downloadManager)
+            }
+    }
+
+    // MARK: - Loading & Errors
 
     var isLoading: Bool { library.isLoading }
     var errorMessage: String? {

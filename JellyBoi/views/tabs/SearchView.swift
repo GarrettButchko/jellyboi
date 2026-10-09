@@ -61,6 +61,7 @@ struct SearchView: View {
                         GlassEffectContainer(spacing: 12) {
                             HStack(spacing: 10) {
                                 searchField
+
                                 Button {
                                     viewModel.showFavoritesOnly.toggle()
                                 } label: {
@@ -92,8 +93,10 @@ struct SearchView: View {
             }
             // Genre destination — push a filtered poster grid
             .navigationDestination(item: $selectedGenre) { genre in
-                GenreResultsView(genre: genre)
-                    .environment(viewModel)
+                MediaResultsView(genre: genre, items: viewModel.items(inGenre: genre))
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
+                selectedItem = nil
             }
             .toolbarVisibility(.hidden, for: .navigationBar)
             .background(Color.bg.ignoresSafeArea())
@@ -242,81 +245,7 @@ private struct GenreChip: View {
     }
 }
 
-// MARK: - GenreResultsView
-
-struct GenreResultsView: View {
-    let genre: String
-
-    @Environment(SearchViewModel.self) private var viewModel
-    @Environment(ServerViewModel.self) private var serverViewModel
-    @Environment(LibraryViewModel.self) private var libraryViewModel
-    @Namespace private var zoomTransition
-    @State private var selectedItem: BaseItemDto?
-    @State private var scrollOffset: CGFloat = 0
-    @State private var headerHeight: CGFloat = 120
-    @State private var sttButtonHeight: CGFloat = 0
-
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
-    }
-
-    private let topID = "GenreTopID"
-
-    var body: some View {
-        let items = viewModel.items(inGenre: genre)
-        ScrollViewReader { proxy in
-            ZStack(alignment: .top) {
-                ScrollView {
-                    Color.clear.frame(height: 0).id(topID)
-
-                    if items.isEmpty {
-                        EmptyStateView(
-                            icon: "film",
-                            title: "No Titles in Genre",
-                            message: "No movies or shows found for \(genre)."
-                        )
-                    } else {
-                        LazyVGrid(columns: columns, spacing: 16) {
-                            ForEach(items, id: \.id) { item in
-                                MediaCard(
-                                    item: item,
-                                    posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
-                                    namespace: zoomTransition
-                                ) {
-                                    selectedItem = item
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                        .transition(.opacity)
-                    }
-                }
-                .contentMargins(.top, headerHeight, for: .scrollContent)
-                .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
-                .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, newValue in
-                    scrollOffset = newValue
-                }
-
-                TabPageHeader(title: genre, scrollOffset: scrollOffset, headerHeight: $headerHeight, showBackButton: true)
-
-                ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
-                    withAnimation { proxy.scrollTo(topID, anchor: .top) }
-                }
-            }
-        }
-        .navigationDestination(item: $selectedItem) { item in
-            MediaDetailView(item: item)
-                .navigationTransition(.zoom(sourceID: item, in: zoomTransition))
-        }
-        .toolbarVisibility(.hidden, for: .navigationBar)
-        .background(Color.bg.ignoresSafeArea())
-    }
-}
+// MARK: - Preview
 
 #Preview {
     SearchView()
