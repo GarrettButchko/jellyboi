@@ -24,6 +24,7 @@ struct ServerSignInView: View {
     @State private var showQuickConnectOverlay = false
     @State private var isOverlayActive = false
     @FocusState private var focusedField: Field?
+    @ScaledMetric(relativeTo: .body) private var inputHeight: CGFloat = 22
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -124,8 +125,9 @@ struct ServerSignInView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "person")
                         .foregroundStyle(.accent)
-                        .frame(width: 20)
+                        .frame(width: 20, height: 20)
                     TextField("Username", text: $viewModel.username)
+                        .textFieldStyle(.plain)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .focused($focusedField, equals: .username)
@@ -134,18 +136,24 @@ struct ServerSignInView: View {
                             focusedField = .password
                         }
                         .foregroundStyle(Color.mainOpp)
+                        .frame(height: inputHeight)
                 }
                 .padding(16)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    focusedField = .username
+                }
 
                 Divider()
-                    .overlay(Color.subTwo)
+                    .overlay(Color.mainOpp.opacity(0.15))
                     .padding(.horizontal, 16)
 
                 HStack(spacing: 10) {
                     Image(systemName: "lock")
                         .foregroundStyle(.accent)
-                        .frame(width: 20)
+                        .frame(width: 20, height: 20)
                     SecureField("Password", text: $viewModel.password)
+                        .textFieldStyle(.plain)
                         .focused($focusedField, equals: .password)
                         .submitLabel(.go)
                         .onSubmit {
@@ -157,8 +165,13 @@ struct ServerSignInView: View {
                             }
                         }
                         .foregroundStyle(Color.mainOpp)
+                        .frame(height: inputHeight)
                 }
                 .padding(16)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    focusedField = .password
+                }
             }
             .background {
                 RoundedRectangle(cornerRadius: 25, style: .continuous)
@@ -182,7 +195,7 @@ struct ServerSignInView: View {
                         ProgressView().tint(.white)
                     } else {
                         Text("Sign In")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .font(.system(size: 17, weight: .semibold))
                     }
                 }
                 .frame(maxWidth: .infinity)
