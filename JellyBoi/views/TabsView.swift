@@ -8,6 +8,7 @@
 import SwiftUI
 import JellyfinAPI
 import StatusOverlayKit
+import BaseColors
 
 struct TabsView: View {
 
@@ -61,6 +62,7 @@ struct TabsView: View {
                 }
                 .tag(AppTab.search)
         }
+        .background(Color.bg.ignoresSafeArea())
         .environment(homeViewModel)
         .environment(mediaViewModel)
         .environment(searchViewModel)
@@ -95,15 +97,31 @@ struct TabsView: View {
             }
         ) { playerVM in
             if let player = playerVM.player {
-                NativePlayerView(player: player) {
-                    #if os(iOS)
-                    OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
+                ZStack(alignment: .topLeading) {
+                    NativePlayerView(player: player) {
+                        #if os(iOS)
+                        OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
+                        #endif
+                        playerVM.cleanup()
+                        playbackManager.stop()
+                    }
+                    .ignoresSafeArea()
+                    .statusBarHidden(true)
+
+                    #if DEBUG
+                    if DebugSettings.shared.showPlaybackDebugOverlay {
+                        Text(playerVM.playbackDiagnosticSummary)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .padding(.top, 50)
+                            .padding(.leading, 16)
+                            .allowsHitTesting(false)
+                    }
                     #endif
-                    playerVM.cleanup()
-                    playbackManager.stop()
                 }
-                .ignoresSafeArea()
-                .statusBarHidden(true)
                 .onAppear {
                     #if os(iOS)
                     OrientationHelper.lockOrientation(.allButUpsideDown)

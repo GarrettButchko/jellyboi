@@ -84,59 +84,40 @@ struct MediaResultsView: View {
     @State private var selectedItem: BaseItemDto?
     @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
-    @State private var sttButtonHeight: CGFloat = 0
 
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
     }
 
-    private let topID = "MediaResultsTopID"
-
     var body: some View {
-        ScrollViewReader { proxy in
-            ZStack(alignment: .top) {
-                ScrollView {
-                    Color.clear.frame(height: 0).id(topID)
-
-                    if items.isEmpty {
-                        EmptyStateView(
-                            icon: emptyIcon,
-                            title: emptyTitle,
-                            message: emptyMessage
-                        )
-                    } else {
-                        LazyVGrid(columns: columns, spacing: 16) {
-                            ForEach(items, id: \.id) { item in
-                                MediaCard(
-                                    item: item,
-                                    posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
-                                    namespace: zoomTransition
-                                ) {
-                                    selectedItem = item
-                                }
+        ZStack(alignment: .top) {
+            ScrollToTopScrollView(topInset: headerHeight, scrollOffset: $scrollOffset) { _ in
+                if items.isEmpty {
+                    EmptyStateView(
+                        icon: emptyIcon,
+                        title: emptyTitle,
+                        message: emptyMessage
+                    )
+                } else {
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(items, id: \.id) { item in
+                            MediaCard(
+                                item: item,
+                                posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
+                                namespace: zoomTransition
+                            ) {
+                                selectedItem = item
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                        .transition(.opacity)
                     }
-                }
-                .contentMargins(.top, headerHeight, for: .scrollContent)
-                .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
-                .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, newValue in
-                    scrollOffset = newValue
-                }
-
-                TabPageHeader(title: title, scrollOffset: scrollOffset, headerHeight: $headerHeight, showBackButton: true)
-
-                ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
-                    withAnimation { proxy.scrollTo(topID, anchor: .top) }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
                 }
             }
+
+            TabPageHeader(title: title, scrollOffset: scrollOffset, headerHeight: $headerHeight, showBackButton: true)
         }
         .navigationDestination(item: $selectedItem) { item in
             MediaDetailView(item: item)

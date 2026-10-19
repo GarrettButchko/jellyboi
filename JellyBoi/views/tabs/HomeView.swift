@@ -1,7 +1,6 @@
 //
 //  HomeView.swift
 //  JellyBoi
-//
 //  Created by Garrett Butchko on 8/19/26.
 //
 
@@ -20,29 +19,21 @@ struct HomeView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
-    private struct HomeScrollState: Equatable {
-        var isPastTop: Bool = false
-        var isHeaderCollapsed: Bool = false
-        var showScrollToTop: Bool = false
-    }
-
-    @State private var scrollState = HomeScrollState()
+    @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
     @State private var heroItem: BaseItemDto?
     @State private var safeAreaTop: CGFloat = 0
     @State private var zoomSourceID: AnyHashable?
-    @State private var sttButtonHeight: CGFloat = 0
     @State private var isShowingCollections: Bool = false
-    
-    private let homeTopID = "homeTop"
     
     var body: some View {
         NavigationStack {
-            ScrollViewReader { proxy in
-                ZStack(alignment: .top) {
-                    ScrollView {
-                        Color.clear.frame(height: 0).id(homeTopID)
-                        LazyVStack(alignment: .leading, spacing: 8) {
+            ZStack(alignment: .top) {
+                Color.bg
+                    .ignoresSafeArea()
+
+                ScrollToTopScrollView(topInset: headerHeight, scrollOffset: $scrollOffset) { proxy in
+                    VStack(alignment: .leading, spacing: 8) {
                             if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
                                 EmptyStateView(
                                     icon: "wifi.exclamationmark",
@@ -162,45 +153,28 @@ struct HomeView: View {
                                 .allowsHitTesting(false)
                             }
                         }
-                    }
-                    .refreshable {
-                        if let client = serverViewModel.client {
-                            await viewModel.refresh(using: client)
-                        }
-                    }
-                    .navigationDestination(item: $viewManager.selectedMediaItem) { item in
-                        MediaDetailView(item: item)
-                            .navigationTransition(.zoom(sourceID: zoomSourceID ?? AnyHashable(item), in: zoomTransition))
-                    }
-                    .navigationDestination(isPresented: $isShowingCollections) {
-                        MediaResultsView(collections: viewModel.collections)
-                    }
-                    .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
-                        isShowingCollections = false
-                    }
-                    .toolbarVisibility(.hidden, for: .navigationBar)
-                    .contentMargins(.top, headerHeight, for: .scrollContent)
-                    .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
-                    .scrollEdgeEffectHidden(!scrollState.isPastTop, for: .top)
-                    .onScrollGeometryChange(for: HomeScrollState.self) { geometry in
-                        let offset = geometry.contentOffset.y + geometry.contentInsets.top
-                        return HomeScrollState(
-                            isPastTop: offset > 0,
-                            isHeaderCollapsed: offset > 40,
-                            showScrollToTop: offset > 300
-                        )
-                    } action: { _, newState in
-                        scrollState = newState
-                    }
-                    
-                    
-                    TabPageHeader(title: "Home", scrollOffset: scrollState.isHeaderCollapsed ? 100 : 0, headerHeight: $headerHeight, showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact)
-                    
-                    ScrollToTopOverlay(scrollOffset: scrollState.showScrollToTop ? 301 : 0, STTButtonHeight: $sttButtonHeight) {
-                        withAnimation { proxy.scrollTo(homeTopID, anchor: .top) }
+                }
+                .refreshable {
+                    if let client = serverViewModel.client {
+                        await viewModel.refresh(using: client)
                     }
                 }
-            } // ScrollViewReader
+                .navigationDestination(item: $viewManager.selectedMediaItem) { item in
+                    MediaDetailView(item: item)
+                        .navigationTransition(.zoom(sourceID: zoomSourceID ?? AnyHashable(item), in: zoomTransition))
+                }
+                .navigationDestination(isPresented: $isShowingCollections) {
+                    MediaResultsView(collections: viewModel.collections)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
+                    isShowingCollections = false
+                }
+                .toolbarVisibility(.hidden, for: .navigationBar)
+
+                TabPageHeader(title: "Home", scrollOffset: scrollOffset, headerHeight: $headerHeight, showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact)
+            }
+            .toolbarVisibility(.hidden, for: .navigationBar)
+            .background(Color.bg.ignoresSafeArea())
         }
         .background(Color.bg.ignoresSafeArea())
         .background {
@@ -256,7 +230,7 @@ private struct HomeStatBubble: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 56)
-        .background(Color.mainOpp.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Color.mainOpp.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -287,7 +261,7 @@ private struct HomeStatsDoubleBubble: View {
             .padding(.horizontal, 14)
 
             Rectangle()
-                .fill(Color.mainOpp.opacity(0.15))
+                .fill(Color.subTwo)
                 .frame(width: 0.5)
                 .padding(.vertical, 14)
 
@@ -308,7 +282,7 @@ private struct HomeStatsDoubleBubble: View {
             .padding(.horizontal, 14)
         }
         .frame(height: 56)
-        .background(Color.mainOpp.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Color.mainOpp.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -317,4 +291,3 @@ private struct HomeStatsDoubleBubble: View {
     HomeView()
         .environment(LibraryViewModel())
 }
-

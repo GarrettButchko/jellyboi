@@ -37,6 +37,7 @@ final class PlayerViewModel: Identifiable {
     private(set) var mediaSourceID: String?
     private(set) var mediaSource: MediaSourceInfo?
     private(set) var maxBitrate: Int?
+    private(set) var videoNaturalSize: CGSize?
 
     private var timeObserverToken: Any?
     private var endObserver: NSObjectProtocol?
@@ -94,6 +95,37 @@ final class PlayerViewModel: Identifiable {
         return nil
     }
 
+    public var targetAspectRatio: Double? {
+        let streamAspect = mediaSource?.mediaStreams?.first(where: { $0.type == .video })?.aspectRatio
+            ?? item.mediaStreams?.first(where: { $0.type == .video })?.aspectRatio
+            ?? item.aspectRatio
+            ?? (item.id.flatMap { DownloadManager.shared.downloadItem(for: $0)?.item.mediaStreams?.first(where: { $0.type == .video })?.aspectRatio })
+            ?? (item.id.flatMap { DownloadManager.shared.downloadItem(for: $0)?.item.aspectRatio })
+        return Self.parseAspectRatio(streamAspect)
+    }
+
+    public nonisolated static func parseAspectRatio(_ raw: String?) -> Double? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+        if raw.contains(":") {
+            let parts = raw.split(separator: ":")
+            if parts.count == 2, let num = Double(parts[0]), let den = Double(parts[1]), den > 0 {
+                return num / den
+            }
+        }
+        if raw.contains("/") {
+            let parts = raw.split(separator: "/")
+            if parts.count == 2, let num = Double(parts[0]), let den = Double(parts[1]), den > 0 {
+                return num / den
+            }
+        }
+        if let val = Double(raw), val > 0 {
+            return val
+        }
+        return nil
+    }
+
     /// Device profile representing Apple's AVPlayer capabilities (MP4/MOV direct play, HLS transcoding for MKV/etc.)
     private static var appleDeviceProfile: DeviceProfile {
         DeviceProfile(
@@ -123,7 +155,7 @@ final class PlayerViewModel: Identifiable {
                 TranscodingProfile(
                     protocol: .hls,
                     audioCodec: "aac,mp3,ac3,eac3",
-                    container: "ts",
+                    container: "mp4",
                     context: .streaming,
                     enableAudioVbrEncoding: true,
                     enableMpegtsM2TsMode: false,
@@ -137,6 +169,41 @@ final class PlayerViewModel: Identifiable {
                     transcodeSeekInfo: .auto,
                     type: .video,
                     videoCodec: "h264,hevc"
+                ),
+                TranscodingProfile(
+                    protocol: .hls,
+                    audioCodec: "aac,mp3,ac3,eac3",
+                    container: "ts",
+                    context: .streaming,
+                    enableAudioVbrEncoding: true,
+                    enableMpegtsM2TsMode: false,
+                    enableSubtitlesInManifest: true,
+                    isBreakOnNonKeyFrames: true,
+                    isCopyTimestamps: true,
+                    isEstimateContentLength: false,
+                    maxAudioChannels: "6",
+                    minSegments: 1,
+                    segmentLength: 3,
+                    transcodeSeekInfo: .auto,
+                    type: .video,
+                    videoCodec: "h264"
+                ),
+                TranscodingProfile(
+                    protocol: .hls,
+                    audioCodec: "aac,mp3",
+                    container: "mp4",
+                    context: .streaming,
+                    enableAudioVbrEncoding: true,
+                    enableMpegtsM2TsMode: false,
+                    enableSubtitlesInManifest: true,
+                    isBreakOnNonKeyFrames: true,
+                    isCopyTimestamps: true,
+                    isEstimateContentLength: false,
+                    maxAudioChannels: "6",
+                    minSegments: 1,
+                    segmentLength: 3,
+                    transcodeSeekInfo: .auto,
+                    type: .audio
                 )
             ]
         )
@@ -200,11 +267,69 @@ final class PlayerViewModel: Identifiable {
         let resumeTicks = request.startFromBeginning ? 0 : (item.userData?.playbackPositionTicks ?? 0)
         self.currentPositionTicks = resumeTicks
 
-        let playerItem: AVPlayerItem
-        if let localURL = request.localFileURL {
-            AppLogger.info("Preparing local file playback from: \(localURL.path)", tag: "Player")
-            playerItem = AVPlayerItem(url: localURL)
-        } else if let client {
+        var preparedItem: AVPlayerItem?
+        var usedLocal = false
+
+        let isLocalPlayable = request.localFileURL.map { url in
+            let ext = url.pathExtension.lowercased()
+            return ["mp4", "m4v", "mov"].contains(ext)
+        } ?? false
+
+        if let localURL = request.localFileURL, isLocalPlayable {
+            let asset = AVURLAsset(url: localURL)
+            let isPlayable = (try? await asset.load(.isPlayable)) ?? false
+            if isPlayable {
+                AppLogger.info("Preparing local file playback from: \(localURL.path)", tag: "Player")
+                let item = AVPlayerItem(asset: asset)
+
+                // Aspect ratio normalization for anamorphic or non-standard local media
+                if let tracks = try? await asset.loadTracks(withMediaType: .video),
+                   let videoTrack = tracks.first,
+                   let naturalSize = try? await videoTrack.load(.naturalSize),
+                   naturalSize.width > 0, naturalSize.height > 0 {
+                    self.videoNaturalSize = naturalSize
+                    let trackDAR = naturalSize.width / naturalSize.height
+                    if let targetDAR = self.targetAspectRatio, abs(trackDAR - targetDAR) / targetDAR > 0.02 {
+                        AppLogger.info("Applying aspect ratio correction for local playback: track \(naturalSize.width)x\(naturalSize.height) (\(String(format: "%.2f", trackDAR))) -> target ratio \(String(format: "%.2f", targetDAR))", tag: "Player")
+                        let preferredTransform = (try? await videoTrack.load(.preferredTransform)) ?? .identity
+                        let renderWidth = naturalSize.height * targetDAR
+                        let renderHeight = naturalSize.height
+                        let scaleX = renderWidth / naturalSize.width
+
+                        var layerConfig = AVVideoCompositionLayerInstruction.Configuration(assetTrack: videoTrack)
+                        let adjustedTransform = preferredTransform.scaledBy(x: scaleX, y: 1.0)
+                        layerConfig.setTransform(adjustedTransform, at: .zero)
+                        let layerInstruction = AVVideoCompositionLayerInstruction(configuration: layerConfig)
+
+                        var instructionConfig = AVVideoCompositionInstruction.Configuration()
+                        instructionConfig.timeRange = CMTimeRange(start: .zero, duration: .positiveInfinity)
+                        instructionConfig.layerInstructions = [layerInstruction]
+                        let instruction = AVVideoCompositionInstruction(configuration: instructionConfig)
+
+                        var compositionConfig = AVVideoComposition.Configuration()
+                        compositionConfig.instructions = [instruction]
+                        compositionConfig.renderSize = CGSize(width: renderWidth, height: renderHeight)
+                        let nominalFrameRate = (try? await videoTrack.load(.nominalFrameRate)) ?? 0
+                        let fps = nominalFrameRate > 0 ? Int32(round(nominalFrameRate)) : 30
+                        compositionConfig.frameDuration = CMTime(value: 1, timescale: fps)
+
+                        let composition = AVVideoComposition(configuration: compositionConfig)
+                        item.videoComposition = composition
+                    }
+                }
+
+                preparedItem = item
+                currentPlayMethod = .directPlay
+                usedLocal = true
+            } else {
+                AppLogger.warning("Local file at \(localURL.path) cannot be opened by AVPlayer. Falling back to server stream.", tag: "Player")
+            }
+        }
+
+        if !usedLocal, let client {
+            if let localURL = request.localFileURL {
+                AppLogger.warning("Downloaded file at '\(localURL.path)' is not playable natively offline. Streaming from server instead.", tag: "Player")
+            }
             var streamURL: URL?
             var selectedMediaSource: MediaSourceInfo?
 
@@ -289,7 +414,7 @@ final class PlayerViewModel: Identifiable {
                     let sourceID = selectedMediaSource?.id ?? request.mediaSourceID ?? itemID
                     let sessionID = self.playSessionID ?? UUID().uuidString
                     self.playSessionID = sessionID
-                    var hlsPath = "/Videos/\(itemID)/master.m3u8?MediaSourceId=\(sourceID)&PlaySessionId=\(sessionID)&VideoCodec=h264,hevc&AudioCodec=aac,mp3,ac3,eac3&TranscodingMaxAudioChannels=6&SegmentContainer=ts&MinSegments=1&BreakOnNonKeyFrames=True&StartTimeTicks=\(resumeTicks)"
+                    var hlsPath = "/Videos/\(itemID)/master.m3u8?MediaSourceId=\(sourceID)&PlaySessionId=\(sessionID)&VideoCodec=h264,hevc&AudioCodec=aac,mp3,ac3,eac3&TranscodingMaxAudioChannels=6&SegmentContainer=mp4&MinSegments=1&BreakOnNonKeyFrames=True&StartTimeTicks=\(resumeTicks)"
                     if let audioIndex = request.audioStreamIndex {
                         hlsPath += "&AudioStreamIndex=\(audioIndex)"
                     }
@@ -335,11 +460,23 @@ final class PlayerViewModel: Identifiable {
 
             AppLogger.debug("Creating AVURLAsset with authentication headers", tag: "Player")
             let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
-            playerItem = AVPlayerItem(asset: asset)
-        } else {
-            errorMessage = "Server connection is unavailable."
+            preparedItem = AVPlayerItem(asset: asset)
+        } else if !usedLocal {
+            if let localURL = request.localFileURL, !isLocalPlayable {
+                errorMessage = "This video is downloaded in .\(localURL.pathExtension.uppercased()) format, which iOS cannot play offline. Please connect to your server to stream or re-download as MP4."
+            } else if request.localFileURL != nil {
+                errorMessage = "The downloaded file could not be opened and server connection is unavailable."
+            } else {
+                errorMessage = "Server connection is unavailable."
+            }
             isLoading = false
-            AppLogger.error("Failed to start playback: Jellyfin client is nil", tag: "Player")
+            AppLogger.error("Failed to start playback: \(errorMessage ?? "")", tag: "Player")
+            return false
+        }
+
+        guard let playerItem = preparedItem else {
+            errorMessage = "Failed to initialize player item."
+            isLoading = false
             return false
         }
 
@@ -556,7 +693,29 @@ final class PlayerViewModel: Identifiable {
     private func applyReadyToPlay() async {
         self.isLoading = false
         if let current = self.player?.currentItem {
-            selectRequestedSubtitle(in: current)
+            let tracks = current.tracks
+            let trackInfo = tracks.map { track -> String in
+                let mediaType = track.assetTrack?.mediaType.rawValue ?? "unknown"
+                return "\(mediaType) (isEnabled: \(track.isEnabled))"
+            }.joined(separator: ", ")
+            AppLogger.info("Current item ready with \(tracks.count) tracks: [\(trackInfo)]", tag: "Player")
+
+            let videoTracks = tracks.filter { $0.assetTrack?.mediaType == .video }
+            if videoTracks.isEmpty {
+                AppLogger.warning("⚠️ Media asset contains NO video tracks! Only audio will play.", tag: "Player")
+            } else if !videoTracks.contains(where: { $0.isEnabled }) {
+                AppLogger.warning("⚠️ Video track is present in asset but disabled in playerItem!", tag: "Player")
+            } else {
+                AppLogger.success("✅ Video track is present and enabled for display.", tag: "Player")
+            }
+
+            if self.videoNaturalSize == nil, let firstVideoTrack = videoTracks.compactMap({ $0.assetTrack }).first {
+                if let size = try? await firstVideoTrack.load(.naturalSize), size.width > 0, size.height > 0 {
+                    self.videoNaturalSize = size
+                }
+            }
+
+            await selectRequestedSubtitle(in: current)
         }
         if !self.hasAppliedInitialSeek && self.currentPositionTicks > 0 {
             self.hasAppliedInitialSeek = true
@@ -582,8 +741,8 @@ final class PlayerViewModel: Identifiable {
 
     // MARK: - Subtitle Selection
 
-    private func selectRequestedSubtitle(in playerItem: AVPlayerItem) {
-        guard let group = playerItem.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else { return }
+    private func selectRequestedSubtitle(in playerItem: AVPlayerItem) async {
+        guard let group = try? await playerItem.asset.loadMediaSelectionGroup(for: .legible) else { return }
 
         if request.subtitleStreamIndex == -1 {
             playerItem.select(nil, in: group)
@@ -692,8 +851,18 @@ final class PlayerViewModel: Identifiable {
         currentPositionTicks = finalTicks
         AppLogger.success("Playback marked as watched (100%)", tag: "Player")
         updateLocalProgress(positionTicks: finalTicks, forcePlayed: true)
-        Task {
-            await reportPlaybackStopped()
+        if hasReportedStart, let client, let itemID = item.id {
+            let sessionID = playSessionID
+            let sourceID = mediaSourceID
+            Task.detached {
+                let stopInfo = PlaybackStopInfo(
+                    itemID: itemID,
+                    mediaSourceID: sourceID,
+                    playSessionID: sessionID,
+                    positionTicks: finalTicks
+                )
+                _ = try? await client.send(Paths.reportPlaybackStopped(stopInfo))
+            }
         }
     }
 
@@ -710,6 +879,7 @@ final class PlayerViewModel: Identifiable {
             object: itemID,
             userInfo: [
                 "positionTicks": positionTicks,
+                "durationTicks": total,
                 "playedPercentage": percent,
                 "isPlayed": isPlayed
             ]
@@ -975,6 +1145,7 @@ final class PlayerViewModel: Identifiable {
         artworkTask?.cancel()
         artworkTask = nil
         loadedArtworkImage = nil
+        videoNaturalSize = nil
         #if canImport(MediaPlayer)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         #endif
@@ -999,8 +1170,18 @@ final class PlayerViewModel: Identifiable {
         // Report stop & update final progress
         let finalTicks = currentPositionTicks
         updateLocalProgress(positionTicks: finalTicks)
-        Task {
-            await reportPlaybackStopped()
+        if hasReportedStart, let client, let itemID = item.id {
+            let sessionID = playSessionID
+            let sourceID = mediaSourceID
+            Task.detached {
+                let stopInfo = PlaybackStopInfo(
+                    itemID: itemID,
+                    mediaSourceID: sourceID,
+                    playSessionID: sessionID,
+                    positionTicks: finalTicks
+                )
+                _ = try? await client.send(Paths.reportPlaybackStopped(stopInfo))
+            }
         }
     }
 
@@ -1026,6 +1207,51 @@ final class PlayerViewModel: Identifiable {
                 AppLogger.debug("Audio session deactivation info: \(error.localizedDescription)", tag: "Player")
             }
         }
+    }
+
+    // MARK: - Playback Diagnostics
+
+    public var playbackDiagnosticSummary: String {
+        var items: [String] = []
+        items.append("Method: \(currentPlayMethod.rawValue)")
+        if let local = request.localFileURL {
+            items.append("Local: \(local.lastPathComponent)")
+            let size = (try? FileManager.default.attributesOfItem(atPath: local.path)[.size] as? Int64) ?? 0
+            if size > 0 {
+                items.append("Size: \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))")
+            }
+        } else {
+            items.append("Source: Server Stream")
+        }
+        if let current = player?.currentItem {
+            let tracks = current.tracks
+            let videoTracks = tracks.filter { $0.assetTrack?.mediaType == .video }
+            let audioTracks = tracks.filter { $0.assetTrack?.mediaType == .audio }
+            let presentationSize = current.presentationSize
+            let videoSize = videoNaturalSize ?? (presentationSize != .zero ? presentationSize : nil)
+            if videoTracks.isEmpty {
+                items.append("Video: None (Audio Only)")
+            } else if let v = videoTracks.first {
+                if let size = videoSize {
+                    let w = Int(size.width)
+                    let h = Int(size.height)
+                    items.append("Video: \(w)x\(h) [\(v.isEnabled ? "Active" : "Disabled")]")
+                } else {
+                    if let at = v.assetTrack {
+                        Task { @MainActor [weak self] in
+                            if let size = try? await at.load(.naturalSize), size.width > 0, size.height > 0 {
+                                self?.videoNaturalSize = size
+                            }
+                        }
+                    }
+                    items.append("Video: Track Present [\(v.isEnabled ? "Active" : "Disabled")]")
+                }
+            } else {
+                items.append("Video: Track Present")
+            }
+            items.append("Audio: \(audioTracks.count) track(s)")
+        }
+        return items.joined(separator: " • ")
     }
 
     deinit {

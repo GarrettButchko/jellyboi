@@ -42,19 +42,27 @@ class MediaButtonColumnViewModel {
 
     var hasProgress: Bool {
         if isProgressReset { return false }
-        if let ticks = item.userData?.playbackPositionTicks, ticks > 0 { return true }
-        if let percent = item.userData?.playedPercentage, percent >= 1 { return true }
+        if let percent = item.userData?.playedPercentage, percent >= 1.0 { return true }
+        if let ticks = item.userData?.playbackPositionTicks, ticks > 0 {
+            let total = item.runTimeTicks.map { Int($0) } ?? 0
+            if total > 0 {
+                return (Double(ticks) / Double(total)) * 100.0 >= 1.0
+            }
+            return true
+        }
         return false
     }
 
     var isInProgress: Bool {
         if isProgressReset { return false }
         if isWatched { return false }
-        return hasProgress
+        return hasProgress && Int((watchProgress ?? 0) * 100) > 0
     }
 
     var progressVisible: Bool {
-        isInProgress || isWatched
+        if isWatched { return true }
+        guard isInProgress, let wp = watchProgress else { return false }
+        return Int(wp * 100) > 0
     }
 
     var progressValue: Double {

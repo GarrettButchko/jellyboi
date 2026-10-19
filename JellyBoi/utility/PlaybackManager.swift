@@ -172,7 +172,17 @@ final class PlaybackManager {
                 }
             }
 
-            let resolvedLocalURL = localFileURL ?? targetItem.id.flatMap { DownloadManager.shared.localFileURL(for: $0) }
+            let resolvedLocalURL: URL? = {
+                #if DEBUG
+                if DebugSettings.shared.forceStreamFallback {
+                    AppLogger.debug("[DebugSettings] forceStreamFallback is active; bypassing local file", tag: "PlaybackManager")
+                    return nil
+                }
+                #endif
+                if let localFileURL { return localFileURL }
+                guard let id = targetItem.id, DownloadManager.shared.isLocallyPlayable(id: id) else { return nil }
+                return DownloadManager.shared.localFileURL(for: id)
+            }()
             let request = PlaybackRequest(
                 item: targetItem,
                 startFromBeginning: fromBeginning,
@@ -190,7 +200,10 @@ final class PlaybackManager {
             )
 
             let success = await vm.prepare()
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                vm.cleanup()
+                return
+            }
 
             withAnimation(statusOverlaySpring) {
                 self.isLoading = false
@@ -202,6 +215,7 @@ final class PlaybackManager {
             } else {
                 let err = vm.errorMessage ?? "An unknown error occurred while preparing playback."
                 AppLogger.error("Playback preparation failed: \(err)", tag: "PlaybackManager")
+                vm.cleanup()
                 self.currentError = PlaybackErrorInfo(
                     title: "Playback Error",
                     message: err,
@@ -251,7 +265,10 @@ final class PlaybackManager {
             )
 
             let success = await vm.prepare()
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                vm.cleanup()
+                return
+            }
 
             withAnimation(statusOverlaySpring) {
                 self.isLoading = false
@@ -261,6 +278,7 @@ final class PlaybackManager {
                 self.activePlayerViewModel = vm
             } else {
                 let err = vm.errorMessage ?? "An error occurred while opening the local file."
+                vm.cleanup()
                 self.currentError = PlaybackErrorInfo(
                     title: "Playback Error",
                     message: err,

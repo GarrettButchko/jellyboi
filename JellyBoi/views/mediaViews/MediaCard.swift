@@ -7,6 +7,7 @@
 
 import SwiftUI
 import BaseColors
+import SDWebImage
 import SDWebImageSwiftUI
 import JellyfinAPI
 
@@ -66,14 +67,16 @@ struct MediaCard: View {
                 .aspectRatio(viewModel.cardAspectRatio(overrideRatio: imageAspectRatio), contentMode: .fit)
                 .overlay(alignment: .bottomTrailing) {
                     VStack(alignment: .trailing, spacing: 6) {
-                        if let progress = viewModel.watchProgress, !viewModel.isWatched && viewModel.isWatching {
+                        if let progress = viewModel.watchProgress, !viewModel.isWatched && viewModel.isWatching && Int(progress * 100) > 0 {
                             GlassProgressBar(progress: progress, barWidth: 40)
+                                .transition(.scale(scale: 0.8).combined(with: .opacity))
                         }
                         if let episodeTitle = viewModel.episodeTitle {
                             episodeBadge(text: episodeTitle)
                         }
                     }
                     .padding(8)
+                    .animation(.smooth(duration: 0.3), value: viewModel.isWatching)
                 }
                 .overlay(alignment: .topTrailing) {
                     if viewModel.isWatched {
@@ -202,18 +205,25 @@ struct MediaCard: View {
             .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
     }
 
+    private var isImageCached: Bool {
+        guard let url = posterURL else { return false }
+        let key = SDWebImageManager.shared.cacheKey(for: url)
+        return SDImageCache.shared.imageFromMemoryCache(forKey: key) != nil
+    }
+
     @ViewBuilder
     private var posterImage: some View {
         if let url = posterURL {
+            let isCached = isImageCached
             WebImage(
                 url: url,
-                transaction: Transaction(animation: .easeInOut(duration: 0.3))
+                transaction: isCached ? Transaction() : Transaction(animation: .easeInOut(duration: 0.25))
             ) { phase in
                 if let image = phase.image {
                     image
                         .resizable()
                         .scaledToFill()
-                        .transition(.fade(duration: 0.3))
+                        .transition(isCached ? .identity : .fade(duration: 0.25))
                 } else {
                     placeholder
                 }

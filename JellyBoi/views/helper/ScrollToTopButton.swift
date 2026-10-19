@@ -31,12 +31,34 @@ struct ScrollToTopButton: View {
 /// has scrolled past `threshold` points. Animates in from the bottom with
 /// a blurReplace transition and passes taps through when hidden.
 struct ScrollToTopOverlay: View {
-    let scrollOffset: CGFloat
+    let isVisible: Bool
     var threshold: CGFloat = 300
     @Binding var STTButtonHeight: CGFloat
     let action: () -> Void
 
-    private var isVisible: Bool { scrollOffset > threshold }
+    init(
+        scrollOffset: CGFloat,
+        threshold: CGFloat = 300,
+        STTButtonHeight: Binding<CGFloat>,
+        action: @escaping () -> Void
+    ) {
+        self.isVisible = scrollOffset > threshold
+        self.threshold = threshold
+        self._STTButtonHeight = STTButtonHeight
+        self.action = action
+    }
+
+    init(
+        isVisible: Bool,
+        threshold: CGFloat = 300,
+        STTButtonHeight: Binding<CGFloat>,
+        action: @escaping () -> Void
+    ) {
+        self.isVisible = isVisible
+        self.threshold = threshold
+        self._STTButtonHeight = STTButtonHeight
+        self.action = action
+    }
 
     var body: some View {
         ZStack {

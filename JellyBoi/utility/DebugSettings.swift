@@ -52,6 +52,11 @@ public final class DebugSettings {
     public var hidePersonBiography = false
     public var hidePersonImage = false
 
+    // MARK: - Downloads & Offline Playback
+    public var showPlaybackDebugOverlay = false
+    public var forceStreamFallback = false
+    public var simulateRemuxFailure = false
+
     public var activeOverrideCount: Int {
         var count = 0
         // Home
@@ -87,6 +92,10 @@ public final class DebugSettings {
         if hidePersonMedia { count += 1 }
         if hidePersonBiography { count += 1 }
         if hidePersonImage { count += 1 }
+        // Downloads & Playback
+        if showPlaybackDebugOverlay { count += 1 }
+        if forceStreamFallback { count += 1 }
+        if simulateRemuxFailure { count += 1 }
         return count
     }
 
@@ -127,6 +136,10 @@ public final class DebugSettings {
         hidePersonMedia = false
         hidePersonBiography = false
         hidePersonImage = false
+
+        showPlaybackDebugOverlay = false
+        forceStreamFallback = false
+        simulateRemuxFailure = false
     }
 }
 
@@ -166,9 +179,9 @@ public struct DebugSettingsView: View {
                     .disabled(debugSettings.hideAllHomeRows)
                 Toggle("Hide Continue Watching", isOn: $debugSettings.hideContinueWatching)
                     .disabled(debugSettings.hideAllHomeRows)
-                Toggle("Hide Continue Shows", isOn: $debugSettings.hideContinueShows)
+                Toggle("Hide Continue Watching Shows", isOn: $debugSettings.hideContinueShows)
                     .disabled(debugSettings.hideAllHomeRows)
-                Toggle("Hide Top Rated", isOn: $debugSettings.hideTopRated)
+                Toggle("Hide Top Rated Movies", isOn: $debugSettings.hideTopRated)
                     .disabled(debugSettings.hideAllHomeRows)
                 Toggle("Hide Recently Added Movies", isOn: $debugSettings.hideRecentlyAddedMovies)
                     .disabled(debugSettings.hideAllHomeRows)
@@ -177,33 +190,29 @@ public struct DebugSettingsView: View {
             } header: {
                 Label("Home Tab", systemImage: "house")
             } footer: {
-                Text("Tests how the Home screen responds when individual categories or the entire library are empty.")
+                Text("Simulates empty rows, missing sections, and connection error states on the Home feed.")
             }
 
             // MARK: - Media Tab
             Section {
                 Toggle("Simulate Empty Library", isOn: $debugSettings.simulateMediaEmptyLibrary)
-                Toggle("Hide Movies", isOn: $debugSettings.hideMediaMovies)
-                    .disabled(debugSettings.simulateMediaEmptyLibrary)
-                Toggle("Hide TV Shows", isOn: $debugSettings.hideMediaShows)
-                    .disabled(debugSettings.simulateMediaEmptyLibrary)
-                Toggle("Hide Favorites", isOn: $debugSettings.hideMediaFavorites)
-                    .disabled(debugSettings.simulateMediaEmptyLibrary)
-                Toggle("Simulate Media Tab Error", isOn: $debugSettings.simulateMediaError)
+                Toggle("Simulate Library Error", isOn: $debugSettings.simulateMediaError)
+                Toggle("Hide Movies Tab", isOn: $debugSettings.hideMediaMovies)
+                Toggle("Hide TV Shows Tab", isOn: $debugSettings.hideMediaShows)
+                Toggle("Hide Favorites Filter", isOn: $debugSettings.hideMediaFavorites)
             } header: {
-                Label("Media Tab", systemImage: "film")
+                Label("Media Tab", systemImage: "play.rectangle.on.rectangle")
             } footer: {
-                Text("Simulates empty library or category states ('No Movies', 'No TV Shows', and 'No Favorite...').")
+                Text("Simulates empty library grids, missing category items, or library fetch failures.")
             }
 
             // MARK: - Search Tab
             Section {
                 Toggle("Simulate Empty Library", isOn: $debugSettings.simulateSearchEmptyLibrary)
                 Toggle("Hide Search Genres", isOn: $debugSettings.hideSearchGenres)
+                Toggle("Simulate No Search Results", isOn: $debugSettings.hideSearchResults)
                     .disabled(debugSettings.simulateSearchEmptyLibrary)
-                Toggle("Hide Search Results", isOn: $debugSettings.hideSearchResults)
-                    .disabled(debugSettings.simulateSearchEmptyLibrary)
-                Toggle("Hide Genre Detail Titles", isOn: $debugSettings.hideGenreResults)
+                Toggle("Simulate Empty Genre View", isOn: $debugSettings.hideGenreResults)
                     .disabled(debugSettings.simulateSearchEmptyLibrary)
             } header: {
                 Label("Search Tab", systemImage: "magnifyingglass")
@@ -237,6 +246,17 @@ public struct DebugSettingsView: View {
                 Text("Tests person profiles with missing biographies, placeholder avatar, or empty media credits.")
             }
 
+            // MARK: - Downloads & Offline Playback
+            Section {
+                Toggle("Show Playback Info HUD", isOn: $debugSettings.showPlaybackDebugOverlay)
+                Toggle("Force Streaming (Bypass Local File)", isOn: $debugSettings.forceStreamFallback)
+                Toggle("Simulate Remux Failure", isOn: $debugSettings.simulateRemuxFailure)
+            } header: {
+                Label("Downloads & Offline Playback", systemImage: "arrow.down.circle")
+            } footer: {
+                Text("Displays video/audio track diagnostics on top of the player, forces server streaming even if a local file exists, or tests remuxing error handling.")
+            }
+
             // MARK: - Reset All
             if debugSettings.isAnyActive {
                 Section {
@@ -255,10 +275,11 @@ public struct DebugSettingsView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.bg.ignoresSafeArea())
         .navigationTitle("Debug Settings")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarVisibility(.visible, for: .navigationBar)
-        .background(Color.bg)
     }
 }
 #endif

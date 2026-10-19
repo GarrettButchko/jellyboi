@@ -12,21 +12,33 @@ import JellyfinAPI
 
 extension MediaDetailView {
 
+    // MARK: - Hero Section
+
+    var heroSection: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            heroImage
+                .background(alignment: .top) {
+                    HeroBackdropView(
+                        url: detailVM.posterURL(client: serverViewModel.client),
+                        itemID: displayItem.id,
+                        blurRadius: 40,
+                        isFlipped: true
+                    )
+                    .offset(y: -400)
+                    .ignoresSafeArea(edges: .top)
+                }
+            buttonColumn
+        }
+        .padding(.horizontal, 16)
+    }
+
     // MARK: - Hero Image
-
-    var heroPosterURL: URL? {
-        detailVM.posterURL(client: serverViewModel.client)
-    }
-
-    var heroAspectRatio: CGFloat {
-        detailVM.heroAspectRatio
-    }
 
     @ViewBuilder
     var heroImage: some View {
-        let currentRatio = heroAspectRatio
+        let currentRatio = detailVM.heroAspectRatio
 
-        if let url = heroPosterURL {
+        if let url = detailVM.posterURL(client: serverViewModel.client) {
             ZStack {
                 heroPlaceholder
 

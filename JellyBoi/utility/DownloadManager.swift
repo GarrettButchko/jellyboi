@@ -11,70 +11,7 @@ import Get
 import JellyfinAPI
 import LoggingKit
 import SDWebImage
-
-public enum DownloadStatus: String, Codable, Sendable {
-    case queued
-    case downloading
-    case paused
-    case completed
-    case failed
-}
-
-public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
-    public let id: String
-    public let item: BaseItemDto
-    public let fileName: String
-    public var status: DownloadStatus
-    public var progress: Double
-    public var bytesDownloaded: Int64
-    public var totalBytes: Int64
-    public let dateAdded: Date
-    public var dateCompleted: Date?
-    public var errorMessage: String?
-
-    public static func == (lhs: DownloadItem, rhs: DownloadItem) -> Bool {
-        lhs.id == rhs.id &&
-        lhs.status == rhs.status &&
-        lhs.progress == rhs.progress &&
-        lhs.bytesDownloaded == rhs.bytesDownloaded &&
-        lhs.totalBytes == rhs.totalBytes &&
-        lhs.errorMessage == rhs.errorMessage
-    }
-
-    public var title: String {
-        if item.type == .episode {
-            var parts: [String] = []
-            if let series = item.seriesName {
-                parts.append(series)
-            }
-            if let s = item.parentIndexNumber, let e = item.indexNumber {
-                parts.append("S\(s):E\(e)")
-            }
-            if let name = item.name, !name.isEmpty {
-                parts.append(name)
-            }
-            return parts.isEmpty ? (item.name ?? "Episode") : parts.joined(separator: " - ")
-        }
-        return item.name ?? "Video"
-    }
-
-    public var formattedProgress: String {
-        if totalBytes > 0 {
-            let downloaded = ByteCountFormatter.string(fromByteCount: bytesDownloaded, countStyle: .file)
-            let total = ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
-            return "\(downloaded) / \(total)"
-        } else if bytesDownloaded > 0 {
-            return ByteCountFormatter.string(fromByteCount: bytesDownloaded, countStyle: .file)
-        } else {
-            return "0 KB"
-        }
-    }
-
-    public var formattedPercentage: String {
-        let percent = Int(progress * 100)
-        return "\(percent)%"
-    }
-}
+import AVFoundation
 
 @Observable
 @MainActor
@@ -83,33 +20,34 @@ public final class DownloadManager: NSObject {
 
     public private(set) var downloads: [String: DownloadItem] = [:]
 
+    public var client: JellyfinClient? {
+        didSet {
+            if client != nil {
+                processQueue()
+            }
+        }
+    }
+
+    @ObservationIgnored
+    private let storage = DownloadStorage()
+    @ObservationIgnored
+    private let progressTracker = DownloadProgressTracker()
+
+    @ObservationIgnored
+    private var downloadQueue: [String] = []
+    @ObservationIgnored
+    private var activeDownloadingID: String?
     @ObservationIgnored
     private var activeTasks: [String: URLSessionDownloadTask] = [:]
     @ObservationIgnored
     private var resumeDataMap: [String: Data] = [:]
     @ObservationIgnored
-    private var session: URLSession!
+    private var retryAttempts: [String: Int] = [:]
     @ObservationIgnored
-    private var lastProgressUpdateTime: [String: TimeInterval] = [:]
-
-    private let fileManager = FileManager.default
-    private let indexFileName = "downloads_index.json"
+    private var session: URLSession!
 
     public var downloadsDirectory: URL {
-        let urls = fileManager.urls(for: .documentDirectory, in: .userDomainMask)
-        let dir = urls[0].appendingPathComponent("Downloads", isDirectory: true)
-        if !fileManager.fileExists(atPath: dir.path) {
-            try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-            var resourceValues = URLResourceValues()
-            resourceValues.isExcludedFromBackup = true
-            var mutableDir = dir
-            try? mutableDir.setResourceValues(resourceValues)
-        }
-        return dir
-    }
-
-    private var indexFileURL: URL {
-        downloadsDirectory.appendingPathComponent(indexFileName)
+        storage.downloadsDirectory
     }
 
     public override init() {
@@ -117,12 +55,80 @@ public final class DownloadManager: NSObject {
         let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
         config.timeoutIntervalForResource = 3600 * 6 // 6 hours max for large movies
+        config.timeoutIntervalForRequest = 180 // 3 minutes timeout for individual chunks
         let delegateQueue = OperationQueue()
         delegateQueue.name = "com.jellyboi.downloadQueue"
-        delegateQueue.maxConcurrentOperationCount = 2
+        delegateQueue.maxConcurrentOperationCount = 1
         self.session = URLSession(configuration: config, delegate: self, delegateQueue: delegateQueue)
 
-        loadIndex()
+        let loaded = storage.loadIndex()
+        self.downloads = loaded.items
+        self.downloadQueue = loaded.queue
+        let validFileNames = Set(loaded.items.values.map(\.fileName))
+        storage.cleanupOrphanedFiles(validFileNames: validFileNames)
+        if loaded.didHeal {
+            saveIndex()
+        }
+
+        if client != nil {
+            processQueue()
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .mediaProgressUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let itemID = notification.object as? String,
+                  let positionTicks = notification.userInfo?["positionTicks"] as? Int else { return }
+            let totalTicks = notification.userInfo?["durationTicks"] as? Int
+            self.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .mediaProgressReset,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let itemID = notification.object as? String else { return }
+            self.clearProgress(for: itemID)
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .mediaFavoriteToggled,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let itemID = notification.object as? String,
+                  let isFavorite = notification.userInfo?["isFavorite"] as? Bool else { return }
+            self.updateFavorite(for: itemID, isFavorite: isFavorite)
+        }
+    }
+
+    // MARK: - Playback Progress & Metadata Sync
+
+    public func updateProgress(for itemID: String, positionTicks: Int, totalTicks: Int?) {
+        guard var downloadItem = downloads[itemID] else { return }
+        downloadItem.item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
+        downloads[itemID] = downloadItem
+        saveIndex()
+    }
+
+    public func clearProgress(for itemID: String) {
+        guard var downloadItem = downloads[itemID] else { return }
+        downloadItem.item.clearProgress()
+        downloads[itemID] = downloadItem
+        saveIndex()
+    }
+
+    public func updateFavorite(for itemID: String, isFavorite: Bool) {
+        guard var downloadItem = downloads[itemID] else { return }
+        downloadItem.item.setFavorite(isFavorite)
+        downloads[itemID] = downloadItem
+        saveIndex()
     }
 
     // MARK: - Query State
@@ -132,15 +138,34 @@ public final class DownloadManager: NSObject {
     }
 
     public var activeDownloads: [DownloadItem] {
-        downloadList.filter { $0.status == .downloading || $0.status == .queued }
+        Array(downloads.values)
+            .filter { $0.status == .downloading || $0.status == .converting || $0.status == .finalizing || $0.status == .queued || $0.status == .failed }
+            .sorted { a, b in
+                let aActive = a.status == .downloading || a.status == .converting || a.status == .finalizing
+                let bActive = b.status == .downloading || b.status == .converting || b.status == .finalizing
+                if aActive && !bActive { return true }
+                if bActive && !aActive { return false }
+                // Preserve episode order for the same series
+                if let sA = a.item.parentIndexNumber, let sB = b.item.parentIndexNumber,
+                   let eA = a.item.indexNumber, let eB = b.item.indexNumber,
+                   (a.item.seriesID == b.item.seriesID || a.item.seriesName == b.item.seriesName) {
+                    if sA != sB { return sA < sB }
+                    return eA < eB
+                }
+                return a.dateAdded < b.dateAdded
+            }
     }
 
     public var completedDownloads: [DownloadItem] {
-        downloadList.filter { item in
-            if item.status == .completed { return true }
-            let fileURL = downloadsDirectory.appendingPathComponent(item.fileName)
-            return fileManager.fileExists(atPath: fileURL.path)
-        }
+        Array(downloads.values)
+            .filter { item in
+                if item.status == .downloading || item.status == .converting || item.status == .finalizing || item.status == .queued || item.status == .failed {
+                    return false
+                }
+                if item.status == .completed { return true }
+                return storage.fileExists(for: item.fileName)
+            }
+            .sorted { ($0.dateCompleted ?? $0.dateAdded) > ($1.dateCompleted ?? $1.dateAdded) }
     }
 
     public var hasActiveDownloads: Bool {
@@ -200,13 +225,12 @@ public final class DownloadManager: NSObject {
     public func isDownloaded(id: String) -> Bool {
         guard let item = downloads[id] else { return false }
         if item.status == .completed { return true }
-        let fileURL = downloadsDirectory.appendingPathComponent(item.fileName)
-        return fileManager.fileExists(atPath: fileURL.path)
+        return storage.fileExists(for: item.fileName)
     }
 
     public func isDownloading(id: String) -> Bool {
         guard let item = downloads[id] else { return false }
-        return item.status == .downloading || item.status == .queued
+        return item.status == .downloading || item.status == .converting || item.status == .finalizing || item.status == .queued
     }
 
     public func downloadItem(for id: String) -> DownloadItem? {
@@ -220,16 +244,33 @@ public final class DownloadManager: NSObject {
 
     public func localFileURL(for id: String) -> URL? {
         guard let record = downloads[id] else { return nil }
-        let fileURL = downloadsDirectory.appendingPathComponent(record.fileName)
-        if fileManager.fileExists(atPath: fileURL.path) {
-            return fileURL
-        }
-        return nil
+        return storage.localFileURL(for: record.fileName)
+    }
+
+    public func isLocallyPlayable(id: String) -> Bool {
+        guard let record = downloads[id] else { return false }
+        return storage.isLocallyPlayable(fileName: record.fileName)
     }
 
     // MARK: - Actions
 
     public func startDownload(item: BaseItemDto, client: JellyfinClient) {
+        self.client = client
+        enqueue(item: item, client: client)
+        saveIndex()
+        processQueue()
+    }
+
+    public func startDownloads(items: [BaseItemDto], client: JellyfinClient) {
+        self.client = client
+        for item in items {
+            enqueue(item: item, client: client)
+        }
+        saveIndex()
+        processQueue()
+    }
+
+    private func enqueue(item: BaseItemDto, client: JellyfinClient) {
         guard let itemID = item.id else {
             AppLogger.warning("Cannot download item without ID", tag: "DownloadManager")
             return
@@ -240,11 +281,18 @@ public final class DownloadManager: NSObject {
             return
         }
 
+        if let existing = downloads[itemID], existing.status == .downloading || existing.status == .converting || existing.status == .finalizing || existing.status == .queued {
+            AppLogger.info("Item '\(item.name ?? itemID)' is already downloading or queued", tag: "DownloadManager")
+            return
+        }
+
         let container = item.container?.lowercased() ?? "mp4"
         let safeContainer = container.isEmpty ? "mp4" : container
-        let fileName = "\(itemID).\(safeContainer)"
+        let isNativePlayable = safeContainer == "mp4" || safeContainer == "m4v" || safeContainer == "mov"
+        let finalContainer = isNativePlayable ? safeContainer : "mp4"
+        let fileName = "\(itemID).\(finalContainer)"
 
-        var downloadItem = DownloadItem(
+        let downloadItem = DownloadItem(
             id: itemID,
             item: item,
             fileName: fileName,
@@ -258,7 +306,9 @@ public final class DownloadManager: NSObject {
         )
 
         downloads[itemID] = downloadItem
-        saveIndex()
+        if !downloadQueue.contains(itemID) {
+            downloadQueue.append(itemID)
+        }
 
         // Cache poster artwork for offline browsing
         if let posterURL = client.url(with: Paths.getItemImage(
@@ -272,115 +322,176 @@ public final class DownloadManager: NSObject {
                 progress: nil
             ) { _, _, _, _, _, _ in }
         }
-
-        // Start download task
-        let downloadPath = Paths.getDownload(itemID: itemID)
-        guard let downloadURL = client.url(with: downloadPath, queryAPIKey: true) else {
-            downloadItem.status = .failed
-            downloadItem.errorMessage = "Failed to construct download URL."
-            downloads[itemID] = downloadItem
-            saveIndex()
-            AppLogger.error("Failed to construct download URL for item \(itemID)", tag: "DownloadManager")
-            return
-        }
-
-        var request = URLRequest(url: downloadURL)
-        request.setValue(authorizationHeader(for: client), forHTTPHeaderField: "Authorization")
-
-        let task = session.downloadTask(with: request)
-        task.taskDescription = itemID
-        activeTasks[itemID] = task
-        task.resume()
-
-        downloadItem.status = .downloading
-        downloads[itemID] = downloadItem
-        saveIndex()
-
-        AppLogger.info("Started download for '\(downloadItem.title)' (ID: \(itemID))", tag: "DownloadManager")
     }
 
-    public func pauseDownload(id: String) {
-        guard let task = activeTasks[id] else {
-            if var item = downloads[id], item.status == .downloading {
-                item.status = .paused
-                downloads[id] = item
-                saveIndex()
+    // MARK: - Queue Processing (Strictly Sequential)
+
+    private func processQueue() {
+        if let activeID = activeDownloadingID {
+            if let task = activeTasks[activeID], task.state == .running {
+                return
+            } else if activeTasks[activeID] == nil {
+                activeDownloadingID = nil
             }
-            return
         }
 
-        task.cancel(byProducingResumeData: { [weak self] data in
-            guard let self, let data else { return }
-            Task { @MainActor in
-                self.resumeDataMap[id] = data
-                if var item = self.downloads[id] {
-                    item.status = .paused
-                    self.downloads[id] = item
-                    self.saveIndex()
+        guard activeDownloadingID == nil else { return }
+
+        // Reconcile queue if empty but queued items exist in downloads
+        if downloadQueue.isEmpty {
+            let queuedIDs = downloads.values
+                .filter { $0.status == .queued }
+                .sorted { a, b in
+                    if let sA = a.item.parentIndexNumber, let sB = b.item.parentIndexNumber,
+                       let eA = a.item.indexNumber, let eB = b.item.indexNumber,
+                       (a.item.seriesID == b.item.seriesID || a.item.seriesName == b.item.seriesName) {
+                        if sA != sB { return sA < sB }
+                        return eA < eB
+                    }
+                    return a.dateAdded < b.dateAdded
                 }
-                self.activeTasks.removeValue(forKey: id)
-                AppLogger.info("Paused download for item \(id) with resume data", tag: "DownloadManager")
+                .map(\.id)
+            downloadQueue.append(contentsOf: queuedIDs)
+        }
+
+        while !downloadQueue.isEmpty {
+            let nextID = downloadQueue.removeFirst()
+            guard var item = downloads[nextID] else { continue }
+
+            guard item.status == .queued else { continue }
+
+            if storage.fileExists(for: item.fileName) {
+                item.status = .completed
+                item.progress = 1.0
+                downloads[nextID] = item
+                saveIndex()
+                continue
             }
-        })
+
+            if let resumeData = resumeDataMap[nextID] {
+                let task = session.downloadTask(withResumeData: resumeData)
+                task.taskDescription = nextID
+                activeTasks[nextID] = task
+                activeDownloadingID = nextID
+                resumeDataMap.removeValue(forKey: nextID)
+
+                item.status = .downloading
+                item.errorMessage = nil
+                downloads[nextID] = item
+                saveIndex()
+                task.resume()
+                AppLogger.info("Resumed sequential download for '\(item.title)' (ID: \(nextID))", tag: "DownloadManager")
+                return
+            } else {
+                guard let client = self.client else {
+                    AppLogger.warning("Cannot start queued download for \(nextID): No JellyfinClient available", tag: "DownloadManager")
+                    downloadQueue.insert(nextID, at: 0)
+                    return
+                }
+
+                let downloadPath = Paths.getDownload(itemID: nextID)
+                guard let downloadURL = client.url(with: downloadPath, queryAPIKey: true) else {
+                    item.status = .failed
+                    item.errorMessage = "Failed to construct download URL."
+                    downloads[nextID] = item
+                    saveIndex()
+                    AppLogger.error("Failed to construct download URL for queued item \(nextID)", tag: "DownloadManager")
+                    continue
+                }
+
+                var request = URLRequest(url: downloadURL)
+                request.setValue(authorizationHeader(for: client), forHTTPHeaderField: "Authorization")
+
+                let task = session.downloadTask(with: request)
+                task.taskDescription = nextID
+                activeTasks[nextID] = task
+                activeDownloadingID = nextID
+
+                item.status = .downloading
+                item.errorMessage = nil
+                downloads[nextID] = item
+                saveIndex()
+                task.resume()
+                AppLogger.info("Started sequential download for '\(item.title)' (ID: \(nextID))", tag: "DownloadManager")
+                return
+            }
+        }
     }
 
     public func resumeDownload(id: String, client: JellyfinClient? = nil) {
-        guard var item = downloads[id] else { return }
-
-        if let resumeData = resumeDataMap[id] {
-            let task = session.downloadTask(withResumeData: resumeData)
-            task.taskDescription = id
-            activeTasks[id] = task
-            task.resume()
-            resumeDataMap.removeValue(forKey: id)
-
-            item.status = .downloading
-            item.errorMessage = nil
-            downloads[id] = item
-            saveIndex()
-            AppLogger.info("Resumed download from resume data for item \(id)", tag: "DownloadManager")
-        } else if let client {
-            startDownload(item: item.item, client: client)
-        } else {
-            AppLogger.warning("Cannot resume download without client or resume data", tag: "DownloadManager")
+        if let client {
+            self.client = client
         }
+        guard var item = downloads[id] else { return }
+        guard item.status != .completed else { return }
+        guard item.status != .downloading, item.status != .converting, item.status != .finalizing else { return }
+
+        item.status = .queued
+        item.errorMessage = nil
+        downloads[id] = item
+        if !downloadQueue.contains(id) {
+            downloadQueue.append(id)
+        }
+        saveIndex()
+        processQueue()
+        AppLogger.info("Enqueued resumed download for item \(id)", tag: "DownloadManager")
+    }
+
+    public func cancelDownloads(ids: [String]) {
+        let idSet = Set(ids)
+        for id in idSet {
+            if let task = activeTasks[id] {
+                task.cancel()
+                activeTasks.removeValue(forKey: id)
+            }
+            if activeDownloadingID == id {
+                activeDownloadingID = nil
+            }
+            resumeDataMap.removeValue(forKey: id)
+            retryAttempts.removeValue(forKey: id)
+            progressTracker.clear(itemID: id)
+            downloads.removeValue(forKey: id)
+        }
+        downloadQueue.removeAll { idSet.contains($0) }
+        saveIndex()
+        processQueue()
+        AppLogger.info("Cancelled \(idSet.count) download(s)", tag: "DownloadManager")
     }
 
     public func cancelDownload(id: String) {
-        if let task = activeTasks[id] {
-            task.cancel()
-            activeTasks.removeValue(forKey: id)
+        cancelDownloads(ids: [id])
+    }
+
+    public func deleteDownloads(ids: [String]) {
+        let idSet = Set(ids)
+        for id in idSet {
+            if let item = downloads[id] {
+                storage.deleteFile(fileName: item.fileName)
+            }
+            storage.deleteAllFiles(for: id)
         }
-        resumeDataMap.removeValue(forKey: id)
-        downloads.removeValue(forKey: id)
-        saveIndex()
-        AppLogger.info("Cancelled download for item \(id)", tag: "DownloadManager")
+        cancelDownloads(ids: ids)
+        AppLogger.info("Deleted \(idSet.count) download(s) and local files", tag: "DownloadManager")
     }
 
     public func deleteDownload(id: String) {
-        cancelDownload(id: id)
-
-        if let item = downloads[id] {
-            let fileURL = downloadsDirectory.appendingPathComponent(item.fileName)
-            try? fileManager.removeItem(at: fileURL)
-        }
-
-        downloads.removeValue(forKey: id)
-        saveIndex()
-        AppLogger.info("Deleted download and local file for item \(id)", tag: "DownloadManager")
+        deleteDownloads(ids: [id])
     }
 
     public func deleteAllDownloads() {
-        for (id, task) in activeTasks {
+        for (_, task) in activeTasks {
             task.cancel()
-            AppLogger.info("Cancelled active task for \(id)", tag: "DownloadManager")
         }
         activeTasks.removeAll()
+        activeDownloadingID = nil
+        downloadQueue.removeAll()
         resumeDataMap.removeAll()
+        retryAttempts.removeAll()
+        progressTracker.clearAll()
 
         for (_, item) in downloads {
-            let fileURL = downloadsDirectory.appendingPathComponent(item.fileName)
-            try? fileManager.removeItem(at: fileURL)
+            storage.deleteFile(fileName: item.fileName)
+            storage.deleteAllFiles(for: item.id)
         }
 
         downloads.removeAll()
@@ -388,7 +499,7 @@ public final class DownloadManager: NSObject {
         AppLogger.info("Deleted all downloads and files", tag: "DownloadManager")
     }
 
-    // MARK: - Internal Session Handling
+    // MARK: - Internal Session & Progress Handling
 
     private func handleProgress(
         itemID: String,
@@ -397,130 +508,252 @@ public final class DownloadManager: NSObject {
         totalBytesExpected: Int64
     ) {
         let now = Date().timeIntervalSince1970
-        let lastUpdate = lastProgressUpdateTime[itemID] ?? 0
-        // Throttle progress updates to at most once per 0.1s
-        guard now - lastUpdate > 0.1 || totalBytesWritten >= totalBytesExpected else { return }
-        lastProgressUpdateTime[itemID] = now
+        guard !progressTracker.shouldThrottleDownload(
+            itemID: itemID,
+            now: now,
+            totalBytesWritten: totalBytesWritten,
+            totalBytesExpected: totalBytesExpected
+        ) else { return }
 
         guard var item = downloads[itemID] else { return }
         item.status = .downloading
         item.bytesDownloaded = totalBytesWritten
         if totalBytesExpected > 0 {
             item.totalBytes = totalBytesExpected
-            item.progress = Double(totalBytesWritten) / Double(totalBytesExpected)
         }
+
+        let calculation = progressTracker.calculateDownloadProgress(
+            itemID: itemID,
+            now: now,
+            totalBytesWritten: totalBytesWritten,
+            totalBytesExpected: totalBytesExpected
+        )
+
+        if totalBytesExpected > 0 {
+            item.progress = calculation.progress
+        }
+        if let eta = calculation.eta {
+            item.estimatedTimeRemaining = eta
+        }
+
         downloads[itemID] = item
     }
 
     private func handleCompleted(itemID: String, tempLocation: URL) {
         guard var item = downloads[itemID] else { return }
-        let destinationURL = downloadsDirectory.appendingPathComponent(item.fileName)
+        let destinationURL = storage.downloadsDirectory.appendingPathComponent(item.fileName)
 
-        do {
-            if fileManager.fileExists(atPath: destinationURL.path) {
-                try fileManager.removeItem(at: destinationURL)
+        let rawContainer = item.item.container?.lowercased() ?? ""
+        let isRawNative = rawContainer == "mp4" || rawContainer == "m4v" || rawContainer == "mov"
+        let itemTitle = item.title
+        let itemBytesDownloaded = item.bytesDownloaded
+        let targetAspect = item.item.mediaStreams?.first(where: { $0.type == .video })?.aspectRatio
+            ?? item.item.mediaSources?.compactMap({ $0.mediaStreams }).flatMap({ $0 }).first(where: { $0.type == .video })?.aspectRatio
+            ?? item.item.aspectRatio
+
+        item.status = isRawNative ? .finalizing : .converting
+        item.progress = min(max(item.progress, 0.0), 1.0)
+        item.statusDetail = isRawNative ? "Finalizing..." : "Converting video..."
+        item.estimatedTimeRemaining = nil
+        downloads[itemID] = item
+
+        Task.detached(priority: .utility) {
+            do {
+                let fileSize = try await DownloadPostProcessor.processDownloadedFile(
+                    itemID: itemID,
+                    itemTitle: itemTitle,
+                    tempLocation: tempLocation,
+                    destinationURL: destinationURL,
+                    rawContainer: rawContainer,
+                    targetAspect: targetAspect,
+                    itemBytesDownloaded: itemBytesDownloaded,
+                    onStateChange: { status, detail in
+                        Task { @MainActor in
+                            DownloadManager.shared.updateState(itemID: itemID, status: status, detail: detail)
+                        }
+                    },
+                    onProgress: { progress in
+                        Task { @MainActor in
+                            DownloadManager.shared.updateFinalizingProgress(itemID: itemID, progress: progress)
+                        }
+                    }
+                )
+
+                await MainActor.run {
+                    DownloadManager.shared.finishItemCompleted(itemID: itemID, fileSize: fileSize)
+                }
+            } catch {
+                try? FileManager.default.removeItem(at: tempLocation)
+                await MainActor.run {
+                    DownloadManager.shared.finishItemFailed(itemID: itemID, error: error)
+                }
             }
-            try fileManager.moveItem(at: tempLocation, to: destinationURL)
-
-            let attributes = try fileManager.attributesOfItem(atPath: destinationURL.path)
-            let fileSize = attributes[.size] as? Int64 ?? item.bytesDownloaded
-
-            item.status = .completed
-            item.progress = 1.0
-            item.bytesDownloaded = fileSize
-            item.totalBytes = fileSize
-            item.dateCompleted = Date()
-            item.errorMessage = nil
-
-            downloads[itemID] = item
-            activeTasks.removeValue(forKey: itemID)
-            resumeDataMap.removeValue(forKey: itemID)
-            saveIndex()
-
-            AppLogger.success("Download completed successfully for '\(item.title)'", tag: "DownloadManager")
-        } catch {
-            item.status = .failed
-            item.errorMessage = "Failed to save file: \(error.localizedDescription)"
-            downloads[itemID] = item
-            activeTasks.removeValue(forKey: itemID)
-            saveIndex()
-
-            AppLogger.error("Failed to move downloaded file for '\(item.title)': \(error.localizedDescription)", error, tag: "DownloadManager")
         }
+    }
+
+    private func updateState(itemID: String, status: DownloadStatus, detail: String?) {
+        guard var cur = downloads[itemID] else { return }
+        cur.status = status
+        cur.statusDetail = detail
+        if status == .converting {
+            cur.estimatedTimeRemaining = nil
+            progressTracker.startConversion(itemID: itemID)
+        }
+        downloads[itemID] = cur
+    }
+
+    private func updateFinalizingProgress(itemID: String, progress: Double) {
+        guard var item = downloads[itemID], item.status == .converting || item.status == .finalizing else { return }
+
+        let result = progressTracker.calculateConversionProgress(
+            itemID: itemID,
+            progress: progress,
+            previousProgress: item.progress,
+            previousETA: item.estimatedTimeRemaining
+        )
+
+        if result.shouldUpdate {
+            item.progress = result.progress
+            item.status = .converting
+            item.statusDetail = "Converting video..."
+            if let eta = result.eta {
+                item.estimatedTimeRemaining = eta
+            }
+            downloads[itemID] = item
+        }
+    }
+
+    private func finishItemCompleted(itemID: String, fileSize: Int64) {
+        guard var item = downloads[itemID] else { return }
+        item.status = .completed
+        item.statusDetail = nil
+        item.progress = 1.0
+        item.bytesDownloaded = fileSize
+        item.totalBytes = fileSize
+        item.estimatedTimeRemaining = nil
+        item.dateCompleted = Date()
+        item.errorMessage = nil
+
+        downloads[itemID] = item
+        activeTasks.removeValue(forKey: itemID)
+        resumeDataMap.removeValue(forKey: itemID)
+        retryAttempts.removeValue(forKey: itemID)
+        progressTracker.clear(itemID: itemID)
+        if activeDownloadingID == itemID {
+            activeDownloadingID = nil
+        }
+        saveIndex()
+
+        AppLogger.success("Download and processing completed successfully for '\(item.title)'", tag: "DownloadManager")
+        processQueue()
+    }
+
+    private func finishItemFailed(itemID: String, error: Error) {
+        guard var item = downloads[itemID] else { return }
+        item.status = .failed
+        item.statusDetail = nil
+        item.errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        item.estimatedTimeRemaining = nil
+        downloads[itemID] = item
+        activeTasks.removeValue(forKey: itemID)
+        progressTracker.clear(itemID: itemID)
+        if activeDownloadingID == itemID {
+            activeDownloadingID = nil
+        }
+        saveIndex()
+
+        AppLogger.error("Failed to finalize downloaded file for '\(item.title)': \(error.localizedDescription)", error, tag: "DownloadManager")
+        processQueue()
     }
 
     private func handleError(itemID: String, error: Error, resumeData: Data?) {
         guard var item = downloads[itemID] else { return }
 
         // Do not overwrite an already completed download
-        if item.status == .completed { return }
+        if item.status == .completed {
+            if let resumeData {
+                resumeDataMap[itemID] = resumeData
+            }
+            return
+        }
+
+        let nsError = error as NSError
+        let isCancelled = (error as? URLError)?.code == .cancelled || (nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled)
+
+        if isCancelled {
+            if let resumeData {
+                resumeDataMap[itemID] = resumeData
+            }
+            activeTasks.removeValue(forKey: itemID)
+            progressTracker.clear(itemID: itemID)
+            if activeDownloadingID == itemID {
+                activeDownloadingID = nil
+            }
+            processQueue()
+            return
+        }
 
         if let resumeData {
             resumeDataMap[itemID] = resumeData
         }
 
         activeTasks.removeValue(forKey: itemID)
+        progressTracker.clear(itemID: itemID)
+        if activeDownloadingID == itemID {
+            activeDownloadingID = nil
+        }
 
-        if let error = error as? URLError, error.code == .cancelled {
-            // Task was intentionally cancelled or paused
+        // Automatic retry for transient network dropouts (e.g. -1005 Network Connection Lost, -1001 Timed Out)
+        let isTransientNetworkError: Bool = {
+            guard nsError.domain == NSURLErrorDomain else { return false }
+            return [
+                NSURLErrorNetworkConnectionLost,
+                NSURLErrorTimedOut,
+                NSURLErrorCannotConnectToHost,
+                NSURLErrorNotConnectedToInternet,
+                NSURLErrorDNSLookupFailed
+            ].contains(nsError.code)
+        }()
+
+        let attempts = retryAttempts[itemID, default: 0]
+        if isTransientNetworkError && attempts < 5 {
+            retryAttempts[itemID] = attempts + 1
+            item.status = .downloading
+            item.statusDetail = "Reconnecting (attempt \(attempts + 1)/5)..."
+            downloads[itemID] = item
+            saveIndex()
+
+            AppLogger.warning("Transient network error for '\(item.title)' (\(error.localizedDescription)). Retrying with resumeData in \(attempts + 1)s (attempt \(attempts + 1)/5)...", tag: "DownloadManager")
+
+            if !downloadQueue.contains(itemID) {
+                downloadQueue.insert(itemID, at: 0)
+            }
+
+            let delay = Double(min(attempts + 1, 10))
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard let self, self.activeDownloadingID == nil else { return }
+                self.processQueue()
+            }
             return
         }
 
+        retryAttempts.removeValue(forKey: itemID)
         item.status = .failed
         item.errorMessage = error.localizedDescription
+        item.estimatedTimeRemaining = nil
+        item.statusDetail = nil
         downloads[itemID] = item
         saveIndex()
 
         AppLogger.error("Download failed for '\(item.title)': \(item.errorMessage ?? "")", tag: "DownloadManager")
+        processQueue()
     }
 
     // MARK: - Persistence
 
     private func saveIndex() {
-        do {
-            let data = try JSONEncoder().encode(Array(downloads.values))
-            try data.write(to: indexFileURL, options: .atomic)
-        } catch {
-            AppLogger.error("Failed to save downloads index: \(error.localizedDescription)", error, tag: "DownloadManager")
-        }
-    }
-
-    private func loadIndex() {
-        guard fileManager.fileExists(atPath: indexFileURL.path) else { return }
-        do {
-            let data = try Data(contentsOf: indexFileURL)
-            let items = try JSONDecoder().decode([DownloadItem].self, from: data)
-
-            var loaded: [String: DownloadItem] = [:]
-            var didHeal = false
-            for var item in items {
-                let fileURL = downloadsDirectory.appendingPathComponent(item.fileName)
-                let fileExists = fileManager.fileExists(atPath: fileURL.path)
-
-                if fileExists {
-                    if item.status != .completed {
-                        item.status = .completed
-                        item.progress = 1.0
-                        item.errorMessage = nil
-                        didHeal = true
-                    }
-                    loaded[item.id] = item
-                } else if item.status == .completed {
-                    continue
-                } else {
-                    // Downloads interrupted by app termination become paused
-                    item.status = .paused
-                    loaded[item.id] = item
-                }
-            }
-            self.downloads = loaded
-            if didHeal {
-                saveIndex()
-            }
-            AppLogger.info("Loaded \(loaded.count) downloads from index", tag: "DownloadManager")
-        } catch {
-            AppLogger.error("Failed to load downloads index: \(error.localizedDescription)", error, tag: "DownloadManager")
-        }
+        storage.saveIndex(items: Array(downloads.values))
     }
 
     private func authorizationHeader(for client: JellyfinClient) -> String {

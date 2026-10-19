@@ -137,20 +137,20 @@ struct SkeletonStatsRow: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 56)
-        .background(Color.mainOpp.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Color.mainOpp.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var doubleStatBubble: some View {
         HStack(spacing: 0) {
             statBubblePair
             Rectangle()
-                .fill(Color.mainOpp.opacity(0.15))
+                .fill(Color.subTwo)
                 .frame(width: 0.5)
                 .padding(.vertical, 14)
             statBubblePair
         }
         .frame(height: 56)
-        .background(Color.mainOpp.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Color.mainOpp.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var statBubblePair: some View {

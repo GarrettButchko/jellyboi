@@ -75,11 +75,13 @@ class LibraryViewModel {
     private var currentUserID: String?
 
     init() {
-        progressResetTask = Task { [weak self] in
+        progressResetTask = Task { @MainActor [weak self] in
             for await notification in NotificationCenter.default.notifications(named: .mediaProgressReset) {
                 guard let self else { break }
                 if let itemID = notification.object as? String {
-                    self.clearProgress(for: itemID)
+                    withAnimation(.smooth(duration: 0.35)) {
+                        self.clearProgress(for: itemID)
+                    }
                 }
             }
         }
@@ -145,38 +147,39 @@ class LibraryViewModel {
         defer { isLoading = false }
 
         do {
-            var moviesParams = Paths.GetItemsParameters(
+            let moviesParams = Paths.GetItemsParameters(
+                userID: effectiveUserID,
                 isRecursive: true, sortOrder: [.ascending],
                 fields: [.genres, .tags, .overview, .primaryImageAspectRatio],
                 includeItemTypes: [.movie], sortBy: [.sortName],
                 enableUserData: true
             )
-            moviesParams.userID = effectiveUserID
 
-            var showsParams = Paths.GetItemsParameters(
+            let showsParams = Paths.GetItemsParameters(
+                userID: effectiveUserID,
                 isRecursive: true, sortOrder: [.ascending],
                 fields: [.genres, .tags, .overview, .childCount, .recursiveItemCount, .primaryImageAspectRatio],
                 includeItemTypes: [.series], sortBy: [.sortName],
                 enableUserData: true
             )
-            showsParams.userID = effectiveUserID
 
-            var episodesParams = Paths.GetItemsParameters(
+            let episodesParams = Paths.GetItemsParameters(
+                userID: effectiveUserID,
                 isRecursive: true, sortOrder: [.ascending],
                 fields: [.genres, .tags, .overview, .primaryImageAspectRatio],
                 includeItemTypes: [.episode], sortBy: [.seriesSortName, .sortName],
                 enableUserData: true
             )
-            episodesParams.userID = effectiveUserID
 
-            var episodesCountParams = Paths.GetItemsParameters(
+            let episodesCountParams = Paths.GetItemsParameters(
+                userID: effectiveUserID,
                 limit: 0,
                 isRecursive: true,
                 includeItemTypes: [.episode]
             )
-            episodesCountParams.userID = effectiveUserID
 
-            var collectionsParams = Paths.GetItemsParameters(
+            let collectionsParams = Paths.GetItemsParameters(
+                userID: effectiveUserID,
                 isRecursive: true,
                 sortOrder: [.ascending],
                 fields: [.genres, .tags, .overview, .primaryImageAspectRatio],
@@ -184,39 +187,38 @@ class LibraryViewModel {
                 sortBy: [.sortName],
                 enableUserData: true
             )
-            collectionsParams.userID = effectiveUserID
 
-            var recommendedParams = Paths.GetItemsParameters(
+            let recommendedParams = Paths.GetItemsParameters(
+                userID: effectiveUserID,
                 limit: 20, isRecursive: true,
                 sortOrder: [.descending],
                 includeItemTypes: [.movie, .series],
                 sortBy: [.communityRating]
             )
-            recommendedParams.userID = effectiveUserID
 
-            var recentMoviesParams = Paths.GetItemsParameters(
+            let recentMoviesParams = Paths.GetItemsParameters(
+                userID: effectiveUserID,
                 limit: 20, isRecursive: true,
                 sortOrder: [.descending],
                 includeItemTypes: [.movie],
                 sortBy: [.dateCreated],
                 enableUserData: true
             )
-            recentMoviesParams.userID = effectiveUserID
 
-            var recentShowsParams = Paths.GetItemsParameters(
+            let recentShowsParams = Paths.GetItemsParameters(
+                userID: effectiveUserID,
                 limit: 20, isRecursive: true,
                 sortOrder: [.descending],
                 includeItemTypes: [.series],
                 sortBy: [.dateCreated],
                 enableUserData: true
             )
-            recentShowsParams.userID = effectiveUserID
 
             let nextUpParams = Paths.GetNextUpParameters(limit: 20, enableResumable: true)
-            var favoritesCountParams = Paths.GetItemsParameters(
+            let favoritesCountParams = Paths.GetItemsParameters(
+                userID: effectiveUserID,
                 limit: 0, isRecursive: true, filters: [.isFavorite]
             )
-            favoritesCountParams.userID = effectiveUserID
 
             async let moviesResponse       = client.send(Paths.getItems(parameters: moviesParams))
             async let showsResponse        = client.send(Paths.getItems(parameters: showsParams))

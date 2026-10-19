@@ -14,6 +14,12 @@
 		218336F4303E23680028E211 /* SkeletonUI in Frameworks */ = {isa = PBXBuildFile; productRef = 218336F3303E23680028E211 /* SkeletonUI */; };
 		2186F9063039459C009D8CCA /* StatusOverlayKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2186F9053039459C009D8CCA /* StatusOverlayKit */; };
 		2186FE37303B5B5A009D8CCA /* MarqueeText in Frameworks */ = {isa = PBXBuildFile; productRef = 2186FE36303B5B5A009D8CCA /* MarqueeText */; };
+		21904C653080539400A60304 /* Libavformat in Frameworks */ = {isa = PBXBuildFile; productRef = 21904C643080539400A60304 /* Libavformat */; };
+		21904C673080539C00A60304 /* Libavcodec in Frameworks */ = {isa = PBXBuildFile; productRef = 21904C663080539C00A60304 /* Libavcodec */; };
+		21904C69308053A200A60304 /* Libavutil in Frameworks */ = {isa = PBXBuildFile; productRef = 21904C68308053A200A60304 /* Libavutil */; };
+		21904C713080550000A60304 /* Libswresample in Frameworks */ = {isa = PBXBuildFile; productRef = 21904C703080550000A60304 /* Libswresample */; };
+		21904C733080550000A60304 /* libzvbi in Frameworks */ = {isa = PBXBuildFile; productRef = 21904C723080550000A60304 /* libzvbi */; };
+		21904C743080550000A60304 /* Libswscale in Frameworks */ = {isa = PBXBuildFile; productRef = 21904C753080550000A60304 /* Libswscale */; };
 		21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */ = {isa = PBXBuildFile; productRef = 21ACBB8B303942F500B6013E /* LoggingKit */; };
 /* End PBXBuildFile section */
 
@@ -49,12 +55,18 @@
 			files = (
 				2186FE37303B5B5A009D8CCA /* MarqueeText in Frameworks */,
 				2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */,
+				21904C653080539400A60304 /* Libavformat in Frameworks */,
 				2186F9063039459C009D8CCA /* StatusOverlayKit in Frameworks */,
+				21904C673080539C00A60304 /* Libavcodec in Frameworks */,
 				21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */,
 				217079C63036C0750055889C /* SDWebImageSwiftUI in Frameworks */,
 				218336F4303E23680028E211 /* SkeletonUI in Frameworks */,
 				21707810303647640055889C /* JellyfinAPI in Frameworks */,
 				2114B68D303BDCEF006F4D0E /* ScalingHeaderScrollView in Frameworks */,
+				21904C69308053A200A60304 /* Libavutil in Frameworks */,
+				21904C713080550000A60304 /* Libswresample in Frameworks */,
+				21904C733080550000A60304 /* libzvbi in Frameworks */,
+				21904C743080550000A60304 /* Libswscale in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +77,7 @@
 			isa = PBXGroup;
 			children = (
 				217077FC303646DD0055889C /* JellyBoi */,
+				21904C633080539400A60304 /* Frameworks */,
 				217077FB303646DD0055889C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -75,6 +88,13 @@
 				217077FA303646DD0055889C /* JellyBoi.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		21904C633080539400A60304 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -105,6 +125,12 @@
 				2186FE36303B5B5A009D8CCA /* MarqueeText */,
 				2114B68C303BDCEF006F4D0E /* ScalingHeaderScrollView */,
 				218336F3303E23680028E211 /* SkeletonUI */,
+				21904C643080539400A60304 /* Libavformat */,
+				21904C663080539C00A60304 /* Libavcodec */,
+				21904C68308053A200A60304 /* Libavutil */,
+				21904C703080550000A60304 /* Libswresample */,
+				21904C723080550000A60304 /* libzvbi */,
+				21904C753080550000A60304 /* Libswscale */,
 			);
 			productName = JellyBoi;
 			productReference = 217077FA303646DD0055889C /* JellyBoi.app */;
@@ -143,6 +169,7 @@
 				2153AEA8303928CA00DBE264 /* XCLocalSwiftPackageReference "../../Packages/BaseColors" */,
 				21ACBB8A303942F500B6013E /* XCLocalSwiftPackageReference "../../Packages/LoggingKit" */,
 				2186F9043039459C009D8CCA /* XCLocalSwiftPackageReference "../../Packages/StatusOverlayKit" */,
+				21CA290A307895C300F6E4B7 /* XCRemoteSwiftPackageReference "FFmpegKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 217077FB303646DD0055889C /* Products */;
@@ -337,6 +364,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "JellyBoi/JellyBoi-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,3,7";
@@ -387,6 +415,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "JellyBoi/JellyBoi-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,3,7";
@@ -474,6 +503,14 @@
 				kind = branch;
 			};
 		};
+		21CA290A307895C300F6E4B7 /* XCRemoteSwiftPackageReference "FFmpegKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kingslay/FFmpegKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -509,6 +546,36 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 2186FE35303B5B5A009D8CCA /* XCRemoteSwiftPackageReference "MarqueeText" */;
 			productName = MarqueeText;
+		};
+		21904C643080539400A60304 /* Libavformat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 21CA290A307895C300F6E4B7 /* XCRemoteSwiftPackageReference "FFmpegKit" */;
+			productName = Libavformat;
+		};
+		21904C663080539C00A60304 /* Libavcodec */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 21CA290A307895C300F6E4B7 /* XCRemoteSwiftPackageReference "FFmpegKit" */;
+			productName = Libavcodec;
+		};
+		21904C68308053A200A60304 /* Libavutil */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 21CA290A307895C300F6E4B7 /* XCRemoteSwiftPackageReference "FFmpegKit" */;
+			productName = Libavutil;
+		};
+		21904C703080550000A60304 /* Libswresample */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 21CA290A307895C300F6E4B7 /* XCRemoteSwiftPackageReference "FFmpegKit" */;
+			productName = Libswresample;
+		};
+		21904C723080550000A60304 /* libzvbi */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 21CA290A307895C300F6E4B7 /* XCRemoteSwiftPackageReference "FFmpegKit" */;
+			productName = libzvbi;
+		};
+		21904C753080550000A60304 /* Libswscale */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 21CA290A307895C300F6E4B7 /* XCRemoteSwiftPackageReference "FFmpegKit" */;
+			productName = Libswscale;
 		};
 		21ACBB8B303942F500B6013E /* LoggingKit */ = {
 			isa = XCSwiftPackageProductDependency;

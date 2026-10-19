@@ -150,7 +150,9 @@ struct LetsConnectView: View {
                 } else {
                     ForEach(Array(viewModel.discoveredServers.enumerated()), id: \.element.id) { index, server in
                         if index > 0 {
-                            Divider().padding(.horizontal, 16)
+                            Divider()
+                                .overlay(Color.subTwo)
+                                .padding(.horizontal, 16)
                         }
                         discoveredServerRow(server)
                     }

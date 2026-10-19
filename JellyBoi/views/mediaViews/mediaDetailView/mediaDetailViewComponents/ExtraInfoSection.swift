@@ -11,15 +11,15 @@ import JellyfinAPI
 
 extension MediaDetailView {
 
-    var hasExtraInfo: Bool {
-        let people = displayItem.people ?? []
-        return !(displayItem.genres ?? []).isEmpty
-            || !people.filter({ $0.type == .director }).isEmpty
-            || !people.filter({ $0.type == .writer }).isEmpty
-            || !(displayItem.studios ?? []).isEmpty
+    @ViewBuilder
+    var extraInfoSection: some View {
+        if detailVM.hasExtraInfo {
+            extraInfoContent
+                .padding(.horizontal, 20)
+        }
     }
 
-    var extraInfoSection: some View {
+    private var extraInfoContent: some View {
         let people = displayItem.people ?? []
         let directors = people.filter { $0.type == .director }.compactMap(\.name)
         let writers   = people.filter { $0.type == .writer   }.compactMap(\.name)

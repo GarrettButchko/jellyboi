@@ -21,8 +21,16 @@ class MediaCardViewModel {
         self.item = item
     }
 
-    func updateItem(_ item: BaseItemDto) {
-        self.item = item
+    func updateItem(_ newItem: BaseItemDto) {
+        if !isProgressReset,
+           let currentTicks = self.item.userData?.playbackPositionTicks, currentTicks > 0,
+           (newItem.userData?.playbackPositionTicks == nil || newItem.userData?.playbackPositionTicks == 0) {
+            var merged = newItem
+            merged.userData = self.item.userData
+            self.item = merged
+        } else {
+            self.item = newItem
+        }
     }
 
     func cardAspectRatio(overrideRatio: CGFloat?) -> CGFloat {
@@ -31,26 +39,22 @@ class MediaCardViewModel {
 
     var watchProgress: Double? {
         if isProgressReset { return nil }
-        if item.userData?.isPlayed == true { return 1 }
-        guard let percent = item.userData?.playedPercentage else { return nil }
-        return min(max(percent / 100, 0), 1)
+        return item.watchProgress
     }
 
     var isWatched: Bool {
         if isProgressReset { return false }
-        if item.userData?.isPlayed == true { return true }
-        return (watchProgress ?? 0) >= 0.85
+        return item.isWatched
     }
 
     var isWatching: Bool {
         if isProgressReset { return false }
-        return (watchProgress ?? 0) >= 0.01
+        return item.isInProgress
     }
 
     func hasProgress(in libraryViewModel: LibraryViewModel?) -> Bool {
         if isProgressReset { return false }
-        if let ticks = item.userData?.playbackPositionTicks, ticks > 0 { return true }
-        if let percent = item.userData?.playedPercentage, percent >= 1 { return true }
+        if item.hasProgress { return true }
         if item.type == .series, let libraryViewModel {
             return libraryViewModel.resumeShows.contains { $0.seriesID == item.id || $0.id == item.id }
         }
@@ -60,7 +64,7 @@ class MediaCardViewModel {
     func isInProgress(in libraryViewModel: LibraryViewModel?) -> Bool {
         if isProgressReset { return false }
         if isWatched { return false }
-        return hasProgress(in: libraryViewModel)
+        return item.isInProgress || (item.type == .series && hasProgress(in: libraryViewModel))
     }
 
     var episodeTitle: String? {
@@ -122,7 +126,15 @@ class MediaCardViewModel {
 
     func handleProgressUpdatedNotification(itemID: String, positionTicks: Int, totalTicks: Int?) {
         if itemID == item.id {
-            withAnimation(.smooth) {
+            let total = totalTicks ?? item.runTimeTicks.map { Int($0) } ?? 0
+            let percent = total > 0 ? (Double(positionTicks) / Double(total)) * 100.0 : 0.0
+            let isZeroOrPlayed = percent < 1.0 || percent >= 85.0
+            if isZeroOrPlayed {
+                withAnimation(.smooth(duration: 0.35)) {
+                    item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
+                    isProgressReset = false
+                }
+            } else {
                 item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
                 isProgressReset = false
             }

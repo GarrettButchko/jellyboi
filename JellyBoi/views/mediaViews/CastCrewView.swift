@@ -39,7 +39,7 @@ struct CastCrewView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
                 // Top area: Back button, full-size person image on left, name, birthday & birthplace on right
                 VStack{
                     topArea
@@ -48,6 +48,7 @@ struct CastCrewView: View {
                     if let overview = viewModel.overview, !overview.isEmpty {
                         ExpandableText(overview, sheetTitle: "Biography")
                             .padding(.horizontal, 16)
+                            .padding(.top, 6)
                     }
                     
                     ScrollView(.horizontal) {
@@ -68,38 +69,40 @@ struct CastCrewView: View {
                     }
                     .scrollIndicators(.hidden)
                     .contentMargins(.horizontal, 16)
+                    .padding(.top, 6)
                 }
 
                 // Content: Movies & Shows, and Episodes
                 if viewModel.isLoading {
-                    Text("Movies & Shows")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Color.mainOpp)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Movies & Shows")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(Color.mainOpp)
+                            .padding(.horizontal, 16)
 
-                    SkeletonMediaGrid()
+                        SkeletonMediaGrid()
+                    }
                 } else if viewModel.mediaItems.isEmpty && viewModel.episodeItems.isEmpty {
-                    Text("Movies & Shows")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Color.mainOpp)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Movies & Shows")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(Color.mainOpp)
+                            .padding(.horizontal, 16)
 
-                    EmptyStateView(
-                        icon: "film.stack",
-                        title: "No Media Found",
-                        message: "No movies or TV shows found for \(viewModel.personName)."
-                    )
-                    .padding(.top, 20)
+                        EmptyStateView(
+                            icon: "film.stack",
+                            title: "No Media Found",
+                            message: "No movies or TV shows found for \(viewModel.personName)."
+                        )
+                        .padding(.top, 20)
+                    }
                 } else {
                     if !viewModel.mediaItems.isEmpty {
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("Movies & Shows")
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(Color.mainOpp)
                                 .padding(.horizontal, 16)
-                                .padding(.top, 4)
 
                             LazyVGrid(columns: columns, spacing: 16) {
                                 ForEach(viewModel.mediaItems, id: \.id) { item in
@@ -117,12 +120,11 @@ struct CastCrewView: View {
                     }
 
                     if !viewModel.episodeItems.isEmpty {
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("Episodes")
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(Color.mainOpp)
                                 .padding(.horizontal, 16)
-                                .padding(.top, 4)
 
                             LazyVGrid(columns: columns, spacing: 16) {
                                 ForEach(viewModel.episodeItems, id: \.id) { episode in
@@ -191,7 +193,6 @@ struct CastCrewView: View {
                 personImage
                     .frame(width: 120, height: 180)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .cardShadow()
 
                 VStack(alignment: .leading, spacing: 8) {
                     VStack(alignment: .leading, spacing: 0){

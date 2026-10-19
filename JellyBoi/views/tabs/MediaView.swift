@@ -11,26 +11,25 @@ struct MediaView: View {
     @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
     @State private var selectedItem: BaseItemDto?
-    @State private var sttButtonHeight: CGFloat = 0
     @State private var selectedShowDownloads: ShowDownloadGroup?
+    @State private var itemToCancel: DownloadItem?
+    @State private var groupToCancel: ShowDownloadGroup?
     @Namespace private var zoomTransition
 
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
     }
-    private let topID = "TopID"
 
     var body: some View {
         @Bindable var viewModel = viewModel
         NavigationStack {
-            ScrollViewReader { proxy in
-                ZStack(alignment: .top) {
-                    ScrollView {
-                        Color.clear
-                            .frame(height: 0)
-                            .id(topID)
+            ZStack(alignment: .top) {
+                Color.bg
+                    .ignoresSafeArea()
 
+                ScrollToTopScrollView(topInset: headerHeight, scrollOffset: $scrollOffset) { proxy in
+                    Group {
                         if viewModel.showDownloadsOnly {
                             downloadsContent
                         } else if viewModel.showFavoritesOnly {
@@ -39,98 +38,84 @@ struct MediaView: View {
                             regularContent
                         }
                     }
-                    .animation(.easeInOut(duration: 0.2), value: viewModel.filter)
-                    .animation(.easeInOut(duration: 0.2), value: viewModel.showFavoritesOnly)
-                    .animation(.easeInOut(duration: 0.2), value: viewModel.showDownloadsOnly)
-                    .contentMargins(.top, headerHeight, for: .scrollContent)
-                    .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
-                    .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
-                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.contentOffset.y + geometry.contentInsets.top
-                    } action: { _, newValue in
-                        scrollOffset = newValue
-                    }
-                    .refreshable {
-                        if let client = serverViewModel.client {
-                            await viewModel.refresh(using: client)
-                        }
-                    }
-
-                    // Fixed top header overlay
-                    TabPageHeader(
-                        title: {
-                            if viewModel.showDownloadsOnly && viewModel.showFavoritesOnly {
-                                return "Downloaded Favorites"
-                            } else if viewModel.showDownloadsOnly {
-                                return "Downloads"
-                            } else if viewModel.showFavoritesOnly {
-                                return "Favorites"
-                            } else {
-                                return "Library"
-                            }
-                        }(),
-                        scrollOffset: scrollOffset,
-                        headerHeight: $headerHeight
-                    ) {
-                        HStack(spacing: 10) {
-                            Picker("Filter", selection: $viewModel.filter) {
-                                ForEach(viewModel.availableFilters, id: \.self) { filter in
-                                    Text(filter.title).tag(filter)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .padding(6)
-                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
-
-                            Button {
-                                withAnimation(.smooth(duration: 0.25)) {
-                                    viewModel.showFavoritesOnly.toggle()
-                                }
-                            } label: {
-                                Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
-                                    .frame(width: 44, height: 44)
-                                    .glassEffect(.regular.interactive(), in: Circle())
-                                    .contentShape(Circle())
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                withAnimation(.smooth(duration: 0.25)) {
-                                    viewModel.showDownloadsOnly.toggle()
-                                }
-                            } label: {
-                                Image(systemName: viewModel.showDownloadsOnly ? "square.and.arrow.down.fill" : "square.and.arrow.down")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(viewModel.showDownloadsOnly ? Color.accentColor : Color.mainOpp)
-                                    .frame(width: 44, height: 44)
-                                    .glassEffect(.regular.interactive(), in: Circle())
-                                    .contentShape(Circle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal, 16)
-                    }
                     .onChange(of: viewModel.filter) { _, _ in
                         if scrollOffset > 10 {
-                            proxy.scrollTo(topID, anchor: .top)
+                            withAnimation { proxy.scrollToTop() }
                         }
                     }
                     .onChange(of: viewModel.showFavoritesOnly) { _, _ in
                         if scrollOffset > 10 {
-                            proxy.scrollTo(topID, anchor: .top)
+                            withAnimation { proxy.scrollToTop() }
                         }
                     }
                     .onChange(of: viewModel.showDownloadsOnly) { _, _ in
                         if scrollOffset > 10 {
-                            proxy.scrollTo(topID, anchor: .top)
+                            withAnimation { proxy.scrollToTop() }
                         }
                     }
-
-                    ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
-                        withAnimation { proxy.scrollTo(topID, anchor: .top) }
+                }
+                .animation(.easeInOut(duration: 0.2), value: viewModel.filter)
+                .animation(.easeInOut(duration: 0.2), value: viewModel.showFavoritesOnly)
+                .animation(.easeInOut(duration: 0.2), value: viewModel.showDownloadsOnly)
+                .refreshable {
+                    if let client = serverViewModel.client {
+                        await viewModel.refresh(using: client)
                     }
+                }
+
+                // Fixed top header overlay
+                TabPageHeader(
+                    title: {
+                        if viewModel.showDownloadsOnly {
+                            return "Downloads"
+                        } else if viewModel.showFavoritesOnly {
+                            return "Favorites"
+                        } else {
+                            return "Library"
+                        }
+                    }(),
+                    scrollOffset: scrollOffset,
+                    headerHeight: $headerHeight
+                ) {
+                    HStack(spacing: 10) {
+                        Picker("Filter", selection: $viewModel.filter) {
+                            ForEach(viewModel.availableFilters, id: \.self) { filter in
+                                Text(filter.title).tag(filter)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(6)
+                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
+
+                        Button {
+                            withAnimation(.smooth(duration: 0.25)) {
+                                viewModel.toggleFavorites()
+                            }
+                        } label: {
+                            Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
+                                .frame(width: 44, height: 44)
+                                .glassEffect(.regular.interactive(), in: Circle())
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            withAnimation(.smooth(duration: 0.25)) {
+                                viewModel.toggleDownloads()
+                            }
+                        } label: {
+                            Image(systemName: viewModel.showDownloadsOnly ? "square.and.arrow.down.fill" : "square.and.arrow.down")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(viewModel.showDownloadsOnly ? Color.accentColor : Color.mainOpp)
+                                .frame(width: 44, height: 44)
+                                .glassEffect(.regular.interactive(), in: Circle())
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16)
                 }
             }
             .navigationDestination(item: $selectedItem) { item in
@@ -139,6 +124,72 @@ struct MediaView: View {
             }
             .sheet(item: $selectedShowDownloads) { group in
                 ShowDownloadsSheet(seriesID: group.id, seriesName: group.seriesName)
+                    .presentationBackground(Color.bg)
+            }
+            .alert(
+                itemToCancel?.status == .failed ? "Download Failed" : "Cancel Download?",
+                isPresented: Binding(
+                    get: { itemToCancel != nil },
+                    set: { if !$0 { itemToCancel = nil } }
+                ),
+                presenting: itemToCancel
+            ) { item in
+                if item.status == .failed {
+                    Button("Remove", role: .destructive) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            downloadManager.cancelDownload(id: item.id)
+                        }
+                        itemToCancel = nil
+                    }
+                    Button("Retry") {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            downloadManager.resumeDownload(id: item.id, client: serverViewModel.client)
+                        }
+                        itemToCancel = nil
+                    }
+                    Button("Acknowledge", role: .cancel) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            downloadManager.cancelDownload(id: item.id)
+                        }
+                        itemToCancel = nil
+                    }
+                } else {
+                    Button("Cancel Download", role: .destructive) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            downloadManager.cancelDownload(id: item.id)
+                        }
+                        itemToCancel = nil
+                    }
+                    Button("Keep", role: .cancel) {
+                        itemToCancel = nil
+                    }
+                }
+            } message: { item in
+                if item.status == .failed {
+                    Text(item.errorMessage ?? "An error occurred during download or transcoding.")
+                } else {
+                    Text("Are you sure you want to cancel the download for '\(item.title)'?")
+                }
+            }
+            .alert(
+                "Cancel Downloads?",
+                isPresented: Binding(
+                    get: { groupToCancel != nil },
+                    set: { if !$0 { groupToCancel = nil } }
+                ),
+                presenting: groupToCancel
+            ) { group in
+                Button("Cancel Downloads", role: .destructive) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        downloadManager.cancelDownloads(ids: group.activeDownloads.map(\.id))
+                    }
+                    groupToCancel = nil
+                }
+                Button("Keep", role: .cancel) {
+                    groupToCancel = nil
+                }
+            } message: { group in
+                Text("Are you sure you want to cancel all downloads for '\(group.seriesName)'?")
             }
             .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
                 selectedItem = nil
@@ -163,6 +214,46 @@ struct MediaView: View {
             let completed = Double(completedDownloads.count)
             let active = activeDownloads.reduce(0.0) { $0 + $1.progress }
             return (completed + active) / Double(totalCount)
+        }
+        var isAllFailed: Bool {
+            !activeDownloads.isEmpty && activeDownloads.allSatisfy { $0.status == .failed }
+        }
+        var representativeItem: BaseItemDto? {
+            activeDownloads.first?.item ?? completedDownloads.first?.item
+        }
+        var formattedTimeRemaining: String? {
+            guard !isAllFailed else { return nil }
+            if let activeItem = activeDownloads.first(where: { ($0.status == .downloading || $0.status == .converting) && $0.estimatedTimeRemaining != nil && ($0.estimatedTimeRemaining ?? 0) > 0 }),
+               let time = activeItem.estimatedTimeRemaining, time > 0 {
+                let totalRemainingBytes = activeDownloads.reduce(Int64(0)) { sum, download in
+                    let remaining = max(Int64(0), download.totalBytes - download.bytesDownloaded)
+                    return sum + remaining
+                }
+                let activeRemaining = max(Int64(0), activeItem.totalBytes - activeItem.bytesDownloaded)
+                if activeRemaining > 0 && totalRemainingBytes > 0 {
+                    let speed = Double(activeRemaining) / time
+                    if speed > 1024 {
+                        let totalSeconds = Double(totalRemainingBytes) / speed
+                        let hours = Int(totalSeconds) / 3600
+                        let minutes = (Int(totalSeconds) % 3600) / 60
+                        let secs = Int(totalSeconds) % 60
+                        if hours > 0 {
+                            let hrUnit = hours == 1 ? "hr" : "hrs"
+                            if minutes > 0 {
+                                return "\(hours) \(hrUnit) \(minutes) min\(minutes == 1 ? "" : "s") left"
+                            } else {
+                                return "\(hours) \(hrUnit) left"
+                            }
+                        } else if minutes > 0 {
+                            return "\(minutes) min\(minutes == 1 ? "" : "s") left"
+                        } else {
+                            return "\(max(secs, 1)) sec left"
+                        }
+                    }
+                }
+                return activeItem.formattedTimeRemaining
+            }
+            return nil
         }
     }
 
@@ -203,38 +294,29 @@ struct MediaView: View {
         }
     }
 
-    // MARK: - Downloads Content (Stackable with Favorites)
+    // MARK: - Downloads Content
 
     private var downloadedMovies: [BaseItemDto] {
-        let movies = downloadManager.downloadedMovies
-        if viewModel.showFavoritesOnly {
-            return movies.filter { $0.userData?.isFavorite == true }
+        downloadManager.downloadedMovies.map { movie in
+            if let id = movie.id, let liveItem = libraryViewModel.movies.first(where: { $0.id == id }) {
+                return liveItem
+            }
+            return movie
         }
-        return movies
     }
 
     private var downloadedShows: [BaseItemDto] {
-        let shows = viewModel.downloadedShows(downloadManager: downloadManager)
-        if viewModel.showFavoritesOnly {
-            return shows.filter { $0.userData?.isFavorite == true }
-        }
-        return shows
+        viewModel.downloadedShows(downloadManager: downloadManager)
     }
 
     private var downloadedEpisodes: [BaseItemDto] {
-        let episodes = viewModel.downloadedEpisodes(downloadManager: downloadManager)
-        if viewModel.showFavoritesOnly {
-            let starredShowIDs = Set(viewModel.favoriteShows.compactMap(\.id))
-            return episodes.filter { ep in
-                guard ep.userData?.isFavorite == true else { return false }
-                let showID = ep.seriesID ?? ep.parentBackdropItemID
-                if let showID, starredShowIDs.contains(showID) {
-                    return false
-                }
-                return true
+        viewModel.downloadedEpisodes(downloadManager: downloadManager).map { episode in
+            if let id = episode.id,
+               let liveItem = libraryViewModel.resumeShows.first(where: { $0.id == id }) ?? libraryViewModel.episodes.first(where: { $0.id == id }) {
+                return liveItem
             }
+            return episode
         }
-        return episodes
     }
 
     private var activeDownloadsForCurrentFilter: [DownloadItem] {
@@ -302,71 +384,236 @@ struct MediaView: View {
                         let groups = showDownloadGroups(from: items)
                         ForEach(groups) { group in
                             showDownloadRow(group)
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.85))
+                                ))
                         }
                         let standaloneItems = standaloneDownloads(from: items, groupedIDs: Set(groups.map(\.id)))
                         ForEach(standaloneItems) { downloadItem in
                             activeDownloadRow(downloadItem)
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.85))
+                                ))
                         }
                     } else {
                         ForEach(items) { downloadItem in
                             activeDownloadRow(downloadItem)
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.85))
+                                ))
                         }
                     }
                 }
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: items.map(\.id))
                 .padding(.horizontal, 16)
             }
         }
     }
 
-    private func showDownloadRow(_ group: ShowDownloadGroup) -> some View {
+    // MARK: - Download Action Icons & Styling
+
+    private let cancelIcon = "square.fill"
+    private let chevronIcon = "chevron.right"
+    private let showPlaceholderIcon = "tv"
+    private let moviePlaceholderIcon = "film"
+    private let episodePlaceholderIcon = "tv"
+
+    private let cancelIconColor = Color.mainOpp
+    private let downloadActionIconFont = Font.system(size: 17, weight: .bold)
+    private let downloadActionButtonSize: CGFloat = 26
+
+    private struct DownloadActionButtonStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? 0.78 : 1.0)
+                .opacity(configuration.isPressed ? 0.65 : 1.0)
+                .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
+        }
+    }
+
+    @ViewBuilder
+    private func downloadActionButton(
+        icon: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
         Button {
-            selectedShowDownloads = group
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                action()
+            }
         } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "tv")
-                    .font(.system(size: 22))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 32)
+            Image(systemName: icon)
+                .font(downloadActionIconFont)
+                .foregroundStyle(color)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: downloadActionButtonSize, height: downloadActionButtonSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(DownloadActionButtonStyle())
+    }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(group.seriesName)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.mainOpp)
-                        .lineLimit(1)
+    // MARK: - Download Thumbnail Helpers
 
-                    ProgressView(value: group.overallProgress)
-                        .tint(Color.accentColor)
+    private func episodeThumbnailURL(for episode: BaseItemDto, client: JellyfinClient) -> URL? {
+        guard let id = episode.id else { return nil }
+        let hasThumb = episode.imageTags?.keys.contains("Thumb") == true
+        let hasPrimary = episode.imageTags?.keys.contains("Primary") == true
+        if hasThumb || hasPrimary {
+            let imageType = hasThumb ? "Thumb" : "Primary"
+            return client.url(with: Paths.getItemImage(
+                itemID: id,
+                imageType: imageType,
+                parameters: .init(maxWidth: 400, quality: 80)
+            ))
+        }
+        return libraryViewModel.seriesPosterURL(for: episode, client: client)
+    }
 
-                    HStack {
-                        Text("\(group.episodesLeft) \(group.episodesLeft == 1 ? "episode" : "episodes") left")
+    private func showPosterURL(for group: ShowDownloadGroup, client: JellyfinClient) -> URL? {
+        if let show = libraryViewModel.tvShows.first(where: { $0.id == group.id }) {
+            return libraryViewModel.posterURL(for: show, client: client)
+        }
+        if let first = group.representativeItem {
+            return libraryViewModel.seriesPosterURL(for: first, client: client)
+        }
+        return client.url(with: Paths.getItemImage(
+            itemID: group.id,
+            imageType: "Primary",
+            parameters: .init(maxWidth: 400, quality: 80)
+        ))
+    }
+
+    private func mediaThumbnailURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
+        if item.type == .episode {
+            return episodeThumbnailURL(for: item, client: client)
+        } else {
+            return libraryViewModel.posterURL(for: item, client: client)
+        }
+    }
+
+    @ViewBuilder
+    private func downloadThumbnail(url: URL?, isEpisode: Bool, placeholderIcon: String) -> some View {
+        let width: CGFloat = isEpisode ? 86 : 38
+        let height: CGFloat = 54
+
+        ZStack {
+            Color.subTwo
+            if let url {
+                WebImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    Image(systemName: placeholderIcon)
+                        .font(.system(size: isEpisode ? 20 : 18))
+                        .foregroundStyle(Color.accentColor.opacity(0.8))
+                }
+            } else {
+                Image(systemName: placeholderIcon)
+                    .font(.system(size: isEpisode ? 20 : 18))
+                    .foregroundStyle(Color.accentColor.opacity(0.8))
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func showDownloadRow(_ group: ShowDownloadGroup) -> some View {
+        HStack(spacing: 14) {
+            Button {
+                selectedShowDownloads = group
+            } label: {
+                HStack(spacing: 14) {
+                    downloadThumbnail(
+                        url: serverViewModel.client.flatMap { showPosterURL(for: group, client: $0) },
+                        isEpisode: false,
+                        placeholderIcon: showPlaceholderIcon
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(group.seriesName)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.mainOpp)
+                            .lineLimit(1)
+
+                        ProgressView(value: group.overallProgress)
+                            .tint(Color.accentColor)
+
+                        HStack {
+                            let subtitle: String = {
+                                if group.isAllFailed {
+                                    return "\(group.episodesLeft) \(group.episodesLeft == 1 ? "episode" : "episodes") left (Failed)"
+                                } else if let timeRemaining = group.formattedTimeRemaining {
+                                    return "\(group.episodesLeft) left • \(timeRemaining)"
+                                } else {
+                                    return "\(group.episodesLeft) \(group.episodesLeft == 1 ? "episode" : "episodes") left"
+                                }
+                            }()
+
+                            let activeIcon: String? = {
+                                if group.activeDownloads.contains(where: { $0.status == .converting }) {
+                                    return "arrow.triangle.2.circlepath"
+                                } else if group.activeDownloads.contains(where: { $0.status == .downloading }) {
+                                    return "arrow.down"
+                                }
+                                return nil
+                            }()
+
+                            HStack(spacing: 4) {
+                                if let icon = activeIcon {
+                                    Image(systemName: icon)
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                Text(subtitle)
+                            }
                             .font(.system(size: 12))
                             .foregroundStyle(Color.mainOpp.opacity(0.6))
 
-                        Spacer()
+                            Spacer()
 
-                        Text("\(Int(group.overallProgress * 100))%")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.mainOpp.opacity(0.8))
+                            Text("\(Int(group.overallProgress * 100))%")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.mainOpp.opacity(0.8))
+                        }
                     }
                 }
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.mainOpp.opacity(0.5))
-                    .padding(.leading, 4)
             }
-            .padding(14)
-            .background(Color.mainOpp.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .buttonStyle(.plain)
+
+            HStack(spacing: 8) {
+                downloadActionButton(icon: cancelIcon, color: cancelIconColor) {
+                    groupToCancel = group
+                }
+
+                Button {
+                    selectedShowDownloads = group
+                } label: {
+                    Image(systemName: chevronIcon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.mainOpp.opacity(0.5))
+                        .frame(width: 20, height: downloadActionButtonSize)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(14)
+        .background(Color.sub, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func activeDownloadRow(_ downloadItem: DownloadItem) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: downloadItem.item.type == .episode ? "tv" : "film")
-                .font(.system(size: 22))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 32)
+        let isEpisode = downloadItem.item.type == .episode
+        let thumbURL = serverViewModel.client.flatMap { mediaThumbnailURL(for: downloadItem.item, client: $0) }
+
+        return HStack(spacing: 14) {
+            downloadThumbnail(
+                url: thumbURL,
+                isEpisode: isEpisode,
+                placeholderIcon: isEpisode ? episodePlaceholderIcon : moviePlaceholderIcon
+            )
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(downloadItem.title)
@@ -374,64 +621,90 @@ struct MediaView: View {
                     .foregroundStyle(Color.mainOpp)
                     .lineLimit(1)
 
-                ProgressView(value: downloadItem.progress)
-                    .tint(Color.accentColor)
+                if downloadItem.status == .failed {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.red)
+                        Text(downloadItem.errorMessage ?? "Download or conversion failed")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.red)
+                            .lineLimit(1)
+                    }
+                } else {
+                    ProgressView(value: downloadItem.progress)
+                        .tint(Color.accentColor)
 
-                HStack {
-                    Text(downloadItem.status == .paused ? "Paused" : downloadItem.formattedProgress)
+                    HStack {
+                        HStack(spacing: 4) {
+                            if let icon = downloadItem.statusIcon {
+                                Image(systemName: icon)
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            Text(downloadItem.statusText)
+                        }
                         .font(.system(size: 12))
                         .foregroundStyle(Color.mainOpp.opacity(0.6))
 
-                    Spacer()
+                        Spacer()
 
-                    Text(downloadItem.formattedPercentage)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.mainOpp.opacity(0.8))
+                        if downloadItem.status != .queued {
+                            Text(downloadItem.formattedPercentage)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.mainOpp.opacity(0.8))
+                        }
+                    }
                 }
             }
 
             HStack(spacing: 8) {
-                if downloadItem.status == .downloading {
+                if downloadItem.status == .failed {
+                    // Retry button
                     Button {
-                        downloadManager.pauseDownload(id: downloadItem.id)
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            downloadManager.resumeDownload(id: downloadItem.id, client: serverViewModel.client)
+                        }
                     } label: {
-                        Image(systemName: "pause.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundStyle(Color.mainOpp.opacity(0.8))
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color.mainOpp)
+                            .frame(width: downloadActionButtonSize, height: downloadActionButtonSize)
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                } else if downloadItem.status == .paused {
-                    Button {
-                        downloadManager.resumeDownload(id: downloadItem.id, client: serverViewModel.client)
-                    } label: {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundStyle(Color.accentColor)
-                    }
-                    .buttonStyle(.plain)
-                }
+                    .buttonStyle(DownloadActionButtonStyle())
 
-                Button {
-                    downloadManager.cancelDownload(id: downloadItem.id)
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(Color.mainOpp.opacity(0.5))
+                    // Remove / Acknowledge button
+                    Button {
+                        itemToCancel = downloadItem
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Remove")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundStyle(Color.red)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.red.opacity(0.12), in: Capsule())
+                    }
+                    .buttonStyle(DownloadActionButtonStyle())
+                } else {
+                    downloadActionButton(icon: cancelIcon, color: cancelIconColor) {
+                        itemToCancel = downloadItem
+                    }
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(14)
-        .background(Color.mainOpp.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color.sub, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var emptyDownloadsView: some View {
         EmptyStateView(
             icon: "square.and.arrow.down",
-            title: viewModel.showFavoritesOnly ? "No Favorite Downloads" : "No Downloads",
-            message: viewModel.showFavoritesOnly
-                ? "You don't have any starred \(viewModel.filter.title.lowercased()) downloaded."
-                : "You haven't downloaded any \(viewModel.filter.title.lowercased()) yet."
+            title: "No Downloads",
+            message: "You haven't downloaded any \(viewModel.filter.title.lowercased()) yet."
         )
     }
 

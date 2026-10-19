@@ -26,8 +26,20 @@ enum MediaFilter: CaseIterable, Hashable {
 @MainActor
 class MediaViewModel {
     var filter: MediaFilter = .movies
-    var showFavoritesOnly: Bool = false
-    var showDownloadsOnly: Bool = false
+    var showFavoritesOnly: Bool = false {
+        didSet {
+            if showFavoritesOnly && showDownloadsOnly {
+                showDownloadsOnly = false
+            }
+        }
+    }
+    var showDownloadsOnly: Bool = false {
+        didSet {
+            if showDownloadsOnly && showFavoritesOnly {
+                showFavoritesOnly = false
+            }
+        }
+    }
     var library = LibraryViewModel()
 
     var availableFilters: [MediaFilter] {
@@ -36,6 +48,24 @@ class MediaViewModel {
 
     init(library: LibraryViewModel? = nil) {
         if let library { self.library = library }
+    }
+
+    func toggleFavorites() {
+        if showFavoritesOnly {
+            showFavoritesOnly = false
+        } else {
+            showFavoritesOnly = true
+            showDownloadsOnly = false
+        }
+    }
+
+    func toggleDownloads() {
+        if showDownloadsOnly {
+            showDownloadsOnly = false
+        } else {
+            showDownloadsOnly = true
+            showFavoritesOnly = false
+        }
     }
 
     // MARK: - Regular Browsing Items

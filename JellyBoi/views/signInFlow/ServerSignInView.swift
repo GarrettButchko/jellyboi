@@ -138,6 +138,7 @@ struct ServerSignInView: View {
                 .padding(16)
 
                 Divider()
+                    .overlay(Color.subTwo)
                     .padding(.horizontal, 16)
 
                 HStack(spacing: 10) {
@@ -298,7 +299,6 @@ struct ServerSignInView: View {
                             Text(message)
                                 .font(.system(size: 13, weight: .medium, design: .rounded))
                                 .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
                             Button("Try Again") {
                                 if let client = serverViewModel.client {
                                     viewModel.startQuickConnect(using: client)

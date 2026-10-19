@@ -28,24 +28,20 @@ struct ExpandableText: View {
     @State private var moreButtonSize: CGSize = .zero
 
     private var isPresentedBinding: Binding<Bool> {
-        Binding(
-            get: { isExternalBinding ? isExpandedExternal : showSheetInternal },
-            set: { newValue in
-                if isExternalBinding {
-                    isExpandedExternal = newValue
-                } else {
-                    showSheetInternal = newValue
-                }
-            }
-        )
+        if isExternalBinding {
+            return $isExpandedExternal
+        } else {
+            return $showSheetInternal
+        }
     }
 
     private var isDescriptionTruncated: Bool {
-        fullHeight > limitedHeight + 1
+        limitedHeight > 0 && fullHeight > (limitedHeight + 2)
     }
 
     init(
         _ text: String,
+        isExpanded: Binding<Bool>? = nil,
         sheetTitle: String? = "Overview",
         lineLimit: Int = 3,
         font: Font = .system(.body, design: .rounded),
@@ -53,8 +49,7 @@ struct ExpandableText: View {
         buttonColor: Color = Color.mainOpp,
         buttonFont: Font = .system(size: 12, weight: .semibold, design: .rounded),
         moreText: String = "more",
-        showChevron: Bool = false,
-        isExpanded: Binding<Bool>? = nil
+        showChevron: Bool = false
     ) {
         self.text = text
         self.sheetTitle = sheetTitle
@@ -80,23 +75,27 @@ struct ExpandableText: View {
             .font(font)
             .foregroundStyle(textColor)
             .lineLimit(lineLimit)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
-                limitedHeight = h
-            }
-            .background(
+            .background {
                 Text(text)
                     .font(font)
-                    .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                     .hidden()
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                        fullHeight = $0
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { newHeight in
+                        fullHeight = newHeight
                     }
-            )
+            }
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { newHeight in
+                limitedHeight = newHeight
+            }
             .mask {
                 if isDescriptionTruncated {
-                    let maskHeight = max(moreButtonSize.height, 24)
+                    let maskWidth = max(moreButtonSize.width + 16, 80)
+                    let maskHeight = max(moreButtonSize.height + 8, 28)
+
                     VStack(spacing: 0) {
                         Color.black
 
@@ -105,13 +104,10 @@ struct ExpandableText: View {
 
                             LinearGradient(
                                 colors: [.black, .clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                                startPoint: .leading,
+                                endPoint: .trailing
                             )
-                            .frame(
-                                width: max(80, moreButtonSize.width + 24),
-                                height: maskHeight
-                            )
+                            .frame(width: maskWidth)
                         }
                         .frame(height: maskHeight)
                     }
@@ -149,11 +145,7 @@ struct ExpandableText: View {
                 fullTextSheet
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
-                        //need this for background to be transparent
-                        .presentationBackground {
-                            Color.clear
-                        }
-                        .background(.ultraThinMaterial)
+                    .presentationBackground(.clear)
             }
             .onChange(of: text) {
                 if !isExternalBinding {
@@ -163,40 +155,14 @@ struct ExpandableText: View {
     }
 
     private var fullTextSheet: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                if let sheetTitle, !sheetTitle.isEmpty {
-                    Text(sheetTitle)
-                        .font(.system(.title3, design: .rounded, weight: .bold))
-                        .foregroundStyle(Color.mainOpp)
-                }
-
-                Spacer()
-
-                Button {
-                    isPresentedBinding.wrappedValue = false
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundStyle(Color.mainOpp.opacity(0.3))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 24)
-            .padding(.bottom, 16)
-
-            Divider()
-                .foregroundStyle(Color.mainOpp.opacity(0.12))
-
-            ScrollView {
-                Text(text)
-                    .font(font)
-                    .foregroundStyle(textColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-            }
+        ScrollView {
+            Text(text)
+                .font(font)
+                .foregroundStyle(textColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 28)
+                .padding(.bottom, 24)
         }
     }
 }

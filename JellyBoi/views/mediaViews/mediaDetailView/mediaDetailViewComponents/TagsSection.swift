@@ -7,10 +7,19 @@
 
 import SwiftUI
 import BaseColors
+import JellyfinAPI
 
 extension MediaDetailView {
 
-    func tagsSection(_ tags: [String]) -> some View {
+    @ViewBuilder
+    var tagsSection: some View {
+        if !detailVM.areTagsHidden, let tags = displayItem.tags, !tags.isEmpty {
+            tagsContent(tags)
+                .padding(.horizontal, 20)
+        }
+    }
+
+    private func tagsContent(_ tags: [String]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Tags")
                 .font(.system(size: 20, weight: .bold))
@@ -62,7 +71,7 @@ struct TagFlowLayout: Layout {
                 y += lineHeight + verticalSpacing
                 lineHeight = 0
             }
-            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
             x += size.width + horizontalSpacing
             lineHeight = max(lineHeight, size.height)
         }
@@ -77,10 +86,10 @@ struct TagChip: View {
     var body: some View {
         Text(text)
             .font(.system(size: 12, weight: .medium, design: .rounded))
-            .foregroundStyle(Color.mainOpp.opacity(0.85))
+            .foregroundStyle(Color.mainOpp)
             .lineLimit(1)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(Color.mainOpp.opacity(0.07), in: Capsule())
+            .background(Color.mainOpp.opacity(0.08), in: Capsule())
     }
 }

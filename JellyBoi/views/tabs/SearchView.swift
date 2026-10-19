@@ -23,67 +23,50 @@ struct SearchView: View {
     @State private var selectedGenre: String?
     @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
-    @State private var sttButtonHeight: CGFloat = 0
 
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
     }
 
-    private let topID = "SearchTopID"
-
     var body: some View {
         @Bindable var viewModel = viewModel
         NavigationStack {
-            ScrollViewReader { proxy in
-                ZStack(alignment: .top) {
-                    ScrollView {
-                        Color.clear.frame(height: 0).id(topID)
-
+            ZStack(alignment: .top) {
+                ScrollToTopScrollView(topInset: headerHeight, scrollOffset: $scrollOffset) { proxy in
+                    Group {
                         if viewModel.searchText.isEmpty {
                             genreBrowse
                         } else {
                             searchResults
                         }
                     }
-                    .contentMargins(.top, headerHeight, for: .scrollContent)
-                    .contentMargins(.bottom, sttButtonHeight, for: .scrollContent)
-                    .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
-                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.contentOffset.y + geometry.contentInsets.top
-                    } action: { _, newValue in
-                        scrollOffset = newValue
-                    }
-                    .animation(.smooth(duration: 0.25), value: viewModel.searchText.isEmpty)
-
-                    // Fixed collapsing header with search field + controls
-                    TabPageHeader(title: "Search", scrollOffset: scrollOffset, headerHeight: $headerHeight) {
-                        GlassEffectContainer(spacing: 12) {
-                            HStack(spacing: 10) {
-                                searchField
-
-                                Button {
-                                    viewModel.showFavoritesOnly.toggle()
-                                } label: {
-                                    Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
-                                        .frame(width: 44, height: 44)
-                                        .glassEffect(.regular.interactive(), in: Circle())
-                                        .contentShape(Circle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                    }
                     .onChange(of: viewModel.searchText) { _, _ in
-                        proxy.scrollTo(topID, anchor: .top)
+                        withAnimation { proxy.scrollToTop() }
                     }
+                }
+                .animation(.smooth(duration: 0.25), value: viewModel.searchText.isEmpty)
 
-                    ScrollToTopOverlay(scrollOffset: scrollOffset, STTButtonHeight: $sttButtonHeight) {
-                        withAnimation { proxy.scrollTo(topID, anchor: .top) }
+                // Fixed collapsing header with search field + controls
+                TabPageHeader(title: "Search", scrollOffset: scrollOffset, headerHeight: $headerHeight) {
+                    GlassEffectContainer(spacing: 12) {
+                        HStack(spacing: 10) {
+                            searchField
+
+                            Button {
+                                viewModel.showFavoritesOnly.toggle()
+                            } label: {
+                                Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
+                                    .frame(width: 44, height: 44)
+                                    .glassEffect(.regular.interactive(), in: Circle())
+                                    .contentShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
+                    .padding(.horizontal, 16)
                 }
             }
             // Detail destination — zoom into a media item

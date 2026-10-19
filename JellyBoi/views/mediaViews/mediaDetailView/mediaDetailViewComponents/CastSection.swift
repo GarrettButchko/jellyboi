@@ -12,7 +12,15 @@ import JellyfinAPI
 
 extension MediaDetailView {
 
-    func castSection(_ people: [BaseItemPerson]) -> some View {
+    @ViewBuilder
+    var castSection: some View {
+        let actors = (displayItem.people ?? []).filter { $0.type == .actor }
+        if !detailVM.isCastHidden && !actors.isEmpty {
+            castContent(actors)
+        }
+    }
+
+    private func castContent(_ people: [BaseItemPerson]) -> some View {
         var seen = Set<String>()
         let uniquePeople = people.filter { person in
             let key = person.id ?? person.name ?? ""
@@ -47,14 +55,7 @@ extension MediaDetailView {
     }
 
     func castImageURL(for person: BaseItemPerson) -> URL? {
-        guard let client = serverViewModel.client,
-              let id = person.id,
-              person.primaryImageTag != nil else { return nil }
-        return client.url(with: Paths.getItemImage(
-            itemID: id,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 200, quality: 80, tag: person.primaryImageTag)
-        ))
+        detailVM.castImageURL(for: person, client: serverViewModel.client)
     }
 }
 

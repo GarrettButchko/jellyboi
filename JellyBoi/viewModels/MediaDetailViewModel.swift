@@ -26,6 +26,8 @@ class MediaDetailViewModel {
     var episodes: [BaseItemDto] = []
     var collectionItems: [BaseItemDto] = []
     var selectedSeasonIndex: Int = 0
+    var scrolledEpisodeID: String?
+    var hasInitialEpisodeScrolled: Bool = false
     var heroAspectRatio: CGFloat = 2.0 / 3.0
     var hasDetectedBitmapRatio = false
     var heroReady = false
@@ -70,6 +72,328 @@ class MediaDetailViewModel {
 
     var displayItem: BaseItemDto? {
         detailedItem ?? sourceItem
+    }
+
+    func playableItem(libraryViewModel: LibraryViewModel?, fromBeginning: Bool = false) -> BaseItemDto {
+        let currentItem = displayItem ?? BaseItemDto()
+        if currentItem.type == .series || currentItem.type == .boxSet {
+            return nextPlayableEpisode(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning) ?? currentItem
+        }
+        return currentItem
+    }
+
+    func shouldShowOptionsButton(libraryViewModel: LibraryViewModel?) -> Bool {
+        guard let currentItem = displayItem else { return true }
+        if currentItem.type == .series || currentItem.type == .boxSet {
+            return nextPlayableEpisode(libraryViewModel: libraryViewModel) != nil
+        }
+        return true
+    }
+
+    func shouldShowSeriesButton(cameFromShow: Bool) -> Bool {
+        guard let currentItem = displayItem else { return false }
+        let type = currentItem.type
+        guard !cameFromShow && type == .episode else { return false }
+        return currentItem.seriesID != nil
+    }
+
+    func parentSeries(libraryViewModel: LibraryViewModel?) -> BaseItemDto? {
+        if let series = seriesItem {
+            return series
+        }
+        guard let seriesID = displayItem?.seriesID else { return nil }
+        if let found = libraryViewModel?.tvShows.first(where: { $0.id == seriesID }) {
+            return found
+        }
+        return BaseItemDto(
+            id: seriesID,
+            name: displayItem?.seriesName,
+            type: .series
+        )
+    }
+
+    var hasExtraInfo: Bool {
+        guard let item = displayItem else { return false }
+        let people = item.people ?? []
+        return !(item.genres ?? []).isEmpty
+            || !people.filter({ $0.type == .director }).isEmpty
+            || !people.filter({ $0.type == .writer }).isEmpty
+            || !(item.studios ?? []).isEmpty
+    }
+
+    func playMedia(
+        fromBeginning: Bool,
+        playbackManager: PlaybackManager,
+        serverViewModel: ServerViewModel,
+        libraryViewModel: LibraryViewModel
+    ) {
+        let itemToPlay = playableItem(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning)
+
+        playbackManager.play(
+            item: itemToPlay,
+            fromBeginning: fromBeginning,
+            client: serverViewModel.client,
+            userID: serverViewModel.currentUser?.id,
+            libraryViewModel: libraryViewModel,
+            mediaSourceID: selectedMediaSourceID,
+            audioStreamIndex: selectedAudioStreamIndex,
+            subtitleStreamIndex: selectedSubtitleStreamIndex,
+            maxBitrate: selectedMaxBitrate
+        )
+    }
+
+    // MARK: - Server-derived Playback State
+
+    var watchProgress: Double? { displayItem?.watchProgress }
+    var isWatched: Bool { displayItem?.isWatched ?? false }
+    var hasProgress: Bool { displayItem?.hasProgress ?? false }
+    var isInProgress: Bool { displayItem?.isInProgress ?? false }
+    var progressVisible: Bool { displayItem?.isProgressVisible ?? false }
+    var progressValue: Double {
+        if isWatched { return 1.0 }
+        return watchProgress ?? 0.0
+    }
+    var percentText: String { displayItem?.percentText ?? "" }
+
+    var contextMenuTitle: String {
+        guard let item = displayItem else { return "" }
+        if item.type == .episode {
+            var epTitle: String? = nil
+            if let season = item.parentIndexNumber, let episode = item.indexNumber {
+                epTitle = "S\(season) E\(episode)"
+            } else if let episode = item.indexNumber {
+                epTitle = "Ep \(episode)"
+            }
+
+            let name = item.name
+            let series = item.seriesName
+
+            switch (series, epTitle, name) {
+            case let (.some(s), .some(e), .some(n)) where !s.isEmpty && !e.isEmpty && !n.isEmpty:
+                return "\(s) • \(e): \(n)"
+            case let (_, .some(e), .some(n)) where !e.isEmpty && !n.isEmpty:
+                return "\(e) • \(n)"
+            case let (.some(s), _, .some(n)) where !s.isEmpty && !n.isEmpty:
+                return "\(s) • \(n)"
+            case let (_, .some(e), _):
+                return e
+            case let (_, _, .some(n)) where !n.isEmpty:
+                return n
+            default:
+                return "Episode"
+            }
+        }
+        return item.name ?? ""
+    }
+
+    func handlePlayTap(
+        playbackManager: PlaybackManager,
+        serverViewModel: ServerViewModel,
+        libraryViewModel: LibraryViewModel
+    ) {
+        if isWatched {
+            playMedia(
+                fromBeginning: true,
+                playbackManager: playbackManager,
+                serverViewModel: serverViewModel,
+                libraryViewModel: libraryViewModel
+            )
+        } else {
+            playMedia(
+                fromBeginning: false,
+                playbackManager: playbackManager,
+                serverViewModel: serverViewModel,
+                libraryViewModel: libraryViewModel
+            )
+        }
+    }
+
+    func resetProgress(serverViewModel: ServerViewModel?) {
+        guard let item = displayItem, let itemID = item.id else { return }
+        withAnimation(.smooth) {
+            clearProgress(for: itemID)
+        }
+        Task {
+            await serverViewModel?.resetProgress(for: item)
+        }
+    }
+
+    // MARK: - Download State & Actions
+
+    enum DownloadAlertAction {
+        case cancel
+        case delete
+    }
+
+    var downloadAlertAction: DownloadAlertAction?
+
+    func isShowFullyDownloaded(downloadManager: DownloadManager, libraryViewModel: LibraryViewModel?) -> Bool {
+        guard let item = displayItem, item.type == .series, let showID = item.id else { return false }
+
+        if !episodes.isEmpty {
+            return episodes.allSatisfy { ep in
+                guard let epID = ep.id else { return false }
+                return downloadManager.isDownloaded(id: epID)
+            }
+        }
+
+        let total = item.recursiveItemCount ?? (libraryViewModel?.tvShows.first(where: { $0.id == showID })?.recursiveItemCount)
+        if let total, total > 0 {
+            let downloadedCount = downloadManager.completedDownloads.filter {
+                $0.item.seriesID == showID || $0.item.parentBackdropItemID == showID
+            }.count
+            return downloadedCount >= total
+        }
+
+        return false
+    }
+
+    func isShowDownloading(downloadManager: DownloadManager) -> Bool {
+        guard let item = displayItem, item.type == .series, let showID = item.id else { return false }
+
+        if !episodes.isEmpty {
+            return episodes.contains { ep in
+                guard let epID = ep.id else { return false }
+                return downloadManager.isDownloading(id: epID)
+            }
+        }
+
+        return downloadManager.activeDownloads.contains {
+            $0.item.seriesID == showID || $0.item.parentBackdropItemID == showID
+        }
+    }
+
+    func showEpisodesLeft(downloadManager: DownloadManager) -> Int {
+        guard let item = displayItem, item.type == .series, let showID = item.id else { return 0 }
+
+        return downloadManager.activeDownloads.filter {
+            $0.item.seriesID == showID ||
+            $0.item.parentBackdropItemID == showID ||
+            ($0.item.type == .episode && $0.item.seriesName == item.name)
+        }.count
+    }
+
+    func episodesLeft(downloadManager: DownloadManager) -> Int? {
+        guard displayItem?.type == .series else { return nil }
+        let count = showEpisodesLeft(downloadManager: downloadManager)
+        return count > 0 ? count : nil
+    }
+
+    func showDownloadProgress(downloadManager: DownloadManager) -> Double {
+        guard let item = displayItem, item.type == .series, let showID = item.id else { return 0 }
+
+        let downloading = downloadManager.activeDownloads.filter {
+            $0.item.seriesID == showID || $0.item.parentBackdropItemID == showID
+        }
+        guard !downloading.isEmpty else { return 0 }
+
+        let completed = downloadManager.completedDownloads.filter {
+            $0.item.seriesID == showID || $0.item.parentBackdropItemID == showID
+        }
+        let totalCount = downloading.count + completed.count
+        guard totalCount > 0 else { return 0 }
+
+        let totalProgress = Double(completed.count) + downloading.reduce(0.0) { $0 + $1.progress }
+        return totalProgress / Double(totalCount)
+    }
+
+    func isDetailDownloaded(downloadManager: DownloadManager, libraryViewModel: LibraryViewModel?) -> Bool {
+        if displayItem?.type == .series {
+            return isShowFullyDownloaded(downloadManager: downloadManager, libraryViewModel: libraryViewModel)
+        }
+        let playable = playableItem(libraryViewModel: libraryViewModel)
+        return downloadManager.isDownloaded(id: playable.id ?? "")
+    }
+
+    func isDetailDownloading(downloadManager: DownloadManager) -> Bool {
+        if displayItem?.type == .series {
+            return isShowDownloading(downloadManager: downloadManager)
+        }
+        let playable = playableItem(libraryViewModel: nil)
+        return downloadManager.isDownloading(id: playable.id ?? "")
+    }
+
+    func detailDownloadProgress(downloadManager: DownloadManager, libraryViewModel: LibraryViewModel?) -> Double {
+        if displayItem?.type == .series {
+            return showDownloadProgress(downloadManager: downloadManager)
+        }
+        let playable = playableItem(libraryViewModel: libraryViewModel)
+        return downloadManager.progress(for: playable.id ?? "") ?? 0.0
+    }
+
+    @discardableResult
+    func handleDownloadTap(
+        downloadManager: DownloadManager,
+        client: JellyfinClient?,
+        libraryViewModel: LibraryViewModel?
+    ) -> DownloadAlertAction? {
+        let action: DownloadAlertAction?
+        if displayItem?.type == .series {
+            if isShowFullyDownloaded(downloadManager: downloadManager, libraryViewModel: libraryViewModel) {
+                action = .delete
+            } else if isShowDownloading(downloadManager: downloadManager) {
+                action = .cancel
+            } else if let client {
+                let uncompletedEpisodes = episodes.filter { ep in
+                    guard let epID = ep.id else { return false }
+                    return !downloadManager.isDownloaded(id: epID) && !downloadManager.isDownloading(id: epID)
+                }
+                downloadManager.startDownloads(items: uncompletedEpisodes, client: client)
+                action = nil
+            } else {
+                action = nil
+            }
+        } else {
+            let playable = playableItem(libraryViewModel: libraryViewModel)
+            if let itemID = playable.id {
+                if downloadManager.isDownloaded(id: itemID) {
+                    action = .delete
+                } else if downloadManager.isDownloading(id: itemID) {
+                    action = .cancel
+                } else if let client {
+                    downloadManager.startDownload(item: playable, client: client)
+                    action = nil
+                } else {
+                    action = nil
+                }
+            } else {
+                action = nil
+            }
+        }
+        self.downloadAlertAction = action
+        return action
+    }
+
+    func cancelDownload(downloadManager: DownloadManager) {
+        if displayItem?.type == .series {
+            guard let showID = displayItem?.id else { return }
+            let idsToCancel = downloadManager.activeDownloads
+                .filter { $0.item.seriesID == showID || $0.item.parentBackdropItemID == showID }
+                .map(\.id)
+            downloadManager.cancelDownloads(ids: idsToCancel)
+        } else if let itemID = playableItem(libraryViewModel: nil).id {
+            downloadManager.cancelDownload(id: itemID)
+        }
+    }
+
+    func deleteDownload(downloadManager: DownloadManager) {
+        if displayItem?.type == .series {
+            guard let showID = displayItem?.id else { return }
+            let idsToDelete = downloadManager.completedDownloads
+                .filter { $0.item.seriesID == showID || $0.item.parentBackdropItemID == showID }
+                .map(\.id)
+            downloadManager.deleteDownloads(ids: idsToDelete)
+        } else if let itemID = playableItem(libraryViewModel: nil).id {
+            downloadManager.deleteDownload(id: itemID)
+        }
+    }
+
+    func downloadAlertItemName(libraryViewModel: LibraryViewModel?) -> String {
+        if displayItem?.type == .series {
+            return displayItem?.name ?? "this item"
+        }
+        let playable = playableItem(libraryViewModel: libraryViewModel)
+        return playable.name ?? "this item"
     }
 
     var isFavorite: Bool {
@@ -167,6 +491,8 @@ class MediaDetailViewModel {
     func prepare(item: BaseItemDto, client: JellyfinClient?) {
         self.sourceItem = item
         self.client = client
+        self.hasInitialEpisodeScrolled = false
+        self.scrolledEpisodeID = nil
         if item.type == .series {
             self.isLoadingEpisodes = true
         }
@@ -199,7 +525,14 @@ class MediaDetailViewModel {
     func load(item: BaseItemDto, client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel) async {
         guard let itemID = item.id else { return }
         self.client = client
-        self.sourceItem = item
+        let resolvedItem = libraryViewModel.movies.first(where: { $0.id == itemID })
+            ?? libraryViewModel.resumeShows.first(where: { $0.id == itemID })
+            ?? libraryViewModel.episodes.first(where: { $0.id == itemID })
+            ?? libraryViewModel.tvShows.first(where: { $0.id == itemID })
+            ?? item
+        self.sourceItem = resolvedItem
+        self.hasInitialEpisodeScrolled = false
+        self.scrolledEpisodeID = nil
         isLoading = true
         defer { isLoading = false }
 
@@ -459,6 +792,18 @@ class MediaDetailViewModel {
         ))
     }
 
+    func castImageURL(for person: BaseItemPerson, client fallbackClient: JellyfinClient? = nil) -> URL? {
+        let activeClient = client ?? fallbackClient
+        guard let activeClient,
+              let id = person.id,
+              person.primaryImageTag != nil else { return nil }
+        return activeClient.url(with: Paths.getItemImage(
+            itemID: id,
+            imageType: "Primary",
+            parameters: .init(maxWidth: 200, quality: 80, tag: person.primaryImageTag)
+        ))
+    }
+
     func handleFavoriteNotification(itemID: String, isFavorite: Bool) {
         if displayItem?.id == itemID {
             detailedItem?.setFavorite(isFavorite)
@@ -648,6 +993,19 @@ class MediaDetailViewModel {
             return "Original (\(formatBitrate(origBitrate)))"
         }
         return "Auto"
+    }
+
+    func isQualitySelected(_ option: QualityOption) -> Bool {
+        if let maxBitrate = option.maxBitrate {
+            return selectedMaxBitrate == maxBitrate
+        }
+        if selectedMaxBitrate != nil {
+            return false
+        }
+        if let sourceID = option.mediaSourceID {
+            return selectedMediaSourceID == sourceID
+        }
+        return true
     }
 
     func selectQuality(_ option: QualityOption) {

@@ -46,8 +46,8 @@ extension MediaDetailView {
                 optionsSheetHeight = newHeight
             }
         }
-        .task(id: playableItem.id) {
-            let target = playableItem
+        .task(id: detailVM.playableItem(libraryViewModel: libraryViewModel).id) {
+            let target = detailVM.playableItem(libraryViewModel: libraryViewModel)
             await detailVM.loadPlaybackOptions(
                 for: target,
                 client: serverViewModel.client,
@@ -88,16 +88,7 @@ extension MediaDetailView {
     }
 
     private func isQualitySelected(_ option: MediaDetailViewModel.QualityOption) -> Bool {
-        if let maxBitrate = option.maxBitrate {
-            return detailVM.selectedMaxBitrate == maxBitrate
-        }
-        if detailVM.selectedMaxBitrate != nil {
-            return false
-        }
-        if let sourceID = option.mediaSourceID {
-            return detailVM.selectedMediaSourceID == sourceID
-        }
-        return true
+        detailVM.isQualitySelected(option)
     }
 
     // MARK: - Audio Dropdown

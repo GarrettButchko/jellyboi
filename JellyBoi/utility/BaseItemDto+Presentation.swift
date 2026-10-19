@@ -73,6 +73,71 @@ extension BaseItemDto {
     mutating func setFavorite(_ isFavorite: Bool) {
         self.isFavorite = isFavorite
     }
+
+    // MARK: - Playback State & Progress Helpers
+
+    /// Watch progress ratio from 0.0 to 1.0. Returns nil if unplayed or no progress recorded.
+    var watchProgress: Double? {
+        if userData?.isPlayed == true { return 1.0 }
+        guard let percent = userData?.playedPercentage else { return nil }
+        return min(max(percent / 100.0, 0), 1.0)
+    }
+
+    /// Whether the item has been watched (completed >= 85% or marked played).
+    var isWatched: Bool {
+        if userData?.isPlayed == true { return true }
+        return (watchProgress ?? 0) >= 0.85
+    }
+
+    /// Whether the item has positive playback progress (ticks or percent >= 1%).
+    var hasProgress: Bool {
+        if let percent = userData?.playedPercentage, percent >= 1.0 { return true }
+        if let ticks = userData?.playbackPositionTicks, ticks > 0 {
+            let total = runTimeTicks.map { Int($0) } ?? 0
+            if total > 0 {
+                return (Double(ticks) / Double(total)) * 100.0 >= 1.0
+            }
+            return true
+        }
+        return false
+    }
+
+    /// Whether the item is partially watched and not completed.
+    var isInProgress: Bool {
+        if isWatched { return false }
+        return hasProgress && progressPercentage > 0
+    }
+
+    /// Whether a progress indicator (ring or bar) should be visible (suppressed at 0%).
+    var isProgressVisible: Bool {
+        if isWatched { return true }
+        guard isInProgress else { return false }
+        return progressPercentage > 0
+    }
+
+    /// Progress percentage integer between 0 and 100.
+    var progressPercentage: Int {
+        if isWatched { return 100 }
+        guard let wp = watchProgress else { return 0 }
+        return Int(wp * 100)
+    }
+
+    /// Formatted progress percentage string (e.g. "45%").
+    var percentText: String {
+        "\(progressPercentage)%"
+    }
+
+    /// Formatted remaining runtime string (e.g. "1h 12m left").
+    var timeRemainingFormatted: String? {
+        guard let ticks = runTimeTicks, ticks > 0,
+              let percent = userData?.playedPercentage, percent >= 1.0, percent < 85.0 else { return nil }
+        let totalSeconds = Int(ticks / 10_000_000)
+        let remainingSeconds = totalSeconds - Int(Double(totalSeconds) * percent / 100.0)
+        guard remainingSeconds > 60 else { return nil }
+        let hours = remainingSeconds / 3600
+        let minutes = (remainingSeconds % 3600) / 60
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    }
 }
 
 extension Array where Element == BaseItemDto {

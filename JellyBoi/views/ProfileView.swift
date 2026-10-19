@@ -27,6 +27,7 @@ struct ProfileView: View {
             .toolbarVisibility(.hidden, for: .navigationBar)
         }
         .presentationDragIndicator(.visible)
+        .presentationBackground(Color.bg)
     }
 
     // MARK: - Header Overlay
@@ -129,7 +130,7 @@ struct ProfileView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
-                        .background(Color.mainOpp.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(Color.sub, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -190,12 +191,12 @@ struct ProfileView: View {
 
     private var avatarPlaceholder: some View {
         Circle()
-            .fill(.ultraThinMaterial)
+            .fill(Color.sub)
             .frame(width: 110, height: 110)
             .overlay {
                 Image(systemName: "person.fill")
                     .font(.system(size: 44))
-                    .foregroundStyle(Color.mainOpp.opacity(0.4))
+                    .foregroundStyle(Color.subFour)
             }
     }
 }

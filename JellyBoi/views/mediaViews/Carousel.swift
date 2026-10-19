@@ -291,21 +291,11 @@ private struct CarouselCard: View {
     private let outerCornerRadius: CGFloat = 20
 
     private var watchProgress: Double? {
-        guard let percent = item.userData?.playedPercentage,
-              percent > 0, percent < 85 else { return nil }
-        return min(max(percent / 100, 0), 1)
+        item.isInProgress ? item.watchProgress : nil
     }
 
     private var timeRemainingLabel: String? {
-        guard let ticks = item.runTimeTicks,
-              let percent = item.userData?.playedPercentage,
-              percent > 0 else { return nil }
-        let totalSeconds = Int(ticks / 10_000_000)
-        let remainingSeconds = totalSeconds - Int(Double(totalSeconds) * percent / 100)
-        guard remainingSeconds > 60 else { return nil }
-        let hours = remainingSeconds / 3600
-        let minutes = (remainingSeconds % 3600) / 60
-        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+        item.timeRemainingFormatted
     }
 
     var body: some View {

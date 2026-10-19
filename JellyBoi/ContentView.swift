@@ -18,6 +18,9 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
+            Color.bg
+                .ignoresSafeArea()
+
             Group {
                 if viewManager.isSignedIn {
                     TabsView(libraryViewModel: libraryViewModel)
@@ -49,6 +52,7 @@ struct ContentView: View {
                 playbackManager.client = client
                 playbackManager.userID = serverViewModel.currentUser?.id
                 playbackManager.libraryViewModel = libraryViewModel
+                DownloadManager.shared.client = client
                 await libraryViewModel.load(using: client, userID: serverViewModel.currentUser?.id)
             } else if !ok {
                 viewManager.signOut()
