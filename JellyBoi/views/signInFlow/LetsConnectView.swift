@@ -15,6 +15,7 @@ struct LetsConnectView: View {
     @State private var viewModel = LetsConnectViewModel()
     @State private var serverURL = ""
     @FocusState private var urlFieldFocused: Bool
+    @ScaledMetric(relativeTo: .body) private var inputHeight: CGFloat = 22
 
     private var isVerified: Bool {
         if case .verified = viewModel.serverCheckState { return true }
@@ -171,12 +172,13 @@ struct LetsConnectView: View {
         HStack(spacing: 10) {
             Image(systemName: "globe")
                 .foregroundStyle(.accent)
-                .frame(width: 20)
+                .frame(width: 20, height: 20)
 
             TextField(text: $serverURL) {
                 Text(verbatim: "https://jellyfin.example.com")
                     .foregroundStyle(Color.mainOpp.opacity(0.4))
             }
+            .textFieldStyle(.plain)
             .keyboardType(.URL)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
@@ -191,6 +193,7 @@ struct LetsConnectView: View {
             }
             .focused($urlFieldFocused)
             .foregroundStyle(Color.mainOpp)
+            .frame(height: inputHeight)
             .onChange(of: serverURL) { _, newValue in
                 viewModel.scheduleServerCheck(urlString: newValue)
             }
