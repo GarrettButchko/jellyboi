@@ -672,3 +672,18 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+----------------------------------------------------------------------
+Apple App Store Exception (Additional Permission under GPLv3 Section 7)
+----------------------------------------------------------------------
+
+As a special exception to the GNU General Public License version 3, the
+copyright holders of JellyBoi grant permission to convey and distribute
+this program through Apple's App Store, Mac App Store, TestFlight, or
+associated Apple distribution platforms, subject to the applicable Apple
+Media Services Terms and Conditions and App Store Terms of Service,
+notwithstanding any conflict between those terms and the terms of this
+License.
+
+All other terms and conditions of the GNU General Public License version 3
+remain in full effect for all other contexts.
