@@ -6,7 +6,7 @@
 ![Swift](https://img.shields.io/badge/Swift-5.0%20%2F%206-F05138?style=for-the-badge&logo=swift&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/SwiftUI-4.0+-007AFF?style=for-the-badge&logo=swift&logoColor=white)
 ![Jellyfin](https://img.shields.io/badge/Jellyfin-Client-00A4DC?style=for-the-badge&logo=jellyfin&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?style=for-the-badge&logo=gnu)
 
 **A sleek, modern, native Jellyfin client crafted in SwiftUI for Apple devices.**
 
@@ -148,4 +148,4 @@ Contributions are welcome! If you encounter a bug, have a feature suggestion, or
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE) - see the LICENSE file for details.
+This project is licensed under the [GNU General Public License v3.0](LICENSE) - see the LICENSE file for details.
