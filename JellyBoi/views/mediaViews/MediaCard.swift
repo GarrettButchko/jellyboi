@@ -158,8 +158,8 @@ struct MediaCard: View {
                     viewModel.handleToggleFavorite(serverViewModel: serverViewModel)
                 } label: {
                     Label(
-                        viewModel.isFavorite ? "Unfavorite" : "Favorite",
-                        systemImage: viewModel.isFavorite ? "star.fill" : "star"
+                        viewModel.item.isFavorite ? "Unfavorite" : "Favorite",
+                        systemImage: viewModel.item.isFavorite ? "star.fill" : "star"
                     )
                 }
             } header: {

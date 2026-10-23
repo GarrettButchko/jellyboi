@@ -294,10 +294,6 @@ private struct CarouselCard: View {
         item.isInProgress ? item.watchProgress : nil
     }
 
-    private var timeRemainingLabel: String? {
-        item.timeRemainingFormatted
-    }
-
     var body: some View {
         let url = backdropURL(item)
         let initialCached = url.flatMap { CarouselImageMemoryCache.shared.image(for: $0) }
@@ -332,7 +328,7 @@ private struct CarouselCard: View {
             }
 
             if let progress = watchProgress {
-                GlassProgressBar(progress: progress, label: timeRemainingLabel)
+                GlassProgressBar(progress: progress, label: item.timeRemainingFormatted)
                     .padding(10)
             }
         }

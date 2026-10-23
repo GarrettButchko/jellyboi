@@ -154,7 +154,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
                 header
 
                 if showsScrollToTop {
-                    ScrollToTopOverlay(isVisible: scrollState.showScrollToTop, threshold: threshold, STTButtonHeight: $sttButtonHeight) {
+                    ScrollTabBarOverlay(isVisible: scrollState.showScrollToTop, threshold: threshold, STTButtonHeight: $sttButtonHeight) {
                         withAnimation {
                             proxy.scrollTo(Self.topAnchorID, anchor: .top)
                         }

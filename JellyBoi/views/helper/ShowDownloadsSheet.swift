@@ -2,7 +2,7 @@
 //  ShowDownloadsSheet.swift
 //  JellyBoi
 //
-//  Created by Garrett Butchko on 10/8/26.
+//  Created by Garrett Butchko on 10/21/26.
 //
 
 import SwiftUI
@@ -17,147 +17,119 @@ struct ShowDownloadsSheet: View {
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
-    @Environment(\.dismiss) private var dismiss
+
     @State private var itemToCancel: DownloadItem?
     @State private var itemToDelete: DownloadItem?
     @State private var showCancelAllAlert = false
+    @State private var isScrolledUnder = false
+    @State private var topBarHeight: CGFloat = 0
+    @State private var listHeight: CGFloat = 0
+
+    private var allGroupDownloads: [DownloadItem] {
+        Array(downloadManager.downloads.values).filter { download in
+            download.group?.id == seriesID ||
+            download.item.seriesID == seriesID ||
+            download.item.parentBackdropItemID == seriesID ||
+            download.item.seriesName == seriesName
+        }
+    }
+
+    private var sortedEpisodes: [DownloadItem] {
+        allGroupDownloads.sorted { a, b in
+            let sA = a.item.parentIndexNumber ?? 1
+            let sB = b.item.parentIndexNumber ?? 1
+            if sA != sB { return sA < sB }
+            let eA = a.item.indexNumber ?? 1
+            let eB = b.item.indexNumber ?? 1
+            if eA != eB { return eA < eB }
+            return a.title.localizedStandardCompare(b.title) == .orderedAscending
+        }
+    }
 
     private var activeEpisodes: [DownloadItem] {
-        downloadManager.activeDownloads.filter {
-            $0.item.seriesID == seriesID ||
-            $0.item.parentBackdropItemID == seriesID ||
-            ($0.item.type == .episode && $0.item.seriesName == seriesName)
-        }
+        allGroupDownloads.filter { $0.status != .completed }
     }
 
     private var completedEpisodes: [DownloadItem] {
-        downloadManager.completedDownloads.filter {
-            $0.item.seriesID == seriesID ||
-            $0.item.parentBackdropItemID == seriesID ||
-            ($0.item.type == .episode && $0.item.seriesName == seriesName)
-        }
+        allGroupDownloads.filter { $0.status == .completed }
     }
 
-    private var episodesLeft: Int {
-        activeEpisodes.count
-    }
-
-    private var totalEpisodes: Int {
-        activeEpisodes.count + completedEpisodes.count
+    private var isCollection: Bool {
+        allGroupDownloads.first?.group?.type == .collection || allGroupDownloads.allSatisfy { $0.item.type != .episode }
     }
 
     private var overallProgress: Double {
-        guard totalEpisodes > 0 else { return 0 }
+        guard !allGroupDownloads.isEmpty else { return 0 }
         let completed = Double(completedEpisodes.count)
         let active = activeEpisodes.reduce(0.0) { $0 + $1.progress }
-        return (completed + active) / Double(totalEpisodes)
+        return (completed + active) / Double(allGroupDownloads.count)
+    }
+
+    @MainActor
+    private var halfScreenHeight: CGFloat {
+        #if canImport(UIKit)
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first,
+           let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first {
+            return window.bounds.height * 0.5
+        }
+        #endif
+        return 420
+    }
+
+    private var presentationDetents: Set<PresentationDetent> {
+        let total = topBarHeight + listHeight + 16
+        if topBarHeight > 0 && listHeight > 0 && total < halfScreenHeight {
+            return [.height(max(160, total))]
+        } else {
+            return [.fraction(0.5)]
+        }
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Summary header card
-                    ShowDownloadsSummaryHeader(
-                        seriesName: seriesName,
-                        episodesLeft: episodesLeft,
-                        totalEpisodes: totalEpisodes,
-                        overallProgress: overallProgress,
-                        onCancelAll: {
-                            showCancelAllAlert = true
+                if !allGroupDownloads.isEmpty {
+                    VStack(spacing: 10) {
+                        ForEach(sortedEpisodes) { episode in
+                            episodeRow(episode, isCompleted: episode.status == .completed)
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.85))
+                                ))
                         }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .animation(.spring(response: 0.38, dampingFraction: 0.78), value: sortedEpisodes.map(\.id))
+                    .animation(.spring(response: 0.38, dampingFraction: 0.78), value: sortedEpisodes.map(\.status))
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                        listHeight = h
+                    }
+                } else {
+                    EmptyStateView(
+                        icon: "tv",
+                        title: "No Downloads",
+                        message: "No downloaded episodes found for \(seriesName)."
                     )
-
-                    // Active downloads
-                    if !activeEpisodes.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Preparing (\(activeEpisodes.count))")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(Color.mainOpp)
-                                .padding(.horizontal, 16)
-
-                            VStack(spacing: 10) {
-                                ForEach(activeEpisodes) { downloadItem in
-                                    EpisodeDownloadRow(
-                                        downloadItem: downloadItem,
-                                        isCompleted: false,
-                                        client: serverViewModel.client,
-                                        libraryViewModel: libraryViewModel,
-                                        onCancel: {
-                                            itemToCancel = downloadItem
-                                        },
-                                        onRetry: {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                downloadManager.resumeDownload(id: downloadItem.id, client: serverViewModel.client)
-                                            }
-                                        },
-                                        onDelete: {
-                                            itemToDelete = downloadItem
-                                        }
-                                    )
-                                    .equatable()
-                                    .transition(.asymmetric(
-                                        insertion: .opacity.combined(with: .scale(scale: 0.95)),
-                                        removal: .opacity.combined(with: .scale(scale: 0.85))
-                                    ))
-                                }
-                            }
-                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: activeEpisodes.map(\.id))
-                            .padding(.horizontal, 16)
-                        }
-                    }
-
-                    // Completed downloads
-                    if !completedEpisodes.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Finished (\(completedEpisodes.count))")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(Color.mainOpp)
-                                .padding(.horizontal, 16)
-
-                            VStack(spacing: 10) {
-                                ForEach(completedEpisodes) { downloadItem in
-                                    EpisodeDownloadRow(
-                                        downloadItem: downloadItem,
-                                        isCompleted: true,
-                                        client: serverViewModel.client,
-                                        libraryViewModel: libraryViewModel,
-                                        onCancel: {
-                                            itemToCancel = downloadItem
-                                        },
-                                        onRetry: {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                downloadManager.resumeDownload(id: downloadItem.id, client: serverViewModel.client)
-                                            }
-                                        },
-                                        onDelete: {
-                                            itemToDelete = downloadItem
-                                        }
-                                    )
-                                    .equatable()
-                                    .transition(.asymmetric(
-                                        insertion: .opacity.combined(with: .scale(scale: 0.95)),
-                                        removal: .opacity.combined(with: .scale(scale: 0.85))
-                                    ))
-                                }
-                            }
-                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: completedEpisodes.map(\.id))
-                            .padding(.horizontal, 16)
-                        }
-                    }
-                }
-                .padding(.vertical, 16)
-            }
-            .background(Color.bg.ignoresSafeArea())
-            .navigationTitle("Downloads")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        dismiss()
+                    .padding(.top, 40)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                        listHeight = h
                     }
                 }
             }
+            .animation(.spring(response: 0.38, dampingFraction: 0.78), value: allGroupDownloads.isEmpty)
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                (geometry.contentOffset.y + geometry.contentInsets.top) > 2
+            } action: { _, isScrolled in
+                isScrolledUnder = isScrolled
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                integratedTopBar
+            }
+            .toolbarVisibility(.hidden, for: .navigationBar)
             .alert(
                 itemToCancel?.status == .failed ? "Download Failed" : "Cancel Download?",
                 isPresented: Binding(
@@ -200,7 +172,7 @@ struct ShowDownloadsSheet: View {
                 if item.status == .failed {
                     Text(item.errorMessage ?? "An error occurred during download or transcoding.")
                 } else {
-                    Text("Are you sure you want to cancel the download for '\(Self.episodeTitle(for: item.item))'?")
+                    Text("Are you sure you want to cancel the download for '\(item.title)'?")
                 }
             }
             .alert(
@@ -221,7 +193,7 @@ struct ShowDownloadsSheet: View {
                     itemToDelete = nil
                 }
             } message: { item in
-                Text("Are you sure you want to delete '\(Self.episodeTitle(for: item.item))' from your downloads?")
+                Text("Are you sure you want to delete '\(item.title)' from your device?")
             }
             .alert(
                 "Cancel All Downloads?",
@@ -237,132 +209,115 @@ struct ShowDownloadsSheet: View {
                 Text("Are you sure you want to cancel all in-progress downloads for '\(seriesName)'?")
             }
         }
-        .presentationBackground(Color.bg)
+        .presentationDetents(presentationDetents)
+        .presentationDragIndicator(.visible)
+        .animation(.spring(response: 0.38, dampingFraction: 0.78), value: presentationDetents)
     }
 
-    static func episodeTitle(for item: BaseItemDto) -> String {
-        var label = ""
-        if let season = item.parentIndexNumber, let episode = item.indexNumber {
-            label = "S\(season):E\(episode)"
-        }
-        if let name = item.name, !name.isEmpty {
-            label = label.isEmpty ? name : "\(label) • \(name)"
-        }
-        return label.isEmpty ? (item.name ?? "Episode") : label
+    // MARK: - Integrated Top Bar
+
+    private var subtitleText: String {
+        let count = activeEpisodes.count
+        let word = isCollection ? (count == 1 ? "item" : "items") : (count == 1 ? "episode" : "episodes")
+        let percent = Int((overallProgress * 100).rounded())
+        return "\(count) \(word) left • \(percent)%"
     }
-}
 
-// MARK: - Summary Header
-
-private struct ShowDownloadsSummaryHeader: View {
-    let seriesName: String
-    let episodesLeft: Int
-    let totalEpisodes: Int
-    let overallProgress: Double
-    let onCancelAll: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
+    private var integratedTopBar: some View {
+        VStack(spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(seriesName)
-                        .font(.headline)
+                        .font(.system(.headline, design: .rounded, weight: .bold))
                         .foregroundStyle(Color.mainOpp)
                         .lineLimit(1)
 
-                    Text(episodesLeft > 0 ? "\(episodesLeft) of \(totalEpisodes) episodes left" : "All episodes downloaded")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.mainOpp.opacity(0.7))
+                    if !allGroupDownloads.isEmpty {
+                        Text(subtitleText)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color.mainOpp.opacity(0.6))
+                    }
                 }
 
                 Spacer()
 
-                if episodesLeft > 0 {
-                    Button("Cancel", role: .destructive) {
-                        onCancelAll()
+                if !activeEpisodes.isEmpty {
+                    Button {
+                        showCancelAllAlert = true
+                    } label: {
+                        Image(systemName: "square.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
-                    .font(.subheadline)
+                    .buttonStyle(SquareActionButtonStyle())
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
                 }
             }
 
-            ProgressView(value: overallProgress)
-                .tint(Color.accentColor)
+            if !activeEpisodes.isEmpty {
+                ProgressView(value: overallProgress)
+                    .tint(Color.accentColor)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
         }
-        .padding(16)
-        .background(Color.sub, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 16)
-    }
-}
-
-// MARK: - Episode Download Row
-
-private struct EpisodeDownloadRow: View, Equatable {
-    let downloadItem: DownloadItem
-    let isCompleted: Bool
-    let client: JellyfinClient?
-    let libraryViewModel: LibraryViewModel
-    let onCancel: () -> Void
-    let onRetry: () -> Void
-    let onDelete: () -> Void
-
-    private let cancelIcon = "square.fill"
-    private let deleteIcon = "trash"
-    private let cancelIconColor = Color.mainOpp
-    private let deleteIconColor = Color.red.opacity(0.8)
-    private let actionButtonSize: CGFloat = 26
-    private let actionButtonFont = Font.system(size: 17, weight: .bold)
-
-    static func == (lhs: EpisodeDownloadRow, rhs: EpisodeDownloadRow) -> Bool {
-        lhs.downloadItem == rhs.downloadItem &&
-        lhs.isCompleted == rhs.isCompleted
+        .padding(.top, 24)
+        .padding(.bottom, 12)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+            topBarHeight = h
+        }
+        .background(
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(isScrolledUnder ? 1 : 0)
+                .ignoresSafeArea(edges: .top)
+        )
+        .overlay(alignment: .bottom) {
+            Divider()
+                .opacity(isScrolledUnder ? 0.35 : 0)
+        }
+        .animation(.easeInOut(duration: 0.2), value: isScrolledUnder)
+        .animation(.spring(response: 0.38, dampingFraction: 0.78), value: activeEpisodes.isEmpty)
     }
 
-    var body: some View {
+    // MARK: - Episode Row
+
+    private func episodeRow(_ downloadItem: DownloadItem, isCompleted: Bool) -> some View {
         HStack(spacing: 12) {
-            EpisodeThumbnailView(
-                downloadItem: downloadItem,
-                client: client,
-                libraryViewModel: libraryViewModel
+            DownloadThumbnailView(
+                item: downloadItem,
+                client: serverViewModel.client,
+                libraryViewModel: libraryViewModel,
+                size: .regular
             )
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(ShowDownloadsSheet.episodeTitle(for: downloadItem.item))
-                        .font(.system(size: 14, weight: .semibold))
+                    Text(downloadItem.title)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.mainOpp)
                         .lineLimit(1)
 
-                    if isCompleted {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color.white, Color.green)
-                    } else if downloadItem.status == .failed {
+                    if downloadItem.status == .failed {
                         Image(systemName: "exclamationmark.circle.fill")
-                            .font(.system(size: 13))
+                            .font(.system(size: 12))
                             .foregroundStyle(Color.white, Color.red)
                     }
                 }
 
                 if isCompleted {
-                    HStack(spacing: 6) {
-                        Text(downloadItem.formatBadge)
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.accentColor)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-
-                        Text(downloadItem.formattedFileSize)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.mainOpp.opacity(0.6))
-                    }
+                    Text(downloadItem.formattedFileSize)
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Color.mainOpp.opacity(0.6))
                 } else if downloadItem.status == .failed {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(Color.red)
                         Text(downloadItem.errorMessage ?? "Download or conversion failed")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
                             .foregroundStyle(Color.red)
                             .lineLimit(1)
                     }
@@ -372,20 +327,18 @@ private struct EpisodeDownloadRow: View, Equatable {
 
                     HStack {
                         HStack(spacing: 4) {
-                            if let icon = downloadItem.statusIcon {
-                                Image(systemName: icon)
-                                    .font(.system(size: 10, weight: .medium))
-                            }
+                            Image(systemName: downloadItem.statusIcon)
+                                .font(.system(size: 10, weight: .medium))
                             Text(downloadItem.statusText)
                         }
-                        .font(.system(size: 11))
+                        .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Color.mainOpp.opacity(0.6))
 
                         Spacer()
 
                         if downloadItem.status != .queued {
                             Text(downloadItem.formattedPercentage)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
                                 .foregroundStyle(Color.mainOpp.opacity(0.8))
                         }
                     }
@@ -393,127 +346,68 @@ private struct EpisodeDownloadRow: View, Equatable {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 if isCompleted {
-                    actionButton(icon: deleteIcon, color: deleteIconColor) {
-                        onDelete()
-                    }
-                } else if downloadItem.status == .failed {
-                    // Retry button
                     Button {
-                        onRetry()
+                        itemToDelete = downloadItem
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.red)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(SquareActionButtonStyle())
+                } else if downloadItem.status == .failed {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            downloadManager.resumeDownload(id: downloadItem.id, client: serverViewModel.client)
+                        }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(Color.mainOpp)
-                            .frame(width: actionButtonSize, height: actionButtonSize)
+                            .frame(width: 28, height: 28)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(ActionButtonStyle())
+                    .buttonStyle(SquareActionButtonStyle())
 
-                    // Remove / Acknowledge button
                     Button {
-                        onCancel()
+                        itemToCancel = downloadItem
                     } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .bold))
-                            Text("Remove")
-                                .font(.system(size: 11, weight: .semibold))
-                        }
-                        .foregroundStyle(Color.red)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Color.red.opacity(0.12), in: Capsule())
+                        Image(systemName: "square.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(ActionButtonStyle())
+                    .buttonStyle(SquareActionButtonStyle())
                 } else {
-                    actionButton(icon: cancelIcon, color: cancelIconColor) {
-                        onCancel()
+                    Button {
+                        itemToCancel = downloadItem
+                    } label: {
+                        Image(systemName: "square.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(SquareActionButtonStyle())
                 }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(12)
-        .background(Color.sub, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    @ViewBuilder
-    private func actionButton(
-        icon: String,
-        color: Color,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                action()
-            }
-        } label: {
-            Image(systemName: icon)
-                .font(actionButtonFont)
-                .foregroundStyle(color)
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: actionButtonSize, height: actionButtonSize)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(ActionButtonStyle())
-    }
-
-    private struct ActionButtonStyle: ButtonStyle {
-        func makeBody(configuration: Configuration) -> some View {
-            configuration.label
-                .scaleEffect(configuration.isPressed ? 0.78 : 1.0)
-                .opacity(configuration.isPressed ? 0.65 : 1.0)
-                .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
-        }
+        .padding(14)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
-// MARK: - Episode Thumbnail
+// MARK: - Square Action Button Style
 
-private struct EpisodeThumbnailView: View {
-    let downloadItem: DownloadItem
-    let client: JellyfinClient?
-    let libraryViewModel: LibraryViewModel
-
-    private var thumbnailURL: URL? {
-        guard let client else { return nil }
-        let episode = downloadItem.item
-        guard let id = episode.id else { return nil }
-        let hasThumb = episode.imageTags?.keys.contains("Thumb") == true
-        let hasPrimary = episode.imageTags?.keys.contains("Primary") == true
-        if hasThumb || hasPrimary {
-            let imageType = hasThumb ? "Thumb" : "Primary"
-            return client.url(with: Paths.getItemImage(
-                itemID: id,
-                imageType: imageType,
-                parameters: .init(maxWidth: 400, quality: 80)
-            ))
-        }
-        return libraryViewModel.seriesPosterURL(for: episode, client: client)
-    }
-
-    var body: some View {
-        ZStack {
-            Color.subTwo
-            if let thumbnailURL {
-                WebImage(url: thumbnailURL) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
-                    Image(systemName: "tv")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color.accentColor.opacity(0.8))
-                }
-            } else {
-                Image(systemName: "tv")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Color.accentColor.opacity(0.8))
-            }
-        }
-        .frame(width: 80, height: 46)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+private struct SquareActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.78 : 1.0)
+            .opacity(configuration.isPressed ? 0.65 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }

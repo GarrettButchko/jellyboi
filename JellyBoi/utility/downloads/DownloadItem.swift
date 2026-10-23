@@ -28,6 +28,54 @@ public enum DownloadStatus: String, Codable, Sendable {
         default: self = .queued
         }
     }
+
+    public var iconName: String {
+        switch self {
+        case .downloading:
+            return "arrow.down"
+        case .converting, .finalizing:
+            return "arrow.triangle.2.circlepath"
+        case .queued:
+            return "clock"
+        case .completed:
+            return "checkmark"
+        case .failed:
+            return "exclamationmark.triangle"
+        }
+    }
+}
+
+public enum DownloadGroupType: String, Codable, Sendable {
+    case show
+    case collection
+}
+
+public struct DownloadGroupInfo: Codable, Sendable, Equatable, Hashable {
+    public let id: String
+    public let title: String
+    public let type: DownloadGroupType
+    public let primaryImageTag: String?
+
+    public init(
+        id: String,
+        title: String,
+        type: DownloadGroupType,
+        primaryImageTag: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.type = type
+        self.primaryImageTag = primaryImageTag
+    }
+
+    public func posterURL(client: JellyfinClient?) -> URL? {
+        guard let client else { return nil }
+        return client.url(with: Paths.getItemImage(
+            itemID: id,
+            imageType: "Primary",
+            parameters: .init(maxWidth: 400, quality: 80, tag: primaryImageTag)
+        ))
+    }
 }
 
 public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
@@ -43,6 +91,7 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
     public var errorMessage: String?
     public var estimatedTimeRemaining: TimeInterval?
     public var statusDetail: String?
+    public var group: DownloadGroupInfo?
 
     public init(
         id: String,
@@ -56,7 +105,8 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
         dateCompleted: Date? = nil,
         errorMessage: String? = nil,
         estimatedTimeRemaining: TimeInterval? = nil,
-        statusDetail: String? = nil
+        statusDetail: String? = nil,
+        group: DownloadGroupInfo? = nil
     ) {
         self.id = id
         self.item = item
@@ -70,6 +120,7 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
         self.errorMessage = errorMessage
         self.estimatedTimeRemaining = estimatedTimeRemaining
         self.statusDetail = statusDetail
+        self.group = group
     }
 
     public static func == (lhs: DownloadItem, rhs: DownloadItem) -> Bool {
@@ -80,24 +131,22 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
         lhs.totalBytes == rhs.totalBytes &&
         lhs.errorMessage == rhs.errorMessage &&
         lhs.estimatedTimeRemaining == rhs.estimatedTimeRemaining &&
-        lhs.statusDetail == rhs.statusDetail
+        lhs.statusDetail == rhs.statusDetail &&
+        lhs.group == rhs.group
     }
 
     public var title: String {
         if item.type == .episode {
-            var parts: [String] = []
-            if let series = item.seriesName {
-                parts.append(series)
-            }
+            var label = ""
             if let s = item.parentIndexNumber, let e = item.indexNumber {
-                parts.append("S\(s):E\(e)")
+                label = "S\(s):E\(e)"
             }
             if let name = item.name, !name.isEmpty {
-                parts.append(name)
+                label = label.isEmpty ? name : "\(label) • \(name)"
             }
-            return parts.isEmpty ? (item.name ?? "Episode") : parts.joined(separator: " - ")
+            return label.isEmpty ? (item.name ?? "Episode") : label
         }
-        return item.name ?? "Video"
+        return item.name ?? "Movie"
     }
 
     public var formattedTimeRemaining: String {
@@ -124,17 +173,15 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
         }
     }
 
-    public var statusIcon: String? {
-        switch status {
-        case .downloading:
-            return "arrow.down"
-        case .converting:
-            return "arrow.triangle.2.circlepath"
-        case .finalizing:
-            return "arrow.triangle.2.circlepath"
-        default:
-            return nil
+    public func statusIcon(isCompleted: Bool = false) -> String {
+        if isCompleted {
+            return "checkmark.circle.fill"
         }
+        return status.iconName
+    }
+
+    public var statusIcon: String {
+        statusIcon(isCompleted: false)
     }
 
     public var formattedFileSize: String {
@@ -146,36 +193,43 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
         }
     }
 
-    public var formattedProgress: String {
-        formattedTimeRemaining
-    }
-
     public var formattedPercentage: String {
         let percent = Int(progress * 100)
         return "\(percent)%"
     }
 
-    public var statusText: String {
+    // Don't change format
+    public func statusText(isCompleted: Bool = false) -> String {
+        if isCompleted || status == .completed {
+            if !formattedFileSize.isEmpty {
+                return "\(formattedFileSize)"
+            }
+            return "Downloaded"
+        }
+
         switch status {
+        case .downloading:
+            let time = formattedTimeRemaining
+            if !time.isEmpty && time != "Estimating..." {
+                return "\(time)"
+            }
+            return "Downloading"
+        case .converting, .finalizing:
+            return "Optimizing"
         case .queued:
             return "Queued"
-        case .downloading:
-            return formattedTimeRemaining
-        case .converting:
-            if let seconds = estimatedTimeRemaining, seconds.isFinite, seconds > 0 {
-                return formattedTimeRemaining
-            }
-            return "Converting..."
-        case .finalizing:
-            if let seconds = estimatedTimeRemaining, seconds.isFinite, seconds > 0 {
-                return formattedTimeRemaining
-            }
-            return "Finalizing..."
         case .completed:
+            if !formattedFileSize.isEmpty {
+                return "\(formattedFileSize) • Downloaded"
+            }
             return "Downloaded"
         case .failed:
-            return errorMessage ?? "Download failed"
+            return "Failed"
         }
+    }
+
+    public var statusText: String {
+        statusText(isCompleted: false)
     }
 
     public var formatBadge: String {

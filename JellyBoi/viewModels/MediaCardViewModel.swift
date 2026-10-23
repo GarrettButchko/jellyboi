@@ -143,13 +143,9 @@ class MediaCardViewModel {
 
     // MARK: - Favorite Management
 
-    var isFavorite: Bool {
-        item.isFavorite
-    }
-
     func handleToggleFavorite(serverViewModel: ServerViewModel?) {
         guard let serverViewModel, let itemID = item.id else { return }
-        let currentFavorite = isFavorite
+        let currentFavorite = item.isFavorite
         let newFavorite = !currentFavorite
         item.setFavorite(newFavorite)
         Task {

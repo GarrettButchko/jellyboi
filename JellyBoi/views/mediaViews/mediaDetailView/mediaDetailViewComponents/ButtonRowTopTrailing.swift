@@ -9,6 +9,8 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 
+// MARK: - Back & Trailing Buttons View
+
 extension MediaDetailView {
 
     // MARK: - Top Navigation Bar
@@ -70,8 +72,7 @@ extension MediaDetailView {
                 MediaDetailDownloadButton(
                     detailVM: detailVM,
                     item: item,
-                    trailingButtonsNamespace: trailingButtonsNamespace,
-                    showDownloadsSheet: $showDownloadsSheet
+                    trailingButtonsNamespace: trailingButtonsNamespace
                 )
             }
         }
@@ -86,7 +87,6 @@ struct MediaDetailDownloadButton: View {
     @Bindable var detailVM: MediaDetailViewModel
     let item: BaseItemDto
     var trailingButtonsNamespace: Namespace.ID
-    @Binding var showDownloadsSheet: Bool
 
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(ServerViewModel.self) private var serverViewModel
@@ -96,96 +96,51 @@ struct MediaDetailDownloadButton: View {
         let isDownloading = detailVM.isDetailDownloading(downloadManager: downloadManager)
         let isDownloaded = detailVM.isDetailDownloaded(downloadManager: downloadManager, libraryViewModel: libraryViewModel)
         let downloadProgress = detailVM.detailDownloadProgress(downloadManager: downloadManager, libraryViewModel: libraryViewModel)
-        let episodesLeft = detailVM.episodesLeft(downloadManager: downloadManager)
 
-        if isDownloading, let episodesLeft {
-            HStack(spacing: 6) {
-                Button {
-                    detailVM.handleDownloadTap(
-                        downloadManager: downloadManager,
-                        client: serverViewModel.client,
-                        libraryViewModel: libraryViewModel
-                    )
-                } label: {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.mainOpp.opacity(0.15), lineWidth: 2.5)
-                            .frame(width: 20, height: 20)
+        Button {
+            detailVM.handleDownloadTap(
+                downloadManager: downloadManager,
+                client: serverViewModel.client,
+                libraryViewModel: libraryViewModel
+            )
+        } label: {
+            if isDownloading {
+                ZStack {
+                    Circle()
+                        .stroke(Color.mainOpp.opacity(0.15), lineWidth: 2.5)
+                        .frame(width: 22, height: 22)
 
-                        Circle()
-                            .trim(from: 0, to: max(0.04, CGFloat(downloadProgress)))
-                            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                            .frame(width: 20, height: 20)
-                            .animation(.smooth(duration: 0.2), value: downloadProgress)
+                    Circle()
+                        .trim(from: 0, to: max(0.04, CGFloat(downloadProgress)))
+                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 22, height: 22)
+                        .animation(.smooth(duration: 0.2), value: downloadProgress)
 
-                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                            .fill(Color.mainOpp)
-                            .frame(width: 6.5, height: 6.5)
-                    }
-                    .frame(width: 26, height: 26)
-                    .contentShape(Circle())
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                        .fill(Color.mainOpp)
+                        .frame(width: 7.5, height: 7.5)
                 }
-                .buttonStyle(.plain)
-
-                Button {
-                    showDownloadsSheet = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("\(episodesLeft) left")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color.accentColor)
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.accentColor)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .glassEffect(.regular.interactive())
-            .glassEffectUnion(id: "trailingButtons", namespace: trailingButtonsNamespace)
-            .accessibilityLabel("Stop Download or view \(episodesLeft) episodes left")
-        } else {
-            Button {
-                detailVM.handleDownloadTap(
-                    downloadManager: downloadManager,
-                    client: serverViewModel.client,
-                    libraryViewModel: libraryViewModel
-                )
-            } label: {
-                if isDownloading {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.mainOpp.opacity(0.15), lineWidth: 2.5)
-                            .frame(width: 22, height: 22)
-
-                        Circle()
-                            .trim(from: 0, to: max(0.04, CGFloat(downloadProgress)))
-                            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                            .frame(width: 22, height: 22)
-                            .animation(.smooth(duration: 0.2), value: downloadProgress)
-
-                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                            .fill(Color.mainOpp)
-                            .frame(width: 7.5, height: 7.5)
-                    }
-                    .frame(width: 39, height: 39)
-                    .contentShape(Circle())
-                } else {
-                    Image(systemName: isDownloaded ? "checkmark.circle.fill" : "arrow.down")
+                .frame(width: 39, height: 39)
+                .contentShape(Circle())
+            } else {
+                if isDownloaded {
+                    Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(isDownloaded ? Color.accentColor : Color.mainOpp)
+                        .foregroundStyle(Color.white, Color.accentColor)
+                        .contentTransition(.symbolEffect(.replace))
+                        .padding(11)
+                } else {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color.mainOpp)
                         .contentTransition(.symbolEffect(.replace))
                         .padding(11)
                 }
             }
-            .glassEffect(.regular.interactive())
-            .glassEffectUnion(id: "trailingButtons", namespace: trailingButtonsNamespace)
-            .accessibilityLabel(isDownloading ? "Stop Download" : (isDownloaded ? "Delete Download" : "Download"))
         }
+        .glassEffect(.regular.interactive())
+        .glassEffectUnion(id: "trailingButtons", namespace: trailingButtonsNamespace)
+        .accessibilityLabel(isDownloading ? "Stop Download" : (isDownloaded ? "Delete Download" : "Download"))
     }
 }

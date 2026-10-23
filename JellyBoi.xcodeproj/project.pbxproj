@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		2114B68D303BDCEF006F4D0E /* ScalingHeaderScrollView in Frameworks */ = {isa = PBXBuildFile; productRef = 2114B68C303BDCEF006F4D0E /* ScalingHeaderScrollView */; };
 		2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */ = {isa = PBXBuildFile; productRef = 2153AEA63038FAE600DBE264 /* BaseColors */; };
+		2161FFC33087D4CD00196CDF /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2161FFC23087D4CD00196CDF /* WidgetKit.framework */; };
+		2161FFC53087D4CD00196CDF /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2161FFC43087D4CD00196CDF /* SwiftUI.framework */; };
+		2161FFD23087D4CE00196CDF /* JellyBoiWidgetExtensionExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2161FFC13087D4CD00196CDF /* JellyBoiWidgetExtensionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		21707810303647640055889C /* JellyfinAPI in Frameworks */ = {isa = PBXBuildFile; productRef = 2170780F303647640055889C /* JellyfinAPI */; };
 		217079C63036C0750055889C /* SDWebImageSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 217079C53036C0750055889C /* SDWebImageSwiftUI */; };
 		218336F4303E23680028E211 /* SkeletonUI in Frameworks */ = {isa = PBXBuildFile; productRef = 218336F3303E23680028E211 /* SkeletonUI */; };
@@ -23,7 +26,34 @@
 		21ACBB8C303942F500B6013E /* LoggingKit in Frameworks */ = {isa = PBXBuildFile; productRef = 21ACBB8B303942F500B6013E /* LoggingKit */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		2161FFD03087D4CE00196CDF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 217077F2303646DD0055889C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2161FFC03087D4CD00196CDF;
+			remoteInfo = JellyBoiWidgetExtensionExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		2161FFD73087D4CE00196CDF /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				2161FFD23087D4CE00196CDF /* JellyBoiWidgetExtensionExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		2161FFC13087D4CD00196CDF /* JellyBoiWidgetExtensionExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JellyBoiWidgetExtensionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		2161FFC23087D4CD00196CDF /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		2161FFC43087D4CD00196CDF /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		217077FA303646DD0055889C /* JellyBoi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JellyBoi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -35,9 +65,24 @@
 			);
 			target = 217077F9303646DD0055889C /* JellyBoi */;
 		};
+		2161FFD63087D4CE00196CDF /* Exceptions for "JellyBoiWidgetExtension" folder in "JellyBoiWidgetExtensionExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 2161FFC03087D4CD00196CDF /* JellyBoiWidgetExtensionExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		2161FFC63087D4CD00196CDF /* JellyBoiWidgetExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2161FFD63087D4CE00196CDF /* Exceptions for "JellyBoiWidgetExtension" folder in "JellyBoiWidgetExtensionExtension" target */,
+			);
+			path = JellyBoiWidgetExtension;
+			sourceTree = "<group>";
+		};
 		217077FC303646DD0055889C /* JellyBoi */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -49,6 +94,15 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		2161FFBE3087D4CD00196CDF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2161FFC53087D4CD00196CDF /* SwiftUI.framework in Frameworks */,
+				2161FFC33087D4CD00196CDF /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		217077F7303646DD0055889C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -77,6 +131,7 @@
 			isa = PBXGroup;
 			children = (
 				217077FC303646DD0055889C /* JellyBoi */,
+				2161FFC63087D4CD00196CDF /* JellyBoiWidgetExtension */,
 				21904C633080539400A60304 /* Frameworks */,
 				217077FB303646DD0055889C /* Products */,
 			);
@@ -86,6 +141,7 @@
 			isa = PBXGroup;
 			children = (
 				217077FA303646DD0055889C /* JellyBoi.app */,
+				2161FFC13087D4CD00196CDF /* JellyBoiWidgetExtensionExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -93,6 +149,8 @@
 		21904C633080539400A60304 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				2161FFC23087D4CD00196CDF /* WidgetKit.framework */,
+				2161FFC43087D4CD00196CDF /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -100,6 +158,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		2161FFC03087D4CD00196CDF /* JellyBoiWidgetExtensionExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2161FFD33087D4CE00196CDF /* Build configuration list for PBXNativeTarget "JellyBoiWidgetExtensionExtension" */;
+			buildPhases = (
+				2161FFBD3087D4CD00196CDF /* Sources */,
+				2161FFBE3087D4CD00196CDF /* Frameworks */,
+				2161FFBF3087D4CD00196CDF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				2161FFC63087D4CD00196CDF /* JellyBoiWidgetExtension */,
+			);
+			name = JellyBoiWidgetExtensionExtension;
+			packageProductDependencies = (
+			);
+			productName = JellyBoiWidgetExtensionExtension;
+			productReference = 2161FFC13087D4CD00196CDF /* JellyBoiWidgetExtensionExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		217077F9303646DD0055889C /* JellyBoi */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 21707805303646DD0055889C /* Build configuration list for PBXNativeTarget "JellyBoi" */;
@@ -107,10 +187,12 @@
 				217077F6303646DD0055889C /* Sources */,
 				217077F7303646DD0055889C /* Frameworks */,
 				217077F8303646DD0055889C /* Resources */,
+				2161FFD73087D4CE00196CDF /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				2161FFD13087D4CE00196CDF /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				217077FC303646DD0055889C /* JellyBoi */,
@@ -143,9 +225,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2660;
+				LastSwiftUpdateCheck = 2710;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					2161FFC03087D4CD00196CDF = {
+						CreatedOnToolsVersion = 27.1;
+					};
 					217077F9303646DD0055889C = {
 						CreatedOnToolsVersion = 26.6;
 					};
@@ -177,11 +262,19 @@
 			projectRoot = "";
 			targets = (
 				217077F9303646DD0055889C /* JellyBoi */,
+				2161FFC03087D4CD00196CDF /* JellyBoiWidgetExtensionExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		2161FFBF3087D4CD00196CDF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		217077F8303646DD0055889C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -192,6 +285,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		2161FFBD3087D4CD00196CDF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		217077F6303646DD0055889C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -201,7 +301,80 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		2161FFD13087D4CE00196CDF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2161FFC03087D4CD00196CDF /* JellyBoiWidgetExtensionExtension */;
+			targetProxy = 2161FFD03087D4CE00196CDF /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		2161FFD43087D4CE00196CDF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = PCUSPZK2L4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = JellyBoiWidgetExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = JellyBoiWidgetExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.garrettbutchko.jellyboi.JellyBoiWidgetExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		2161FFD53087D4CE00196CDF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = PCUSPZK2L4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = JellyBoiWidgetExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = JellyBoiWidgetExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.garrettbutchko.jellyboi.JellyBoiWidgetExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		21707803303646DD0055889C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -338,6 +511,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = JellyBoi/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -389,6 +564,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = JellyBoi/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -427,6 +604,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		2161FFD33087D4CE00196CDF /* Build configuration list for PBXNativeTarget "JellyBoiWidgetExtensionExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2161FFD43087D4CE00196CDF /* Debug */,
+				2161FFD53087D4CE00196CDF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		217077F5303646DD0055889C /* Build configuration list for PBXProject "JellyBoi" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

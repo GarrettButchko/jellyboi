@@ -14,6 +14,7 @@ import MarqueeText
 // MARK: - SearchView
 
 struct SearchView: View {
+    @EnvironmentObject private var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(SearchViewModel.self) private var viewModel
@@ -26,7 +27,7 @@ struct SearchView: View {
 
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
+        [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)]
     }
 
     var body: some View {
@@ -73,6 +74,9 @@ struct SearchView: View {
             .navigationDestination(item: $selectedItem) { item in
                 MediaDetailView(item: item)
                     .navigationTransition(.zoom(sourceID: item, in: zoomTransition))
+            }
+            .navigationDestination(item: $viewManager.selectedMediaItem) { item in
+                MediaDetailView(item: item)
             }
             // Genre destination — push a filtered poster grid
             .navigationDestination(item: $selectedGenre) { genre in

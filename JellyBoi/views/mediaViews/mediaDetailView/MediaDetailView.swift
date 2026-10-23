@@ -31,7 +31,6 @@ struct MediaDetailView: View {
     @State var detailVM = MediaDetailViewModel()
     @State var showOptionsSheet = false
     @State var optionsSheetHeight: CGFloat = 0
-    @State var showDownloadsSheet: Bool = false
     @State var selectedRelatedItem: BaseItemDto?
     @Namespace var relatedTransition
     @State var relatedZoomID: AnyHashable?
@@ -52,7 +51,10 @@ struct MediaDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollToTopScrollView(
+            topInset: backButtonHeight + 8,
+            continuousScrollOffset: $scrollOffset
+        ) { _ in
             VStack(alignment: .leading, spacing: 0) {
                 heroSection
                 episodeHeaderSection
@@ -78,13 +80,6 @@ struct MediaDetailView: View {
                 }
             }
         }
-        .contentMargins(.top, backButtonHeight + 8, for: .scrollContent)
-        .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { _, newValue in
-            scrollOffset = newValue
-        }
         .background(Color.bg.ignoresSafeArea())
         .toolbarVisibility(.hidden, for: .navigationBar)
         .overlay(alignment: .top) {
@@ -95,12 +90,6 @@ struct MediaDetailView: View {
                 .presentationDetents(optionsSheetHeight > 0 ? [.height(optionsSheetHeight)] : [.medium])
                 .presentationDragIndicator(.visible)
                 .presentationSizing(.fitted)
-        }
-        .sheet(isPresented: $showDownloadsSheet) {
-            if let showID = displayItem.id {
-                ShowDownloadsSheet(seriesID: showID, seriesName: displayItem.name ?? "Show")
-                    .presentationBackground(Color.bg)
-            }
         }
         .alert(
             detailVM.downloadAlertAction == .cancel ? "Cancel Download?" : "Remove Download?",

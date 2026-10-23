@@ -42,10 +42,6 @@ class MediaViewModel {
     }
     var library = LibraryViewModel()
 
-    var availableFilters: [MediaFilter] {
-        MediaFilter.allCases
-    }
-
     init(library: LibraryViewModel? = nil) {
         if let library { self.library = library }
     }

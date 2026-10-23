@@ -254,23 +254,27 @@ public final class DownloadManager: NSObject {
 
     // MARK: - Actions
 
-    public func startDownload(item: BaseItemDto, client: JellyfinClient) {
+    public func startDownload(item: BaseItemDto, client: JellyfinClient, group: DownloadGroupInfo? = nil) {
+        DownloadNotificationManager.shared.requestAuthorizationIfNeeded()
         self.client = client
-        enqueue(item: item, client: client)
+        enqueue(item: item, client: client, group: group)
         saveIndex()
         processQueue()
+        updateLiveActivity(force: true)
     }
 
-    public func startDownloads(items: [BaseItemDto], client: JellyfinClient) {
+    public func startDownloads(items: [BaseItemDto], client: JellyfinClient, group: DownloadGroupInfo? = nil) {
+        DownloadNotificationManager.shared.requestAuthorizationIfNeeded()
         self.client = client
         for item in items {
-            enqueue(item: item, client: client)
+            enqueue(item: item, client: client, group: group)
         }
         saveIndex()
         processQueue()
+        updateLiveActivity(force: true)
     }
 
-    private func enqueue(item: BaseItemDto, client: JellyfinClient) {
+    private func enqueue(item: BaseItemDto, client: JellyfinClient, group: DownloadGroupInfo? = nil) {
         guard let itemID = item.id else {
             AppLogger.warning("Cannot download item without ID", tag: "DownloadManager")
             return
@@ -302,7 +306,10 @@ public final class DownloadManager: NSObject {
             totalBytes: 0,
             dateAdded: Date(),
             dateCompleted: nil,
-            errorMessage: nil
+            errorMessage: nil,
+            estimatedTimeRemaining: nil,
+            statusDetail: nil,
+            group: group
         )
 
         downloads[itemID] = downloadItem
@@ -319,6 +326,15 @@ public final class DownloadManager: NSObject {
             SDWebImageManager.shared.loadImage(
                 with: posterURL,
                 options: [.continueInBackground, .highPriority],
+                progress: nil
+            ) { _, _, _, _, _, _ in }
+        }
+
+        // Cache group poster artwork for offline browsing if grouped
+        if let groupPosterURL = group?.posterURL(client: client) {
+            SDWebImageManager.shared.loadImage(
+                with: groupPosterURL,
+                options: [.continueInBackground, .lowPriority],
                 progress: nil
             ) { _, _, _, _, _, _ in }
         }
@@ -381,6 +397,7 @@ public final class DownloadManager: NSObject {
                 saveIndex()
                 task.resume()
                 AppLogger.info("Resumed sequential download for '\(item.title)' (ID: \(nextID))", tag: "DownloadManager")
+                updateLiveActivity(force: true)
                 return
             } else {
                 guard let client = self.client else {
@@ -413,6 +430,7 @@ public final class DownloadManager: NSObject {
                 saveIndex()
                 task.resume()
                 AppLogger.info("Started sequential download for '\(item.title)' (ID: \(nextID))", tag: "DownloadManager")
+                updateLiveActivity(force: true)
                 return
             }
         }
@@ -434,6 +452,7 @@ public final class DownloadManager: NSObject {
         }
         saveIndex()
         processQueue()
+        updateLiveActivity(force: true)
         AppLogger.info("Enqueued resumed download for item \(id)", tag: "DownloadManager")
     }
 
@@ -455,6 +474,13 @@ public final class DownloadManager: NSObject {
         downloadQueue.removeAll { idSet.contains($0) }
         saveIndex()
         processQueue()
+
+        if activeDownloads.isEmpty {
+            DownloadActivityCoordinator.shared.cancel()
+        } else {
+            updateLiveActivity(force: true)
+        }
+
         AppLogger.info("Cancelled \(idSet.count) download(s)", tag: "DownloadManager")
     }
 
@@ -496,6 +522,7 @@ public final class DownloadManager: NSObject {
 
         downloads.removeAll()
         saveIndex()
+        DownloadActivityCoordinator.shared.cancel()
         AppLogger.info("Deleted all downloads and files", tag: "DownloadManager")
     }
 
@@ -537,6 +564,7 @@ public final class DownloadManager: NSObject {
         }
 
         downloads[itemID] = item
+        updateLiveActivity()
     }
 
     private func handleCompleted(itemID: String, tempLocation: URL) {
@@ -600,6 +628,7 @@ public final class DownloadManager: NSObject {
             progressTracker.startConversion(itemID: itemID)
         }
         downloads[itemID] = cur
+        updateLiveActivity()
     }
 
     private func updateFinalizingProgress(itemID: String, progress: Double) {
@@ -620,6 +649,7 @@ public final class DownloadManager: NSObject {
                 item.estimatedTimeRemaining = eta
             }
             downloads[itemID] = item
+            updateLiveActivity()
         }
     }
 
@@ -644,6 +674,21 @@ public final class DownloadManager: NSObject {
         }
         saveIndex()
 
+        let remainingActive = activeDownloads
+        let isLastItem = remainingActive.isEmpty
+        DownloadNotificationManager.shared.notifyItemCompleted(
+            title: item.title,
+            seriesName: item.item.seriesName,
+            isLastItem: isLastItem,
+            remainingCount: remainingActive.count
+        )
+
+        if isLastItem {
+            DownloadActivityCoordinator.shared.finishAll(finalTitle: item.title)
+        } else {
+            updateLiveActivity(force: true)
+        }
+
         AppLogger.success("Download and processing completed successfully for '\(item.title)'", tag: "DownloadManager")
         processQueue()
     }
@@ -661,6 +706,12 @@ public final class DownloadManager: NSObject {
             activeDownloadingID = nil
         }
         saveIndex()
+
+        DownloadNotificationManager.shared.notifyItemFailed(
+            title: item.title,
+            error: item.errorMessage
+        )
+        updateLiveActivity(force: true)
 
         AppLogger.error("Failed to finalize downloaded file for '\(item.title)': \(error.localizedDescription)", error, tag: "DownloadManager")
         processQueue()
@@ -746,8 +797,23 @@ public final class DownloadManager: NSObject {
         downloads[itemID] = item
         saveIndex()
 
+        DownloadNotificationManager.shared.notifyItemFailed(
+            title: item.title,
+            error: item.errorMessage
+        )
+        updateLiveActivity(force: true)
+
         AppLogger.error("Download failed for '\(item.title)': \(item.errorMessage ?? "")", tag: "DownloadManager")
         processQueue()
+    }
+
+    // MARK: - Live Activity Coordination
+
+    private func updateLiveActivity(force: Bool = false) {
+        let active = activeDownloads
+        guard !active.isEmpty else { return }
+        let presentation = DownloadGrouping.currentPresentation(active: active, completed: completedDownloads)
+        DownloadActivityCoordinator.shared.update(presentation: presentation, force: force)
     }
 
     // MARK: - Persistence

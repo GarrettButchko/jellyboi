@@ -29,7 +29,7 @@ public final class DownloadProgressTracker: @unchecked Sendable {
         totalBytesExpected: Int64
     ) -> Bool {
         let lastUpdate = lastProgressUpdateTime[itemID] ?? 0
-        guard now - lastUpdate > 0.2 || totalBytesWritten >= totalBytesExpected else {
+        guard now - lastUpdate > 0.4 || totalBytesWritten >= totalBytesExpected else {
             return true
         }
         lastProgressUpdateTime[itemID] = now
