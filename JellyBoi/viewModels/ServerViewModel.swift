@@ -10,6 +10,7 @@ import Observation
 import UIKit
 import Get
 import JellyfinAPI
+import LoggingKit
 
 private struct StoredSession: Codable {
     let token: String
@@ -28,12 +29,22 @@ class ServerViewModel {
     private(set) var client: JellyfinClient?
     var currentUser: UserDto?
 
+    enum SessionRestoreResult {
+        case success
+        case offline
+        case unauthenticated
+    }
+
     var profileImageURL: URL? {
         guard let client,
               let userID = currentUser?.id,
               currentUser?.primaryImageTag != nil
         else { return nil }
         return client.url(with: Paths.getUserImage(parameters: .init(userID: userID)))
+    }
+
+    var hasStoredSession: Bool {
+        KeychainStore.read(StoredSession.self, for: sessionKey) != nil
     }
 
     func setServer(url: URL, name: String) {
@@ -53,10 +64,15 @@ class ServerViewModel {
         KeychainStore.save(StoredSession(token: token, serverURL: url, serverName: name), for: sessionKey)
     }
 
-    /// Restores a previous session from the keychain. Returns `false` if the stored
-    /// session is missing or the server rejects the token — caller should sign out.
-    func restoreSession() async -> Bool {
-        guard let session = KeychainStore.read(StoredSession.self, for: sessionKey) else { return false }
+    /// Restores a previous session from the keychain.
+    /// Returns `.success` if successfully connected to server,
+    /// `.offline` if stored session exists but network is offline or server unreachable,
+    /// and `.unauthenticated` only if no session exists or server rejected credentials (401).
+    @discardableResult
+    func restoreSession() async -> SessionRestoreResult {
+        guard let session = KeychainStore.read(StoredSession.self, for: sessionKey) else {
+            return .unauthenticated
+        }
 
         let restoredClient = JellyfinClient(configuration: .init(
             url: session.serverURL,
@@ -67,15 +83,25 @@ class ServerViewModel {
             version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
         ))
 
+        // Pre-configure client & server URL so offline image caching and metadata resolution work
+        self.serverURL = session.serverURL
+        self.serverName = session.serverName
+        self.client = restoredClient
+
         do {
             let user = try await restoredClient.send(Paths.getCurrentUser).value
-            serverURL = session.serverURL
-            serverName = session.serverName
-            client = restoredClient
             currentUser = user
-            return true
+            return .success
+        } catch let apiError as APIError {
+            if case .unacceptableStatusCode(let code) = apiError, code == 401 {
+                AppLogger.warning("Session token rejected by server (401 Unauthorized)", tag: "ServerViewModel")
+                return .unauthenticated
+            }
+            AppLogger.info("Server connection error: \(apiError.localizedDescription), using offline mode", tag: "ServerViewModel")
+            return .offline
         } catch {
-            return false
+            AppLogger.info("Network error restoring session (\(error.localizedDescription)), using offline mode", tag: "ServerViewModel")
+            return .offline
         }
     }
 

@@ -317,15 +317,28 @@ public final class DownloadManager: NSObject {
             downloadQueue.append(itemID)
         }
 
-        // Cache poster artwork for offline browsing
-        if let posterURL = client.url(with: Paths.getItemImage(
+        // Cache poster artwork for offline browsing (both UI card size and high-res detail size)
+        let primaryTag = item.imageTags?["Primary"]
+        if let cardPosterURL = client.url(with: Paths.getItemImage(
             itemID: itemID,
             imageType: "Primary",
-            parameters: .init(maxWidth: 600, quality: 90)
+            parameters: .init(maxWidth: 400, quality: 80, tag: primaryTag)
         )) {
             SDWebImageManager.shared.loadImage(
-                with: posterURL,
+                with: cardPosterURL,
                 options: [.continueInBackground, .highPriority],
+                progress: nil
+            ) { _, _, _, _, _, _ in }
+        }
+
+        if let detailPosterURL = client.url(with: Paths.getItemImage(
+            itemID: itemID,
+            imageType: "Primary",
+            parameters: .init(maxWidth: 600, quality: 90, tag: primaryTag)
+        )) {
+            SDWebImageManager.shared.loadImage(
+                with: detailPosterURL,
+                options: [.continueInBackground, .lowPriority],
                 progress: nil
             ) { _, _, _, _, _, _ in }
         }

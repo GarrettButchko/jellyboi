@@ -1,5 +1,5 @@
 {
-  "originHash" : "483f6474e7ad9dc8bf2f7c07c955ab2e1c37d8c993ba4475175f3766e696dc77",
+  "originHash" : "f47b87a3f84fe3d80321d32c5e9c57deeb08a3c8f0f4abae7bfbcd3d95033047",
   "pins" : [
     {
       "identity" : "ffmpegkit",
@@ -87,8 +87,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "a0cb0954ecb21e4e31b0070e6ed5674e8556685a",
-        "version" : "1.6.0"
+        "revision" : "844289ac455816e193f1dbbe014f3c4dbe429410",
+        "version" : "1.7.4"
       }
     },
     {
@@ -114,8 +114,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio.git",
       "state" : {
-        "revision" : "0b18836bd8b0162e7e17a995a3fbee20ed8f3b2b",
-        "version" : "2.101.3"
+        "revision" : "6db9d9abd92ad7399b8a564cafbb87d3507245fa",
+        "version" : "2.104.0"
       }
     },
     {

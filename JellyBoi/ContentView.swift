@@ -8,6 +8,8 @@
 import SwiftUI
 import BaseColors
 import JellyfinAPI
+import StatusOverlayKit
+import LoggingKit
 
 struct ContentView: View {
 
@@ -15,19 +17,37 @@ struct ContentView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(PlaybackManager.self) private var playbackManager
+    @Environment(NetworkMonitor.self) private var networkMonitor
+    @Environment(\.scenePhase) private var scenePhase
+
+    @State private var isOffline: Bool = false
+    @State private var isRestoringSession: Bool = false
 
     var body: some View {
+        @Bindable var bindablePlayback = playbackManager
+
         ZStack {
             Color.bg
                 .ignoresSafeArea()
 
             Group {
-                if viewManager.isSignedIn {
-                    TabsView(libraryViewModel: libraryViewModel)
-                } else {
+                if !viewManager.isSignedIn {
                     GetStartedView()
+                } else {
+                    ZStack {
+                        TabsView(libraryViewModel: libraryViewModel)
+
+                        if isOffline {
+                            OfflineMediaView(onRetry: {
+                                await handleSessionRestore()
+                            })
+                            .transition(.opacity)
+                            .zIndex(1)
+                        }
+                    }
                 }
             }
+            .animation(.smooth(duration: 0.35), value: isOffline)
             .animation(.smooth, value: viewManager.isSignedIn)
 
             if viewManager.showSignInFlow {
@@ -41,22 +61,156 @@ struct ContentView: View {
                 .background(Color.bg)
                 .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
                 .ignoresSafeArea()
-                .zIndex(1)
+                .zIndex(2)
             }
         }
         .animation(.smooth, value: viewManager.showSignInFlow)
+        .overlay {
+            if playbackManager.isLoading {
+                LoadingOverlay(message: playbackManager.loadingMessage)
+            }
+        }
+        .animation(statusOverlaySpring, value: playbackManager.isLoading)
+        .alert(
+            playbackManager.currentError?.title ?? "Playback Error",
+            isPresented: $bindablePlayback.showErrorAlert,
+            presenting: playbackManager.currentError
+        ) { errorInfo in
+            Button("Retry") {
+                errorInfo.retryAction()
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {
+                playbackManager.clearError()
+            }
+        } message: { errorInfo in
+            Text(errorInfo.message)
+        }
+        .fullScreenCover(
+            item: $bindablePlayback.activePlayerViewModel,
+            onDismiss: {
+                #if os(iOS)
+                OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
+                #endif
+                playbackManager.stop()
+            }
+        ) { playerVM in
+            if let player = playerVM.player {
+                ZStack(alignment: .topLeading) {
+                    NativePlayerView(player: player) {
+                        #if os(iOS)
+                        OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
+                        #endif
+                        playerVM.cleanup()
+                        playbackManager.stop()
+                    }
+                    .ignoresSafeArea()
+                    .statusBarHidden(true)
+
+                    #if DEBUG
+                    if DebugSettings.shared.showPlaybackDebugOverlay {
+                        Text(playerVM.playbackDiagnosticSummary)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .padding(.top, 50)
+                            .padding(.leading, 16)
+                            .allowsHitTesting(false)
+                    }
+                    #endif
+                }
+                .onAppear {
+                    #if os(iOS)
+                    OrientationHelper.lockOrientation(.allButUpsideDown)
+                    #endif
+                }
+                .onDisappear {
+                    #if os(iOS)
+                    OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
+                    #endif
+                    playerVM.cleanup()
+                }
+            }
+        }
         .task {
             guard viewManager.isSignedIn else { return }
-            let ok = await serverViewModel.restoreSession()
-            if ok, let client = serverViewModel.client {
+            await handleSessionRestore()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .networkStatusDidChange)) { notification in
+            let connected = notification.userInfo?["isConnected"] as? Bool ?? networkMonitor.isConnected
+            AppLogger.info("ContentView received networkStatusDidChange: connected=\(connected)", tag: "ContentView")
+            if !connected {
+                withAnimation(.smooth(duration: 0.35)) {
+                    isOffline = true
+                }
+            } else if viewManager.isSignedIn {
+                Task {
+                    await handleSessionRestore()
+                }
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                Task {
+                    let connected = await networkMonitor.checkConnection()
+                    if !connected && !isOffline {
+                        withAnimation(.smooth(duration: 0.35)) {
+                            isOffline = true
+                        }
+                    }
+                }
+            }
+        }
+        .onChange(of: networkMonitor.isConnected) { wasConnected, isConnected in
+            if !isConnected {
+                withAnimation(.smooth(duration: 0.35)) {
+                    isOffline = true
+                }
+            } else if viewManager.isSignedIn {
+                Task {
+                    await handleSessionRestore()
+                }
+            }
+        }
+    }
+
+    @discardableResult
+    private func handleSessionRestore() async -> Bool {
+        guard !isRestoringSession else { return !isOffline }
+        isRestoringSession = true
+        defer { isRestoringSession = false }
+
+        let result = await serverViewModel.restoreSession()
+        switch result {
+        case .success:
+            networkMonitor.setConnected(true)
+            if let client = serverViewModel.client {
                 playbackManager.client = client
                 playbackManager.userID = serverViewModel.currentUser?.id
                 playbackManager.libraryViewModel = libraryViewModel
                 DownloadManager.shared.client = client
-                await libraryViewModel.load(using: client, userID: serverViewModel.currentUser?.id)
-            } else if !ok {
-                viewManager.signOut()
+                Task {
+                    await libraryViewModel.load(using: client, userID: serverViewModel.currentUser?.id)
+                }
             }
+            withAnimation(.smooth(duration: 0.35)) {
+                isOffline = false
+            }
+            return true
+        case .offline:
+            if let client = serverViewModel.client {
+                playbackManager.client = client
+                DownloadManager.shared.client = client
+            }
+            withAnimation(.smooth(duration: 0.35)) {
+                isOffline = true
+            }
+            return false
+        case .unauthenticated:
+            viewManager.signOut()
+            return false
         }
     }
 }
@@ -64,4 +218,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environmentObject(ViewManager())
+        .environment(NetworkMonitor.shared)
 }

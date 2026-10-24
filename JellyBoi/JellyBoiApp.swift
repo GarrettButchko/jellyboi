@@ -69,6 +69,7 @@ struct JellyBoiApp: App {
     @State private var libraryViewModel = LibraryViewModel()
     @State private var playbackManager = PlaybackManager.shared
     @State private var downloadManager = DownloadManager.shared
+    @State private var networkMonitor = NetworkMonitor.shared
 
     var body: some Scene {
         WindowGroup {
@@ -78,6 +79,7 @@ struct JellyBoiApp: App {
                 .environment(libraryViewModel)
                 .environment(playbackManager)
                 .environment(downloadManager)
+                .environment(networkMonitor)
         }
     }
 }

@@ -41,8 +41,6 @@ struct TabsView: View {
     }
 
     var body: some View {
-        @Bindable var bindablePlayback = playbackManager
-
         TabView(selection: $viewManager.selectedTab) {
             HomeView()
                 .tabItem {
@@ -66,75 +64,6 @@ struct TabsView: View {
         .environment(homeViewModel)
         .environment(mediaViewModel)
         .environment(searchViewModel)
-        .overlay {
-            if playbackManager.isLoading {
-                LoadingOverlay(message: playbackManager.loadingMessage)
-            }
-        }
-        .animation(statusOverlaySpring, value: playbackManager.isLoading)
-        .alert(
-            playbackManager.currentError?.title ?? "Playback Error",
-            isPresented: $bindablePlayback.showErrorAlert,
-            presenting: playbackManager.currentError
-        ) { errorInfo in
-            Button("Retry") {
-                errorInfo.retryAction()
-            }
-            .keyboardShortcut(.defaultAction)
-            Button("Cancel", role: .cancel) {
-                playbackManager.clearError()
-            }
-        } message: { errorInfo in
-            Text(errorInfo.message)
-        }
-        .fullScreenCover(
-            item: $bindablePlayback.activePlayerViewModel,
-            onDismiss: {
-                #if os(iOS)
-                OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
-                #endif
-                playbackManager.stop()
-            }
-        ) { playerVM in
-            if let player = playerVM.player {
-                ZStack(alignment: .topLeading) {
-                    NativePlayerView(player: player) {
-                        #if os(iOS)
-                        OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
-                        #endif
-                        playerVM.cleanup()
-                        playbackManager.stop()
-                    }
-                    .ignoresSafeArea()
-                    .statusBarHidden(true)
-
-                    #if DEBUG
-                    if DebugSettings.shared.showPlaybackDebugOverlay {
-                        Text(playerVM.playbackDiagnosticSummary)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Color.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .padding(.top, 50)
-                            .padding(.leading, 16)
-                            .allowsHitTesting(false)
-                    }
-                    #endif
-                }
-                .onAppear {
-                    #if os(iOS)
-                    OrientationHelper.lockOrientation(.allButUpsideDown)
-                    #endif
-                }
-                .onDisappear {
-                    #if os(iOS)
-                    OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
-                    #endif
-                    playerVM.cleanup()
-                }
-            }
-        }
         .task {
             syncViewModels()
             playbackManager.client = serverViewModel.client

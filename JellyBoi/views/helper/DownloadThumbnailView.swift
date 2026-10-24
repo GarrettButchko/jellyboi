@@ -31,7 +31,7 @@ enum DownloadThumbnailSize: Equatable {
     var cornerRadius: CGFloat {
         switch self {
         case .compact: return 6
-        case .regular: return 8
+        case .regular: return 14
         }
     }
 

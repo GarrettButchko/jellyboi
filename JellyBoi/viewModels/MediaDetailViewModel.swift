@@ -616,12 +616,33 @@ class MediaDetailViewModel {
             ?? libraryViewModel.resumeShows.first(where: { $0.id == itemID })
             ?? libraryViewModel.episodes.first(where: { $0.id == itemID })
             ?? libraryViewModel.tvShows.first(where: { $0.id == itemID })
+            ?? DownloadManager.shared.completedDownloads.first(where: { $0.item.id == itemID })?.item
             ?? item
         self.sourceItem = resolvedItem
         self.hasInitialEpisodeScrolled = false
         self.scrolledEpisodeID = nil
         isLoading = true
         defer { isLoading = false }
+
+        if !NetworkMonitor.shared.isConnected {
+            self.detailedItem = resolvedItem
+            if let sources = detailedItem?.mediaSources ?? sourceItem?.mediaSources, !sources.isEmpty {
+                self.mediaSources = sources
+                configureInitialStreamSelection()
+            }
+            if item.type == .series || resolvedItem.type == .series {
+                let downloadedEps = DownloadManager.shared.downloadedEpisodes
+                    .filter { ($0.seriesID ?? $0.parentBackdropItemID) == itemID }
+                    .sorted { ($0.indexNumber ?? 0) < ($1.indexNumber ?? 0) }
+                self.episodes = downloadedEps
+                let seasonNumbers = Set(downloadedEps.compactMap(\.parentIndexNumber))
+                self.seasons = seasonNumbers.sorted().map { sNum in
+                    BaseItemDto(id: "\(itemID)-season-\(sNum)", indexNumber: sNum, name: "Season \(sNum)", type: .season)
+                }
+            }
+            isLoadingEpisodes = false
+            return
+        }
 
         async let detailResult: BaseItemDto? = {
             try? await client.send(Paths.getItem(itemID: itemID, userID: userID)).value

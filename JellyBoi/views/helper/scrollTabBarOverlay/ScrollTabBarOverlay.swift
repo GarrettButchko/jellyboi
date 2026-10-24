@@ -103,9 +103,9 @@ struct ScrollTabBarOverlay: View {
         .sheet(item: $activeSheetTarget) { target in
             switch target {
             case .main:
-                MinimalActiveDownloadsSheet()
+                DownloadsSheet()
             case .group(let id, let name):
-                ShowDownloadsSheet(seriesID: id, seriesName: name)
+                DownloadsSheet(seriesID: id, seriesName: name)
             }
         }
     }

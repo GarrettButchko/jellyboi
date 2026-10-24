@@ -174,30 +174,30 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var profileAvatar: some View {
-        if let url = serverViewModel.profileImageURL {
-            WebImage(url: url) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
-                avatarPlaceholder
+        ZStack {
+            Circle()
+                .fill(Color.subTwo)
+
+            if let url = serverViewModel.profileImageURL {
+                WebImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    avatarIcon
+                }
+                .clipShape(Circle())
+            } else {
+                avatarIcon
             }
-            .frame(width: 110, height: 110)
-            .clipShape(Circle())
-        } else {
-            avatarPlaceholder
         }
+        .frame(width: 110, height: 110)
     }
 
-    private var avatarPlaceholder: some View {
-        Circle()
-            .fill(Color.sub)
-            .frame(width: 110, height: 110)
-            .overlay {
-                Image(systemName: "person.fill")
-                    .font(.system(size: 44))
-                    .foregroundStyle(Color.subFour)
-            }
+    private var avatarIcon: some View {
+        Image(systemName: "person.fill")
+            .font(.system(size: 44))
+            .foregroundStyle(Color.subFour)
     }
 }
 
