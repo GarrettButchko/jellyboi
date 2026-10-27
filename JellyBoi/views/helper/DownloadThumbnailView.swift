@@ -100,9 +100,10 @@ struct DownloadThumbnailView: View, Equatable {
                     .resizable()
                     .scaledToFit()
                     .frame(width: size.logoSize, height: size.logoSize)
-                    .foregroundStyle(Color.mainOpp.opacity(0.05))
+                    .foregroundStyle(Color.mainOpp.opacity(0.10))
                     .rotationEffect(.degrees(45))
             }
+            .skeletonPulse(minOpacity: 0.60, maxOpacity: 1.0)
     }
 
     var body: some View {

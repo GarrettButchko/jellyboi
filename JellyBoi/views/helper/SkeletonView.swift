@@ -1,5 +1,5 @@
 //
-//  HomeSkeletonView.swift
+//  SkeletonView.swift
 //  JellyBoi
 //
 //  Created by Garrett Butchko on 8/28/26.
@@ -9,13 +9,14 @@ import SwiftUI
 import BaseColors
 import Observation
 
-/// Single shared animation driver so every skeleton block pulses in lockstep
-/// and appears at exactly the same time, regardless of when it was created.
+/// Single shared animation driver preserved for compatibility.
+/// Pulsing is driven universally via `TimelineView` with `skeletonPulse`
+/// so all blocks, icons, and bubble backgrounds remain in absolute lockstep.
 @Observable
 @MainActor
 final class SkeletonPulse {
     static let shared = SkeletonPulse()
-    var isAnimating = false
+    var isAnimating = true
 
     func start() {
         isAnimating = true
@@ -31,6 +32,33 @@ extension EnvironmentValues {
     var skeletonPulse: SkeletonPulse {
         get { self[SkeletonPulseKey.self] }
         set { self[SkeletonPulseKey.self] = newValue }
+    }
+}
+
+// MARK: - Universal Pulse Modifier
+
+/// Applies a smooth, lockstep pulsing opacity animation across all skeleton elements
+/// driven by a universal timeline clock.
+struct SkeletonPulseModifier: ViewModifier {
+    var minOpacity: Double = 0.06
+    var maxOpacity: Double = 0.13
+
+    func body(content: Content) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            // Universal sine wave period: 1.8 seconds (0.9s ease out, 0.9s ease in)
+            let progress = (sin(time * (.pi / 0.9)) + 1.0) / 2.0
+            let opacity = minOpacity + progress * (maxOpacity - minOpacity)
+
+            content.opacity(opacity)
+        }
+    }
+}
+
+extension View {
+    /// Pulses the view in lockstep with all other skeleton elements.
+    func skeletonPulse(minOpacity: Double = 0.06, maxOpacity: Double = 0.13) -> some View {
+        modifier(SkeletonPulseModifier(minOpacity: minOpacity, maxOpacity: maxOpacity))
     }
 }
 
@@ -52,7 +80,7 @@ struct SkeletonZone<Content: View, Placeholder: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack {
             if showsContent {
                 content()
                     .transition(.opacity)
@@ -62,18 +90,23 @@ struct SkeletonZone<Content: View, Placeholder: View>: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: showsContent)
+        .transaction { transaction in
+            // Prevent initial layout/geometry resolution from animating size changes while skeleton is showing
+            if !showsContent {
+                transaction.animation = nil
+            }
+        }
     }
 }
 
 // MARK: - Carousel skeleton
 
 struct SkeletonCarousel: View {
-    @Environment(\.skeletonPulse) private var pulse
-
     var body: some View {
         VStack(spacing: 12) {
             GeometryReader { geometry in
-                let cardWidth = geometry.size.width * 0.8
+                let w = geometry.size.width
+                let cardWidth = w > 0 ? w * 0.8 : 300
                 let cardHeight = cardWidth * 9 / 16
                 SkeletonBlock(cornerRadius: 20)
                     .frame(width: cardWidth, height: cardHeight)
@@ -81,6 +114,7 @@ struct SkeletonCarousel: View {
             }
             .aspectRatio(16 / (9 * 0.8), contentMode: .fit)
             .frame(maxWidth: .infinity)
+            .transaction { $0.animation = nil }
 
             HStack(spacing: 5) {
                 SkeletonBlock(cornerRadius: 3)
@@ -97,71 +131,91 @@ struct SkeletonCarousel: View {
                     .frame(width: 6, height: 6)
             }
         }
-        .onAppear { pulse.start() }
     }
 }
 
 // MARK: - Stats skeleton
 
 struct SkeletonStatsRow: View {
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    @Environment(\.skeletonPulse) private var pulse
-
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 10) {
-                statBubble
-                doubleStatBubble
-                statBubble
-                statBubble
-                statBubble
-                statBubble
+                statBubble(icon: "film", valueWidth: 36, labelWidth: 46)
+                doubleStatBubble(
+                    leftIcon: "tv", leftValueWidth: 32, leftLabelWidth: 42,
+                    rightIcon: "film.stack", rightValueWidth: 38, rightLabelWidth: 54
+                )
+                statBubble(icon: "play.circle", valueWidth: 28, labelWidth: 54)
+                statBubble(icon: "heart.fill", valueWidth: 28, labelWidth: 52)
+                statBubble(icon: "checkmark.circle.fill", valueWidth: 34, labelWidth: 62)
+                statBubble(icon: "clock.fill", valueWidth: 30, labelWidth: 70)
             }
             .padding(.horizontal, 16)
         }
         .scrollIndicators(.hidden)
         .disabled(true)
-        .onAppear { pulse.start() }
     }
 
-    private var statBubble: some View {
+    private func statBubble(icon: String, valueWidth: CGFloat, labelWidth: CGFloat) -> some View {
         HStack(spacing: 10) {
-            SkeletonBlock(cornerRadius: 8)
-                .frame(width: 24, height: 24)
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.mainOpp)
+                .frame(width: 24)
+                .skeletonPulse(minOpacity: 0.18, maxOpacity: 0.45)
+
             VStack(alignment: .leading, spacing: 6) {
                 SkeletonBlock(cornerRadius: 4)
-                    .frame(width: 40, height: 16)
+                    .frame(width: valueWidth, height: 16)
                 SkeletonBlock(cornerRadius: 4)
-                    .frame(width: 56, height: 10)
+                    .frame(width: labelWidth, height: 10)
             }
         }
         .padding(.horizontal, 14)
         .frame(height: 56)
-        .background(Color.mainOpp.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.mainOpp)
+                .skeletonPulse(minOpacity: 0.04, maxOpacity: 0.09)
+        )
     }
 
-    private var doubleStatBubble: some View {
+    private func doubleStatBubble(
+        leftIcon: String, leftValueWidth: CGFloat, leftLabelWidth: CGFloat,
+        rightIcon: String, rightValueWidth: CGFloat, rightLabelWidth: CGFloat
+    ) -> some View {
         HStack(spacing: 0) {
-            statBubblePair
+            statBubbleHalf(icon: leftIcon, valueWidth: leftValueWidth, labelWidth: leftLabelWidth)
+
             Rectangle()
                 .fill(Color.subTwo)
                 .frame(width: 0.5)
                 .padding(.vertical, 14)
-            statBubblePair
+                .skeletonPulse(minOpacity: 0.20, maxOpacity: 0.50)
+
+            statBubbleHalf(icon: rightIcon, valueWidth: rightValueWidth, labelWidth: rightLabelWidth)
         }
         .frame(height: 56)
-        .background(Color.mainOpp.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.mainOpp)
+                .skeletonPulse(minOpacity: 0.04, maxOpacity: 0.09)
+        )
     }
 
-    private var statBubblePair: some View {
+    private func statBubbleHalf(icon: String, valueWidth: CGFloat, labelWidth: CGFloat) -> some View {
         HStack(spacing: 10) {
-            SkeletonBlock(cornerRadius: 8)
-                .frame(width: 24, height: 24)
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.mainOpp)
+                .frame(width: 24)
+                .skeletonPulse(minOpacity: 0.18, maxOpacity: 0.45)
+
             VStack(alignment: .leading, spacing: 6) {
                 SkeletonBlock(cornerRadius: 4)
-                    .frame(width: 40, height: 16)
+                    .frame(width: valueWidth, height: 16)
                 SkeletonBlock(cornerRadius: 4)
-                    .frame(width: 46, height: 10)
+                    .frame(width: labelWidth, height: 10)
             }
         }
         .padding(.horizontal, 14)
@@ -172,9 +226,9 @@ struct SkeletonStatsRow: View {
 
 struct SkeletonSectionRow: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @Environment(\.skeletonPulse) private var pulse
 
     private var cardWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
+    private var cardHeight: CGFloat { cardWidth * 1.5 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -183,11 +237,10 @@ struct SkeletonSectionRow: View {
                 .padding(.horizontal, 16)
 
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 16) {
+                HStack(spacing: 16) {
                     ForEach(0..<8, id: \.self) { _ in
                         SkeletonBlock(cornerRadius: 16)
-                            .aspectRatio(2/3, contentMode: .fit)
-                            .frame(width: cardWidth)
+                            .frame(width: cardWidth, height: cardHeight)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -195,7 +248,6 @@ struct SkeletonSectionRow: View {
             .scrollIndicators(.hidden)
             .disabled(true)
         }
-        .onAppear { pulse.start() }
     }
 }
 
@@ -205,15 +257,16 @@ struct SkeletonSectionRow: View {
 struct SkeletonMediaGrid: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
+    private var minWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
+        [GridItem(.adaptive(minimum: minWidth), spacing: 16)]
     }
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 16) {
             ForEach(0..<18, id: \.self) { _ in
                 SkeletonBlock(cornerRadius: 16)
-                    .aspectRatio(2/3, contentMode: .fit)
+                    .aspectRatio(2/3, contentMode: .fill)
             }
         }
         .padding(.horizontal, 16)
@@ -226,7 +279,6 @@ struct SkeletonMediaGrid: View {
 /// Loading placeholder for the horizontal scrolling episodes row.
 struct SkeletonEpisodesRow: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @Environment(\.skeletonPulse) private var pulse
 
     private var cardHeight: CGFloat { sizeClass == .regular ? 140 : 120 }
     private var cardWidth: CGFloat { cardHeight * (16.0 / 9.0) }
@@ -244,7 +296,6 @@ struct SkeletonEpisodesRow: View {
         .scrollClipDisabled()
         .scrollIndicators(.hidden)
         .disabled(true)
-        .onAppear { pulse.start() }
     }
 }
 
@@ -336,7 +387,6 @@ struct SkeletonDetailContent: View {
         }
         .padding(.top, 16)
         .padding(.bottom, 48)
-        .onAppear { SkeletonPulse.shared.start() }
     }
 }
 
@@ -345,12 +395,10 @@ struct SkeletonDetailContent: View {
 struct SkeletonBlock: View {
     let cornerRadius: CGFloat
 
-    @Environment(\.skeletonPulse) private var pulse
-
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Color.mainOpp.opacity(pulse.isAnimating ? 0.06 : 0.12))
-            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse.isAnimating)
+            .fill(Color.mainOpp)
+            .skeletonPulse(minOpacity: 0.06, maxOpacity: 0.13)
     }
 }
 

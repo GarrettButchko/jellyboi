@@ -831,7 +831,40 @@ public final class DownloadManager: NSObject {
     private func updateLiveActivity(force: Bool = false) {
         let active = activeDownloads
         guard !active.isEmpty else { return }
-        let presentation = DownloadGrouping.currentPresentation(active: active, completed: completedDownloads)
+        var presentation = DownloadGrouping.currentPresentation(active: active, completed: completedDownloads, client: client)
+        if presentation.isSingleElement, let posterURL = presentation.posterURL {
+            let cacheKey = SDWebImageManager.shared.cacheKey(for: posterURL) ?? posterURL.absoluteString
+            if let image = SDImageCache.shared.imageFromMemoryCache(forKey: cacheKey) ?? SDImageCache.shared.imageFromDiskCache(forKey: cacheKey) {
+                let thumbData = image.liveActivityThumbnailData()
+                presentation = DownloadSummaryPresentation(
+                    title: presentation.title,
+                    subtitle: presentation.subtitle,
+                    detailText: presentation.detailText,
+                    progress: presentation.progress,
+                    itemsRemaining: presentation.itemsRemaining,
+                    totalItems: presentation.totalItems,
+                    isCompleted: presentation.isCompleted,
+                    posterImageData: thumbData,
+                    posterURL: posterURL,
+                    statusIcon: presentation.statusIcon,
+                    statusText: presentation.statusText,
+                    isQueued: presentation.isQueued,
+                    isConverting: presentation.isConverting,
+                    isSingleElement: presentation.isSingleElement
+                )
+            } else {
+                SDWebImageManager.shared.loadImage(
+                    with: posterURL,
+                    options: [.continueInBackground, .highPriority],
+                    progress: nil
+                ) { [weak self] downloadedImage, _, _, _, _, _ in
+                    guard let self, downloadedImage != nil else { return }
+                    Task { @MainActor in
+                        self.updateLiveActivity(force: true)
+                    }
+                }
+            }
+        }
         DownloadActivityCoordinator.shared.update(presentation: presentation, force: force)
     }
 
@@ -907,5 +940,23 @@ extension DownloadManager: URLSessionDownloadDelegate {
         Task { @MainActor in
             DownloadManager.shared.handleError(itemID: itemID, error: error, resumeData: resumeData)
         }
+    }
+}
+
+// MARK: - UIImage Live Activity Thumbnail
+
+private extension UIImage {
+    func liveActivityThumbnailData(targetSize: CGSize = CGSize(width: 36, height: 54)) -> Data? {
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let resized = renderer.image { _ in
+            self.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        var compression: CGFloat = 0.55
+        var data = resized.jpegData(compressionQuality: compression)
+        while let current = data, current.count > 1200, compression > 0.15 {
+            compression -= 0.1
+            data = resized.jpegData(compressionQuality: compression)
+        }
+        return data
     }
 }

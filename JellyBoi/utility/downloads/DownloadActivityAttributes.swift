@@ -17,6 +17,12 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
         public var itemsRemaining: Int
         public var totalItems: Int
         public var isCompleted: Bool
+        public var posterImageData: Data?
+        public var statusIcon: String
+        public var statusText: String
+        public var isQueued: Bool
+        public var isConverting: Bool
+        public var isSingleElement: Bool
 
         public init(
             title: String,
@@ -25,7 +31,13 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
             progress: Double,
             itemsRemaining: Int,
             totalItems: Int,
-            isCompleted: Bool = false
+            isCompleted: Bool = false,
+            posterImageData: Data? = nil,
+            statusIcon: String = "arrow.down",
+            statusText: String = "Downloading",
+            isQueued: Bool = false,
+            isConverting: Bool = false,
+            isSingleElement: Bool = true
         ) {
             self.title = title
             self.subtitle = subtitle
@@ -34,6 +46,12 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
             self.itemsRemaining = itemsRemaining
             self.totalItems = totalItems
             self.isCompleted = isCompleted
+            self.posterImageData = posterImageData
+            self.statusIcon = statusIcon
+            self.statusText = statusText
+            self.isQueued = isQueued
+            self.isConverting = isConverting
+            self.isSingleElement = isSingleElement
         }
     }
 

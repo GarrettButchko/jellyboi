@@ -192,6 +192,7 @@ struct ActiveDownloadFloatingBar: View {
                     HStack(spacing: 4) {
                         Image(systemName: singleItem.statusIcon)
                             .font(.system(size: 9.5, weight: .medium))
+
                         Text(singleItem.statusText)
                     }
                     .font(.system(size: 10.5, design: .rounded))

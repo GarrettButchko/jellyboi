@@ -7,6 +7,7 @@
 
 import Foundation
 import ActivityKit
+import UIKit
 
 @MainActor
 public final class DownloadActivityCoordinator {
@@ -15,36 +16,55 @@ public final class DownloadActivityCoordinator {
     private var currentActivity: Activity<DownloadActivityAttributes>?
     private var lastUpdateTime: Date = .distantPast
     private var lastProgress: Double = -1.0
-    private var lastTitle: String = ""
+    private var lastTitle: String? = nil
+    private var lastPosterData: Data? = nil
 
     private init() {
-        if let existing = Activity<DownloadActivityAttributes>.activities.first {
-            self.currentActivity = existing
+        self.currentActivity = Activity<DownloadActivityAttributes>.activities.first(where: { $0.activityState == .active })
+    }
+
+    private var activeActivity: Activity<DownloadActivityAttributes>? {
+        if let current = currentActivity, current.activityState == .active {
+            return current
         }
+        return Activity<DownloadActivityAttributes>.activities.first(where: { $0.activityState == .active })
     }
 
-    public var areActivitiesEnabled: Bool {
-        ActivityAuthorizationInfo().areActivitiesEnabled
+    public func update(with presentation: DownloadSummaryPresentation, force: Bool = false) {
+        update(presentation: presentation, force: force)
     }
 
-    public func update(
-        presentation: DownloadSummaryPresentation,
-        force: Bool = false
-    ) {
-        guard areActivitiesEnabled else { return }
+    public func update(presentation: DownloadSummaryPresentation, force: Bool = false) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
         let now = Date()
-        _ = abs(presentation.progress - lastProgress)
-        let titleChanged = presentation.title != lastTitle
         let timeSinceLast = now.timeIntervalSince(lastUpdateTime)
+        let progressDiff = abs(presentation.progress - lastProgress)
 
-        if !force && !titleChanged && timeSinceLast < 1.5 {
-            return
+        let isMajorStateChange = (lastProgress < 0) ||
+            presentation.isCompleted ||
+            (presentation.title != lastTitle) ||
+            (presentation.itemsRemaining == 0)
+
+        // Throttle updates: minimum 1.5s between updates unless progress changed significantly (>= 5%)
+        // or a major state transition occurred
+        if !force && !isMajorStateChange {
+            if timeSinceLast < 1.5 && progressDiff < 0.05 {
+                return
+            }
         }
 
         lastUpdateTime = now
         lastProgress = presentation.progress
         lastTitle = presentation.title
+
+        if presentation.isSingleElement {
+            if let posterData = presentation.posterImageData {
+                lastPosterData = posterData
+            }
+        } else {
+            lastPosterData = nil
+        }
 
         let state = DownloadActivityAttributes.ContentState(
             title: presentation.title,
@@ -53,17 +73,30 @@ public final class DownloadActivityCoordinator {
             progress: presentation.progress,
             itemsRemaining: presentation.itemsRemaining,
             totalItems: presentation.totalItems,
-            isCompleted: presentation.isCompleted
+            isCompleted: presentation.isCompleted,
+            posterImageData: presentation.isSingleElement ? (presentation.posterImageData ?? lastPosterData) : nil,
+            statusIcon: presentation.statusIcon,
+            statusText: presentation.statusText,
+            isQueued: presentation.isQueued,
+            isConverting: presentation.isConverting,
+            isSingleElement: presentation.isSingleElement
         )
 
         let content = ActivityContent(state: state, staleDate: nil)
 
-        if let activity = currentActivity ?? Activity<DownloadActivityAttributes>.activities.first {
+        if let activity = activeActivity {
             currentActivity = activity
             Task {
                 await activity.update(content)
             }
         } else if !presentation.isCompleted && presentation.itemsRemaining > 0 {
+            // End any stale or inactive activities before starting a new one
+            for stale in Activity<DownloadActivityAttributes>.activities where stale.activityState != .active {
+                Task {
+                    await stale.end(nil, dismissalPolicy: .immediate)
+                }
+            }
+
             do {
                 let attributes = DownloadActivityAttributes()
                 let activity = try Activity.request(
@@ -73,15 +106,29 @@ public final class DownloadActivityCoordinator {
                 )
                 self.currentActivity = activity
             } catch {
-                print("[DownloadActivityCoordinator] Failed to start Live Activity: \(error.localizedDescription)")
+                print("[DownloadActivityCoordinator] Failed to start Live Activity: \(error)")
+                // Fallback: If payload was rejected, retry immediately without poster data so activity ALWAYS shows
+                if state.posterImageData != nil {
+                    var fallbackState = state
+                    fallbackState.posterImageData = nil
+                    let fallbackContent = ActivityContent(state: fallbackState, staleDate: nil)
+                    do {
+                        let activity = try Activity.request(
+                            attributes: DownloadActivityAttributes(),
+                            content: fallbackContent,
+                            pushType: nil
+                        )
+                        self.currentActivity = activity
+                    } catch {
+                        print("[DownloadActivityCoordinator] Fallback request failed: \(error)")
+                    }
+                }
             }
         }
     }
 
     public func finishAll(finalTitle: String = "Downloads Complete") {
-        guard let activity = currentActivity ?? Activity<DownloadActivityAttributes>.activities.first else {
-            return
-        }
+        guard let activity = activeActivity else { return }
 
         let finalState = DownloadActivityAttributes.ContentState(
             title: finalTitle,
@@ -90,28 +137,42 @@ public final class DownloadActivityCoordinator {
             progress: 1.0,
             itemsRemaining: 0,
             totalItems: 0,
-            isCompleted: true
+            isCompleted: true,
+            posterImageData: lastPosterData,
+            statusIcon: "checkmark",
+            statusText: "Ready offline",
+            isQueued: false,
+            isConverting: false,
+            isSingleElement: lastPosterData != nil
         )
 
-        let finalContent = ActivityContent(state: finalState, staleDate: nil)
+        let content = ActivityContent(state: finalState, staleDate: nil)
 
         Task {
-            await activity.end(finalContent, dismissalPolicy: .after(Date().addingTimeInterval(4.0)))
-            self.currentActivity = nil
-            self.lastProgress = -1.0
-            self.lastTitle = ""
+            await activity.update(content)
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            await activity.end(content, dismissalPolicy: .default)
+            if self.currentActivity?.id == activity.id {
+                self.currentActivity = nil
+            }
         }
     }
 
     public func cancel() {
-        let activities = Activity<DownloadActivityAttributes>.activities
-        for activity in activities {
+        cancelAll()
+    }
+
+    public func cancelAll() {
+        let activitiesToEnd = Activity<DownloadActivityAttributes>.activities
+        currentActivity = nil
+        lastProgress = -1.0
+        lastTitle = nil
+        lastPosterData = nil
+
+        for activity in activitiesToEnd {
             Task {
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
         }
-        currentActivity = nil
-        lastProgress = -1.0
-        lastTitle = ""
     }
 }
