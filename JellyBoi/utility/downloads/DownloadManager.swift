@@ -83,7 +83,9 @@ public final class DownloadManager: NSObject {
                   let itemID = notification.object as? String,
                   let positionTicks = notification.userInfo?["positionTicks"] as? Int else { return }
             let totalTicks = notification.userInfo?["durationTicks"] as? Int
-            self.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+            MainActor.assumeIsolated {
+                self.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+            }
         }
 
         NotificationCenter.default.addObserver(
@@ -93,7 +95,9 @@ public final class DownloadManager: NSObject {
         ) { [weak self] notification in
             guard let self,
                   let itemID = notification.object as? String else { return }
-            self.clearProgress(for: itemID)
+            MainActor.assumeIsolated {
+                self.clearProgress(for: itemID)
+            }
         }
 
         NotificationCenter.default.addObserver(
@@ -104,7 +108,9 @@ public final class DownloadManager: NSObject {
             guard let self,
                   let itemID = notification.object as? String,
                   let isFavorite = notification.userInfo?["isFavorite"] as? Bool else { return }
-            self.updateFavorite(for: itemID, isFavorite: isFavorite)
+            MainActor.assumeIsolated {
+                self.updateFavorite(for: itemID, isFavorite: isFavorite)
+            }
         }
     }
 

@@ -52,10 +52,14 @@ struct MediaCard: View {
     }
 
     private func playAction(fromBeginning: Bool) {
-        if item.type == .movie || item.type == .episode {
-            playbackManager?.play(item: item, fromBeginning: fromBeginning)
-        } else if item.type == .series, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == item.id }) {
-            playbackManager?.play(item: resumeEp, fromBeginning: fromBeginning)
+        if item.type == .movie || item.type == .episode || item.type == .series || item.type == .boxSet {
+            playbackManager?.play(
+                item: item,
+                fromBeginning: fromBeginning,
+                client: serverViewModel?.client,
+                userID: serverViewModel?.currentUser?.id,
+                libraryViewModel: libraryViewModel
+            )
         } else {
             onSelect()
         }
@@ -147,7 +151,7 @@ struct MediaCard: View {
                         if let onStartFromBeginning {
                             onStartFromBeginning()
                         } else {
-                            playAction(fromBeginning: true)
+                            playAction(fromBeginning: false)
                         }
                     } label: {
                         Label("Start", systemImage: "play.fill")

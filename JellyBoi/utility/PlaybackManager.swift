@@ -101,13 +101,15 @@ final class PlaybackManager {
             guard let self else { return }
             var targetItem = item
             if targetItem.type == .boxSet {
-                if let resolved = await self.resolveFirstItemInCollection(
+                if let resolved = await self.resolveNextItemInCollection(
                     collection: targetItem,
+                    fromBeginning: fromBeginning,
                     client: resolvedClient,
-                    userID: resolvedUserID
+                    userID: resolvedUserID,
+                    libraryViewModel: resolvedLibrary
                 ) {
                     targetItem = resolved
-                    AppLogger.info("Resolved collection '\(item.name ?? "")' to first item '\(targetItem.name ?? "Unknown")'", tag: "PlaybackManager")
+                    AppLogger.info("Resolved collection '\(item.name ?? "")' to next item '\(targetItem.name ?? "Unknown")'", tag: "PlaybackManager")
                 } else {
                     withAnimation(statusOverlaySpring) {
                         self.isLoading = false
@@ -314,10 +316,12 @@ final class PlaybackManager {
 
     // MARK: - Playable Item Resolution
 
-    private func resolveFirstItemInCollection(
+    private func resolveNextItemInCollection(
         collection: BaseItemDto,
+        fromBeginning: Bool,
         client: JellyfinClient?,
-        userID: String?
+        userID: String?,
+        libraryViewModel: LibraryViewModel?
     ) async -> BaseItemDto? {
         guard let collectionID = collection.id, let client else { return nil }
         var params = Paths.GetItemsParameters()
@@ -325,7 +329,7 @@ final class PlaybackManager {
         params.parentID = collectionID
         params.isRecursive = true
         params.isCollapseBoxSetItems = false
-        params.fields = [.primaryImageAspectRatio, .genres, .tags, .overview]
+        params.fields = [.primaryImageAspectRatio, .genres, .tags, .overview, .mediaSources, .mediaStreams]
         params.enableUserData = userID != nil
         params.enableImages = true
 
@@ -338,7 +342,20 @@ final class PlaybackManager {
             }
             return (a.sortName ?? a.name ?? "") < (b.sortName ?? b.name ?? "")
         }
-        return sorted.first(where: { $0.type == .movie || $0.type == .series || $0.type == .episode }) ?? sorted.first
+
+        let filtered = sorted.filter { $0.type == .movie || $0.type == .series || $0.type == .episode }
+        let targetList = filtered.isEmpty ? sorted : filtered
+
+        let resolvedList: [BaseItemDto] = targetList.map { item in
+            guard let id = item.id else { return item }
+            return libraryViewModel?.movies.first(where: { $0.id == id })
+                ?? libraryViewModel?.resumeShows.first(where: { $0.id == id })
+                ?? libraryViewModel?.episodes.first(where: { $0.id == id })
+                ?? libraryViewModel?.tvShows.first(where: { $0.id == id })
+                ?? item
+        }
+
+        return resolvedList.nextPlayableItem(fromBeginning: fromBeginning)
     }
 
     private func resolvePlayableEpisode(
@@ -364,10 +381,7 @@ final class PlaybackManager {
             }
 
         if !cached.isEmpty {
-            if !fromBeginning, let unplayed = cached.first(where: { ($0.userData?.isPlayed ?? false) == false }) {
-                return unplayed
-            }
-            return cached.first
+            return cached.nextPlayableItem(fromBeginning: fromBeginning)
         }
 
         guard let client else { return nil }
@@ -389,9 +403,6 @@ final class PlaybackManager {
             return (a.indexNumber ?? 1) < (b.indexNumber ?? 1)
         }
 
-        if !fromBeginning, let unplayed = sorted.first(where: { ($0.userData?.isPlayed ?? false) == false }) {
-            return unplayed
-        }
-        return sorted.first
+        return sorted.nextPlayableItem(fromBeginning: fromBeginning)
     }
 }

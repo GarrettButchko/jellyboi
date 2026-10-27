@@ -34,7 +34,7 @@ public final class DownloadActivityCoordinator {
         guard areActivitiesEnabled else { return }
 
         let now = Date()
-        let progressDelta = abs(presentation.progress - lastProgress)
+        _ = abs(presentation.progress - lastProgress)
         let titleChanged = presentation.title != lastTitle
         let timeSinceLast = now.timeIntervalSince(lastUpdateTime)
 

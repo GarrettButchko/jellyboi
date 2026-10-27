@@ -121,6 +121,36 @@ struct MediaDetailView: View {
                 Text("Are you sure you want to remove '\(itemName)' from your downloads?")
             }
         }
+        .alert(
+            detailVM.seriesAlertAction == .startFromBeginning ? "Start from Beginning?" : "Reset Progress?",
+            isPresented: Binding(
+                get: { detailVM.seriesAlertAction != nil },
+                set: { if !$0 { detailVM.seriesAlertAction = nil } }
+            )
+        ) {
+            if detailVM.seriesAlertAction == .startFromBeginning {
+                Button("Start from Beginning", role: .destructive) {
+                    detailVM.startSeriesFromBeginning(
+                        playbackManager: playbackManager,
+                        serverViewModel: serverViewModel,
+                        libraryViewModel: libraryViewModel
+                    )
+                }
+                Button("Cancel", role: .cancel) { }
+            } else {
+                Button("Reset Progress", role: .destructive) {
+                    detailVM.resetSeriesProgress(serverViewModel: serverViewModel)
+                }
+                Button("Cancel", role: .cancel) { }
+            }
+        } message: {
+            let showName = detailVM.displayItem?.name ?? "this show"
+            if detailVM.seriesAlertAction == .startFromBeginning {
+                Text("This will reset all watch progress for '\(showName)' and start Episode 1 from the beginning.")
+            } else {
+                Text("Are you sure you want to reset all watch progress for '\(showName)'?")
+            }
+        }
         .navigationDestination(item: $selectedSeries) { series in
             MediaDetailView(item: series)
         }
@@ -149,7 +179,7 @@ struct MediaDetailView: View {
             CastCrewView(person: person)
         }
         .onAppear {
-            detailVM.prepare(item: item, client: serverViewModel.client)
+            detailVM.prepare(item: item, client: serverViewModel.client, libraryViewModel: libraryViewModel)
         }
         .task(id: item.id) {
             guard let client = serverViewModel.client, item.id != nil else { return }

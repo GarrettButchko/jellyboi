@@ -35,6 +35,8 @@ class MediaDetailViewModel {
     var isLoadingCollectionItems = false
     var isLoadingEpisodes = false
     private var client: JellyfinClient?
+    private weak var libraryViewModel: LibraryViewModel?
+    private static var collectionItemsCache: [String: [BaseItemDto]] = [:]
 
     // MARK: - Playback Configuration (Video Quality / Bitrate, Audio, Subtitles)
 
@@ -55,6 +57,9 @@ class MediaDetailViewModel {
     init(item: BaseItemDto? = nil) {
         if let item {
             self.sourceItem = item
+            if item.type == .boxSet, let id = item.id, let cached = Self.collectionItemsCache[id] {
+                self.collectionItems = cached
+            }
             if item.type == .series {
                 self.isLoadingEpisodes = true
             }
@@ -84,10 +89,29 @@ class MediaDetailViewModel {
 
     func shouldShowOptionsButton(libraryViewModel: LibraryViewModel?) -> Bool {
         guard let currentItem = displayItem else { return true }
-        if currentItem.type == .series || currentItem.type == .boxSet {
-            return nextPlayableEpisode(libraryViewModel: libraryViewModel) != nil
+        if currentItem.type == .boxSet {
+            return false
+        }
+        if currentItem.type == .series {
+            return false
         }
         return true
+    }
+
+    func isOptionsDisabled(libraryViewModel: LibraryViewModel?) -> Bool {
+        guard let currentItem = displayItem else { return false }
+        if currentItem.type == .boxSet {
+            return isLoadingCollectionItems || collectionItems.isEmpty
+        }
+        return false
+    }
+
+    func isPlayDisabled(libraryViewModel: LibraryViewModel?) -> Bool {
+        guard let currentItem = displayItem else { return false }
+        if currentItem.type == .boxSet {
+            return isLoadingCollectionItems || collectionItems.isEmpty
+        }
+        return false
     }
 
     func shouldShowSeriesButton(cameFromShow: Bool) -> Bool {
@@ -144,46 +168,147 @@ class MediaDetailViewModel {
 
     // MARK: - Server-derived Playback State
 
-    var watchProgress: Double? { displayItem?.watchProgress }
-    var isWatched: Bool { displayItem?.isWatched ?? false }
-    var hasProgress: Bool { displayItem?.hasProgress ?? false }
-    var isInProgress: Bool { displayItem?.isInProgress ?? false }
-    var progressVisible: Bool { displayItem?.isProgressVisible ?? false }
+    var currentPlaybackTargetItem: BaseItemDto? {
+        if displayItem?.type == .series || displayItem?.type == .boxSet {
+            return nextPlayableEpisode(libraryViewModel: libraryViewModel)
+        }
+        return displayItem
+    }
+
+    var isCollectionWatched: Bool {
+        guard displayItem?.type == .boxSet, !collectionItems.isEmpty else { return false }
+        return collectionItems.allSatisfy { $0.isWatched }
+    }
+
+    var isSeriesWatched: Bool {
+        guard displayItem?.type == .series else { return false }
+        if let unplayed = displayItem?.userData?.unplayedItemCount, unplayed == 0 { return true }
+        if displayItem?.userData?.isPlayed == true { return true }
+        let showEpisodes = !episodes.isEmpty ? episodes : (libraryViewModel?.episodes.filter { $0.seriesID == displayItem?.id } ?? [])
+        if !showEpisodes.isEmpty {
+            return showEpisodes.allSatisfy { $0.isWatched }
+        }
+        return false
+    }
+
+    var isWatched: Bool {
+        if displayItem?.type == .boxSet {
+            return isCollectionWatched
+        }
+        if displayItem?.type == .series {
+            return isSeriesWatched
+        }
+        return displayItem?.isWatched ?? false
+    }
+
+    private func cumulativeProgress(for items: [BaseItemDto]) -> Double {
+        guard !items.isEmpty else { return 0.0 }
+        let total = Double(items.count)
+        let sum = items.reduce(0.0) { runningSum, item in
+            if item.isWatched {
+                return runningSum + 1.0
+            }
+            if item.type == .series, let seriesID = item.id {
+                let seriesEpisodes = (libraryViewModel?.episodes ?? []).filter { $0.seriesID == seriesID }
+                if !seriesEpisodes.isEmpty {
+                    return runningSum + cumulativeProgress(for: seriesEpisodes)
+                }
+            }
+            return runningSum + (item.watchProgress ?? 0.0)
+        }
+        return sum / total
+    }
+
+    var hasProgress: Bool {
+        if isWatched { return false }
+        return (watchProgress ?? 0) > 0
+    }
+
+    var isInProgress: Bool {
+        if isWatched { return false }
+        if displayItem?.type == .boxSet {
+            return collectionItems.contains { $0.isWatched || $0.isInProgress }
+        }
+        if displayItem?.type == .series {
+            let showEpisodes = !episodes.isEmpty ? episodes : (libraryViewModel?.episodes.filter { $0.seriesID == displayItem?.id } ?? [])
+            return showEpisodes.contains { $0.isWatched || $0.isInProgress }
+        }
+        return displayItem?.isInProgress ?? false
+    }
+
+    var watchProgress: Double? {
+        if isWatched { return 1.0 }
+        if displayItem?.type == .boxSet {
+            if !collectionItems.isEmpty {
+                return cumulativeProgress(for: collectionItems)
+            }
+            return 0.0
+        }
+        if displayItem?.type == .series {
+            let showEpisodes = !episodes.isEmpty ? episodes : (libraryViewModel?.episodes.filter { $0.seriesID == displayItem?.id } ?? [])
+            if !showEpisodes.isEmpty {
+                return cumulativeProgress(for: showEpisodes)
+            }
+            return 0.0
+        }
+        return displayItem?.watchProgress
+    }
+
+    var progressVisible: Bool {
+        if displayItem?.type == .boxSet { return false }
+        if isWatched { return true }
+        guard let wp = watchProgress else { return false }
+        return Int(wp * 100) > 0
+    }
+
     var progressValue: Double {
         if isWatched { return 1.0 }
         return watchProgress ?? 0.0
     }
-    var percentText: String { displayItem?.percentText ?? "" }
 
-    var contextMenuTitle: String {
-        guard let item = displayItem else { return "" }
-        if item.type == .episode {
+    var percentText: String {
+        if isWatched { return "100%" }
+        if displayItem?.type == .boxSet || displayItem?.type == .series {
+            if let wp = watchProgress {
+                return "\(Int(wp * 100))%"
+            }
+            return "0%"
+        }
+        return displayItem?.percentText ?? ""
+    }
+
+    func targetPlayableTitle(libraryViewModel: LibraryViewModel?) -> String {
+        let target = playableItem(libraryViewModel: libraryViewModel)
+        if target.type == .episode {
             var epTitle: String? = nil
-            if let season = item.parentIndexNumber, let episode = item.indexNumber {
+            if let season = target.parentIndexNumber, let episode = target.indexNumber {
                 epTitle = "S\(season) E\(episode)"
-            } else if let episode = item.indexNumber {
+            } else if let episode = target.indexNumber {
                 epTitle = "Ep \(episode)"
             }
 
-            let name = item.name
-            let series = item.seriesName
+            let name = target.name
 
-            switch (series, epTitle, name) {
-            case let (.some(s), .some(e), .some(n)) where !s.isEmpty && !e.isEmpty && !n.isEmpty:
-                return "\(s) • \(e): \(n)"
-            case let (_, .some(e), .some(n)) where !e.isEmpty && !n.isEmpty:
-                return "\(e) • \(n)"
-            case let (.some(s), _, .some(n)) where !s.isEmpty && !n.isEmpty:
-                return "\(s) • \(n)"
-            case let (_, .some(e), _):
+            switch (epTitle, name) {
+            case let (.some(e), .some(n)) where !e.isEmpty && !n.isEmpty:
+                return "\(e): \(n)"
+            case let (.some(e), _):
                 return e
-            case let (_, _, .some(n)) where !n.isEmpty:
+            case let (_, .some(n)) where !n.isEmpty:
                 return n
             default:
-                return "Episode"
+                return target.name ?? "Episode"
             }
         }
-        return item.name ?? ""
+
+        if let targetName = target.name, !targetName.isEmpty {
+            return targetName
+        }
+        return displayItem?.name ?? ""
+    }
+
+    var contextMenuTitle: String {
+        targetPlayableTitle(libraryViewModel: nil)
     }
 
     func handlePlayTap(
@@ -191,6 +316,9 @@ class MediaDetailViewModel {
         serverViewModel: ServerViewModel,
         libraryViewModel: LibraryViewModel
     ) {
+        if isPlayDisabled(libraryViewModel: libraryViewModel) {
+            return
+        }
         if isWatched {
             playMedia(
                 fromBeginning: true,
@@ -208,8 +336,65 @@ class MediaDetailViewModel {
         }
     }
 
+    enum SeriesConfirmationAlert {
+        case startFromBeginning
+        case resetProgress
+    }
+
+    var seriesAlertAction: SeriesConfirmationAlert?
+
+    func resetSeriesProgress(serverViewModel: ServerViewModel?) {
+        guard let item = displayItem, let itemID = item.id else { return }
+        withAnimation(.smooth) {
+            clearProgress(for: itemID)
+            for index in episodes.indices {
+                episodes[index].clearProgress()
+            }
+        }
+        Task {
+            await serverViewModel?.resetProgress(for: item)
+            if let client = serverViewModel?.client, let userID = serverViewModel?.currentUser?.id {
+                let inProgressOrPlayed = episodes.filter { $0.isWatched || $0.hasProgress }
+                for ep in inProgressOrPlayed {
+                    if let epID = ep.id {
+                        _ = try? await client.send(Paths.markUnplayedItem(itemID: epID, userID: userID))
+                    }
+                }
+            }
+        }
+    }
+
+    func startSeriesFromBeginning(
+        playbackManager: PlaybackManager,
+        serverViewModel: ServerViewModel,
+        libraryViewModel: LibraryViewModel
+    ) {
+        resetSeriesProgress(serverViewModel: serverViewModel)
+
+        let firstEpisode = episodes.first(where: { ($0.parentIndexNumber ?? 1) >= 1 && ($0.indexNumber ?? 1) == 1 })
+            ?? episodes.first(where: { ($0.parentIndexNumber ?? 1) >= 1 })
+            ?? episodes.first
+            ?? playableItem(libraryViewModel: libraryViewModel, fromBeginning: true)
+
+        playbackManager.play(
+            item: firstEpisode,
+            fromBeginning: true,
+            client: serverViewModel.client,
+            userID: serverViewModel.currentUser?.id,
+            libraryViewModel: libraryViewModel,
+            mediaSourceID: selectedMediaSourceID,
+            audioStreamIndex: selectedAudioStreamIndex,
+            subtitleStreamIndex: selectedSubtitleStreamIndex,
+            maxBitrate: selectedMaxBitrate
+        )
+    }
+
     func resetProgress(serverViewModel: ServerViewModel?) {
         guard let item = displayItem, let itemID = item.id else { return }
+        if item.type == .series {
+            resetSeriesProgress(serverViewModel: serverViewModel)
+            return
+        }
         withAnimation(.smooth) {
             clearProgress(for: itemID)
         }
@@ -575,13 +760,27 @@ class MediaDetailViewModel {
         }
     }
 
-    func prepare(item: BaseItemDto, client: JellyfinClient?) {
+    func prepare(item: BaseItemDto, client: JellyfinClient?, libraryViewModel: LibraryViewModel? = nil) {
         self.sourceItem = item
         self.client = client
+        self.libraryViewModel = libraryViewModel
         self.hasInitialEpisodeScrolled = false
         self.scrolledEpisodeID = nil
         if item.type == .series {
             self.isLoadingEpisodes = true
+            if let seriesID = item.id, let lvm = libraryViewModel {
+                let cached = lvm.episodes.filter { $0.seriesID == seriesID }
+                if !cached.isEmpty && self.episodes.isEmpty {
+                    self.episodes = cached
+                }
+            }
+        }
+        if item.type == .boxSet, let collectionID = item.id {
+            if let cached = Self.collectionItemsCache[collectionID], !cached.isEmpty && self.collectionItems.isEmpty {
+                self.collectionItems = cached
+            } else if self.collectionItems.isEmpty {
+                self.isLoadingCollectionItems = true
+            }
         }
         if let ratio = item.primaryImageAspectRatio, ratio > 0 {
             self.heroAspectRatio = CGFloat(ratio)
@@ -600,6 +799,11 @@ class MediaDetailViewModel {
             sourceItem?.clearProgress()
         }
         episodes.clearProgress(for: itemID, matchingSeries: true)
+        for index in collectionItems.indices {
+            if collectionItems[index].id == itemID || itemID == displayItem?.id {
+                collectionItems[index].clearProgress()
+            }
+        }
     }
 
     func handleFavoriteToggled(itemID: String, isFavorite: Bool) {
@@ -612,6 +816,7 @@ class MediaDetailViewModel {
     func load(item: BaseItemDto, client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel) async {
         guard let itemID = item.id else { return }
         self.client = client
+        self.libraryViewModel = libraryViewModel
         let resolvedItem = libraryViewModel.movies.first(where: { $0.id == itemID })
             ?? libraryViewModel.resumeShows.first(where: { $0.id == itemID })
             ?? libraryViewModel.episodes.first(where: { $0.id == itemID })
@@ -651,6 +856,18 @@ class MediaDetailViewModel {
             for: itemID, client: client, userID: userID
         )
 
+        // Load collection items / episodes concurrently so cumulative progress resolves immediately without waiting for details/similar
+        if item.type == .series || resolvedItem.type == .series {
+            await loadSeasonsAndEpisodes(client: client, userID: userID)
+        } else {
+            isLoadingEpisodes = false
+            if item.type == .boxSet || resolvedItem.type == .boxSet {
+                await loadCollectionItems(client: client, userID: userID, libraryViewModel: libraryViewModel)
+            } else if item.type == .episode || resolvedItem.type == .episode {
+                await loadParentSeries(client: client, userID: userID, libraryViewModel: libraryViewModel)
+            }
+        }
+
         detailedItem = await detailResult
         similarItems = await similarResult
 
@@ -665,17 +882,6 @@ class MediaDetailViewModel {
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
                     heroAspectRatio = newRatio
                 }
-            }
-        }
-
-        if item.type == .series || detailedItem?.type == .series {
-            await loadSeasonsAndEpisodes(client: client, userID: userID)
-        } else {
-            isLoadingEpisodes = false
-            if item.type == .boxSet || detailedItem?.type == .boxSet {
-                await loadCollectionItems(client: client, userID: userID)
-            } else if item.type == .episode || detailedItem?.type == .episode {
-                await loadParentSeries(client: client, userID: userID, libraryViewModel: libraryViewModel)
             }
         }
     }
@@ -838,42 +1044,35 @@ class MediaDetailViewModel {
                 }
                 return resumeEp
             }
-            if !fromBeginning, let inProgress = episodes.first(where: {
-                let percent = $0.userData?.playedPercentage ?? 0
-                let isPlayed = $0.userData?.isPlayed ?? false
-                return percent > 0 && percent < 85 && !isPlayed
-            }) {
-                return inProgress
-            }
-            if !fromBeginning, let unplayed = episodes.first(where: { ($0.userData?.isPlayed ?? false) == false }) {
-                return unplayed
-            }
-            return episodes.first
+            return episodes.nextPlayableItem(fromBeginning: fromBeginning)
         }
         if displayItem?.type == .boxSet {
-            guard let firstItem = collectionItems.first(where: { $0.type == .movie || $0.type == .series }) ?? collectionItems.first else {
+            let resolvedCollectionItems: [BaseItemDto] = collectionItems.map { ci in
+                guard let id = ci.id else { return ci }
+                return libraryViewModel?.movies.first(where: { $0.id == id })
+                    ?? libraryViewModel?.resumeShows.first(where: { $0.id == id })
+                    ?? libraryViewModel?.episodes.first(where: { $0.id == id })
+                    ?? libraryViewModel?.tvShows.first(where: { $0.id == id })
+                    ?? ci
+            }
+            guard let nextItem = resolvedCollectionItems.nextPlayableItem(fromBeginning: fromBeginning) else {
                 return nil
             }
-            if firstItem.type == .series {
-                if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == firstItem.id }) {
+            if nextItem.type == .series {
+                if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == nextItem.id }) {
                     return resumeEp
                 }
                 let matching = (libraryViewModel?.episodes ?? [])
-                    .filter { $0.seriesID == firstItem.id }
+                    .filter { $0.seriesID == nextItem.id }
                     .sorted { a, b in
                         let sA = a.parentIndexNumber ?? 1
                         let sB = b.parentIndexNumber ?? 1
                         if sA != sB { return sA < sB }
                         return (a.indexNumber ?? 1) < (b.indexNumber ?? 1)
                     }
-                if !fromBeginning, let unplayed = matching.first(where: { ($0.userData?.isPlayed ?? false) == false }) {
-                    return unplayed
-                }
-                if let firstEp = matching.first {
-                    return firstEp
-                }
+                return matching.nextPlayableItem(fromBeginning: fromBeginning) ?? nextItem
             }
-            return firstItem
+            return nextItem
         }
         return displayItem
     }
@@ -888,6 +1087,7 @@ class MediaDetailViewModel {
             }
         }
         episodes.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        collectionItems.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
     }
 
     func episodeThumbnailURL(for episode: BaseItemDto) -> URL? {
@@ -919,7 +1119,7 @@ class MediaDetailViewModel {
         }
     }
 
-    func loadCollectionItems(client: JellyfinClient, userID: String?) async {
+    func loadCollectionItems(client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel? = nil) async {
         guard let collectionID = sourceItem?.id ?? detailedItem?.id else { return }
         isLoadingCollectionItems = true
         defer { isLoadingCollectionItems = false }
@@ -929,19 +1129,31 @@ class MediaDetailViewModel {
         params.parentID = collectionID
         params.isRecursive = true
         params.isCollapseBoxSetItems = false
-        params.fields = [.primaryImageAspectRatio, .genres, .tags, .overview]
+        params.fields = [.primaryImageAspectRatio, .genres, .tags, .overview, .mediaSources, .mediaStreams]
         params.enableUserData = userID != nil
         params.enableImages = true
 
         let items = (try? await client.send(Paths.getItems(parameters: params)).value.items) ?? []
 
-        collectionItems = items.sorted { a, b in
+        let sorted = items.sorted { a, b in
             let dateA = a.premiereDate ?? (a.productionYear.flatMap { Calendar.current.date(from: DateComponents(year: $0)) } ?? .distantPast)
             let dateB = b.premiereDate ?? (b.productionYear.flatMap { Calendar.current.date(from: DateComponents(year: $0)) } ?? .distantPast)
             if dateA != dateB {
                 return dateA < dateB
             }
             return (a.sortName ?? a.name ?? "") < (b.sortName ?? b.name ?? "")
+        }
+
+        collectionItems = sorted.map { item in
+            guard let id = item.id else { return item }
+            return libraryViewModel?.movies.first(where: { $0.id == id })
+                ?? libraryViewModel?.resumeShows.first(where: { $0.id == id })
+                ?? libraryViewModel?.episodes.first(where: { $0.id == id })
+                ?? libraryViewModel?.tvShows.first(where: { $0.id == id })
+                ?? item
+        }
+        if let collectionID = sourceItem?.id ?? detailedItem?.id {
+            Self.collectionItemsCache[collectionID] = collectionItems
         }
     }
 

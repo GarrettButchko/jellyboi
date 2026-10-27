@@ -86,6 +86,7 @@ extension BaseItemDto {
     /// Whether the item has been watched (completed >= 85% or marked played).
     var isWatched: Bool {
         if userData?.isPlayed == true { return true }
+        if type == .series, let unplayed = userData?.unplayedItemCount, unplayed == 0 { return true }
         return (watchProgress ?? 0) >= 0.85
     }
 
@@ -166,5 +167,52 @@ extension Array where Element == BaseItemDto {
                 self[index].setFavorite(isFavorite)
             }
         }
+    }
+
+    /// Determines the next playable item in an ordered sequence of media items (e.g. episodes or collection items).
+    /// - If `fromBeginning` is true, returns the first item.
+    /// - If any items were completed, returns the first in-progress or unplayed item after the latest completed item.
+    /// - If no item was completed yet, returns the first in-progress item, or the first item if none started.
+    /// - If all items are completed, restarts from the first item.
+    func nextPlayableItem(fromBeginning: Bool = false) -> BaseItemDto? {
+        guard !isEmpty else { return nil }
+        if fromBeginning {
+            return first
+        }
+
+        func isCompleted(_ item: BaseItemDto) -> Bool {
+            if item.userData?.isPlayed == true { return true }
+            if item.type == .series, let unplayed = item.userData?.unplayedItemCount, unplayed == 0 { return true }
+            if let percent = item.userData?.playedPercentage, percent >= 85.0 { return true }
+            return false
+        }
+
+        func isInProgress(_ item: BaseItemDto) -> Bool {
+            guard !isCompleted(item) else { return false }
+            if let percent = item.userData?.playedPercentage, percent > 0 { return true }
+            if let ticks = item.userData?.playbackPositionTicks, ticks > 0 { return true }
+            return false
+        }
+
+        let lastCompletedIndex = lastIndex(where: { isCompleted($0) })
+
+        if let lastCompletedIndex {
+            let remaining = self[(lastCompletedIndex + 1)...]
+            if !remaining.isEmpty {
+                if let inProgressItem = remaining.first(where: { isInProgress($0) }) {
+                    return inProgressItem
+                }
+                return remaining.first
+            } else {
+                // All items completed
+                return first
+            }
+        }
+
+        if let inProgressItem = first(where: { isInProgress($0) }) {
+            return inProgressItem
+        }
+
+        return first
     }
 }

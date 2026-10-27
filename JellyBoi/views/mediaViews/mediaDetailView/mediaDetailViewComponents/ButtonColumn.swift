@@ -14,17 +14,20 @@ extension MediaDetailView {
     var buttonColumn: some View {
         VStack(spacing: 12) {
             if detailVM.shouldShowOptionsButton(libraryViewModel: libraryViewModel) {
+                let isOptionsDisabled = detailVM.isOptionsDisabled(libraryViewModel: libraryViewModel)
                 Button {
                     showOptionsSheet = true
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.mainOpp)
+                        .foregroundStyle(Color.mainOpp.opacity(isOptionsDisabled ? 0.35 : 1.0))
                         .frame(width: 50, height: 50)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .disabled(isOptionsDisabled)
                 .glassEffect(.regular.interactive(), in: Circle())
+                .animation(.smooth(duration: 0.25), value: isOptionsDisabled)
             }
 
             GlassEffectContainer(spacing: 8) {
@@ -35,6 +38,7 @@ extension MediaDetailView {
                             .glassEffectUnion(id: "colBut", namespace: glassNamespace)
                             .transition(.scale(scale: 0.8).combined(with: .opacity))
                     }
+                    let isPlayDisabled = detailVM.isPlayDisabled(libraryViewModel: libraryViewModel)
                     Button {
                         detailVM.handlePlayTap(
                             playbackManager: playbackManager,
@@ -44,16 +48,18 @@ extension MediaDetailView {
                     } label: {
                         Image(systemName: "play.fill")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Color.main)
+                            .foregroundStyle(Color.main.opacity(isPlayDisabled ? 0.35 : 1.0))
                             .frame(width: 50, height: 50)
                     }
                     .buttonStyle(.plain)
+                    .disabled(isPlayDisabled)
                     .glassEffect(.regular.tint(.mainOpp.opacity(0.9)).interactive())
                     .glassEffectUnion(id: "colBut", namespace: glassNamespace)
                     .contentShape(.contextMenuPreview, Circle())
                     .contextMenu {
                         playbackMenuContent
                     }
+                    .animation(.smooth(duration: 0.25), value: isPlayDisabled)
                 }
             }
         }
@@ -99,6 +105,7 @@ extension MediaDetailView {
 
     @ViewBuilder
     private var playbackMenuContent: some View {
+        let isSeriesContainer = detailVM.displayItem?.type == .series
         Section {
             if detailVM.isInProgress {
                 Button {
@@ -113,35 +120,51 @@ extension MediaDetailView {
                 }
 
                 Button {
-                    detailVM.playMedia(
-                        fromBeginning: true,
-                        playbackManager: playbackManager,
-                        serverViewModel: serverViewModel,
-                        libraryViewModel: libraryViewModel
-                    )
+                    if isSeriesContainer {
+                        detailVM.seriesAlertAction = .startFromBeginning
+                    } else {
+                        detailVM.playMedia(
+                            fromBeginning: true,
+                            playbackManager: playbackManager,
+                            serverViewModel: serverViewModel,
+                            libraryViewModel: libraryViewModel
+                        )
+                    }
                 } label: {
                     Label("Start from beginning", systemImage: "arrow.counterclockwise")
                 }
 
                 Button(role: .destructive) {
-                    detailVM.resetProgress(serverViewModel: serverViewModel)
+                    if isSeriesContainer {
+                        detailVM.seriesAlertAction = .resetProgress
+                    } else {
+                        detailVM.resetProgress(serverViewModel: serverViewModel)
+                    }
                 } label: {
                     Label("Reset Progress", systemImage: "xmark.circle")
                 }
             } else if detailVM.isWatched {
                 Button {
-                    detailVM.playMedia(
-                        fromBeginning: true,
-                        playbackManager: playbackManager,
-                        serverViewModel: serverViewModel,
-                        libraryViewModel: libraryViewModel
-                    )
+                    if isSeriesContainer {
+                        detailVM.seriesAlertAction = .startFromBeginning
+                    } else {
+                        detailVM.playMedia(
+                            fromBeginning: true,
+                            playbackManager: playbackManager,
+                            serverViewModel: serverViewModel,
+                            libraryViewModel: libraryViewModel
+                        )
+                    }
                 } label: {
                     Label("Start from beginning", systemImage: "arrow.counterclockwise")
                 }
 
                 Button(role: .destructive) {
-                    detailVM.resetProgress(serverViewModel: serverViewModel)
+                    if isSeriesContainer {
+                        detailVM.seriesAlertAction = .resetProgress
+                    } else {
+                        detailVM.resetProgress(serverViewModel: serverViewModel)
+                    }
                 } label: {
                     Label("Reset Progress", systemImage: "xmark.circle")
                 }
@@ -158,7 +181,7 @@ extension MediaDetailView {
                 }
             }
         } header: {
-            if !detailVM.contextMenuTitle.isEmpty {
+            if !isSeriesContainer && !detailVM.contextMenuTitle.isEmpty {
                 Text(detailVM.contextMenuTitle)
             }
         }

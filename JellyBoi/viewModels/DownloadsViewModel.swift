@@ -37,12 +37,12 @@ final class DownloadsViewModel {
         seriesID: String? = nil,
         seriesName: String? = nil,
         onBack: (() -> Void)? = nil,
-        downloadManager: DownloadManager = .shared
+        downloadManager: DownloadManager? = nil
     ) {
         self.initialSeriesID = seriesID
         self.initialSeriesName = seriesName
         self.onBack = onBack
-        self.downloadManager = downloadManager
+        self.downloadManager = downloadManager ?? .shared
     }
 
     // MARK: - Active Overview Computations

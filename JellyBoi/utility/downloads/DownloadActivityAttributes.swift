@@ -8,7 +8,7 @@
 import Foundation
 import ActivityKit
 
-public struct DownloadActivityAttributes: ActivityAttributes {
+public nonisolated struct DownloadActivityAttributes: Sendable {
     public struct ContentState: Codable, Hashable, Sendable {
         public var title: String
         public var subtitle: String?
@@ -43,3 +43,5 @@ public struct DownloadActivityAttributes: ActivityAttributes {
         self.groupID = groupID
     }
 }
+
+nonisolated extension DownloadActivityAttributes: ActivityAttributes {}
