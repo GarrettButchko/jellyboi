@@ -26,9 +26,6 @@ struct SearchView: View {
     @State private var headerHeight: CGFloat = 120
 
     @Environment(\.horizontalSizeClass) private var sizeClass
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)]
-    }
 
     var body: some View {
         @Bindable var viewModel = viewModel
@@ -45,8 +42,14 @@ struct SearchView: View {
                     .onChange(of: viewModel.searchText) { _, _ in
                         withAnimation { proxy.scrollToTop() }
                     }
+                    .onChange(of: viewModel.showFavoritesOnly) { _, _ in
+                        if scrollOffset > 10 {
+                            withAnimation { proxy.scrollToTop() }
+                        }
+                    }
                 }
                 .animation(.smooth(duration: 0.25), value: viewModel.searchText.isEmpty)
+                .animation(.smooth(duration: 0.25), value: viewModel.showFavoritesOnly)
 
                 // Fixed collapsing header with search field + controls
                 TabPageHeader(title: "Search", scrollOffset: scrollOffset, headerHeight: $headerHeight) {
@@ -55,7 +58,9 @@ struct SearchView: View {
                             searchField
 
                             Button {
-                                viewModel.showFavoritesOnly.toggle()
+                                withAnimation(.smooth(duration: 0.25)) {
+                                    viewModel.showFavoritesOnly.toggle()
+                                }
                             } label: {
                                 Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
                                     .font(.system(size: 14, weight: .semibold))
@@ -132,11 +137,21 @@ struct SearchView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 40)
             } else if viewModel.genres.isEmpty {
-                EmptyStateView(
-                    icon: "film.stack",
-                    title: "No Media in Library",
-                    message: "Add movies or TV shows to your Jellyfin server to search and browse genres."
-                )
+                if viewModel.showFavoritesOnly {
+                    EmptyStateView(
+                        icon: "star",
+                        title: "No Favorites",
+                        message: "You haven't added any favorites yet."
+                    )
+                    .transition(.opacity)
+                } else {
+                    EmptyStateView(
+                        icon: "film.stack",
+                        title: "No Media in Library",
+                        message: "Add movies or TV shows to your Jellyfin server to search and browse genres."
+                    )
+                    .transition(.opacity)
+                }
             } else {
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)],
@@ -160,34 +175,25 @@ struct SearchView: View {
     private var searchResults: some View {
         Group {
             if viewModel.results.isEmpty {
-                EmptyStateView(
-                    icon: "magnifyingglass",
-                    title: "No Results",
-                    message: "No titles found matching \"\(viewModel.searchText)\"."
-                )
-                .transition(.opacity)
-            } else {
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(viewModel.results, id: \.id) { item in
-                        MediaCard(
-                            item: item,
-                            posterURL: serverViewModel.client.flatMap { c in
-                                // Episodes use the parent series poster (2:3 art) so cards
-                                // look consistent alongside movies and shows in the grid.
-                                item.type == .episode
-                                    ? libraryViewModel.seriesPosterURL(for: item, client: c)
-                                    : libraryViewModel.posterURL(for: item, client: c)
-                            },
-                            namespace: zoomTransition,
-                            onSelect: {
-                                selectedItem = item
-                            },
-                            imageAspectRatio: item.type == .episode ? (2.0 / 3.0) : nil
-                        )
-                    }
+                if viewModel.showFavoritesOnly {
+                    EmptyStateView(
+                        icon: "star",
+                        title: "No Favorite Results",
+                        message: "No favorite titles found matching \"\(viewModel.searchText)\"."
+                    )
+                    .transition(.opacity)
+                } else {
+                    EmptyStateView(
+                        icon: "magnifyingglass",
+                        title: "No Results",
+                        message: "No titles found matching \"\(viewModel.searchText)\"."
+                    )
+                    .transition(.opacity)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+            } else {
+                MediaGrid(items: viewModel.results, namespace: zoomTransition) { item in
+                    selectedItem = item
+                }
                 .transition(.opacity)
             }
         }

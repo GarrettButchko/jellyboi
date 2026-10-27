@@ -78,17 +78,10 @@ struct MediaResultsView: View {
         }
     }
 
-    @Environment(ServerViewModel.self) private var serverViewModel
-    @Environment(LibraryViewModel.self) private var libraryViewModel
     @Namespace private var zoomTransition
     @State private var selectedItem: BaseItemDto?
     @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 120
-
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
-    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -100,19 +93,9 @@ struct MediaResultsView: View {
                         message: emptyMessage
                     )
                 } else {
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(items, id: \.id) { item in
-                            MediaCard(
-                                item: item,
-                                posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
-                                namespace: zoomTransition
-                            ) {
-                                selectedItem = item
-                            }
-                        }
+                    MediaGrid(items: items, namespace: zoomTransition) { item in
+                        selectedItem = item
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
                     .transition(.opacity)
                 }
             }

@@ -14,11 +14,6 @@ struct MediaView: View {
     @State private var selectedItem: BaseItemDto?
     @Namespace private var zoomTransition
 
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
-    }
-
     private var pageTitle: String {
         if viewModel.showDownloadsOnly {
             return "Downloads"
@@ -301,35 +296,9 @@ struct MediaView: View {
     // MARK: - Reusable Components
 
     private func mediaGrid(for items: [BaseItemDto]) -> some View {
-        LazyVGrid(columns: columns, spacing: 16) {
-            ForEach(items, id: \.id) { item in
-                mediaCard(for: item)
-            }
+        MediaGrid(items: items, namespace: zoomTransition) { item in
+            selectedItem = item
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
-    }
-
-    private func mediaCard(for item: BaseItemDto) -> some View {
-        MediaCard(
-            item: item,
-            posterURL: serverViewModel.client.flatMap { client in
-                posterURL(for: item, client: client)
-            },
-            namespace: zoomTransition,
-            onSelect: {
-                selectedItem = item
-            },
-            imageAspectRatio: item.type == .episode ? (2.0 / 3.0) : nil
-        )
-    }
-
-    private func posterURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
-        if item.type == .episode {
-            return libraryViewModel.seriesPosterURL(for: item, client: client)
-                ?? libraryViewModel.posterURL(for: item, client: client)
-        }
-        return libraryViewModel.posterURL(for: item, client: client)
     }
 
     private func favoriteSection(title: String, items: [BaseItemDto]) -> some View {
