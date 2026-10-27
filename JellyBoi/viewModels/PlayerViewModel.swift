@@ -19,25 +19,38 @@ import SDWebImage
 @MainActor
 final class PlayerViewModel: Identifiable {
 
-    let request: PlaybackManager.PlaybackRequest
+    let id: String = UUID().uuidString
+    private(set) var request: PlaybackManager.PlaybackRequest
     let client: JellyfinClient?
     let userID: String?
     weak var libraryViewModel: LibraryViewModel?
 
-    var id: String { request.id }
+    var queue: [BaseItemDto] = []
+    var currentIndex: Int = 0
 
     var player: AVPlayer?
     var isLoading: Bool = true
     var errorMessage: String? = nil
     var isPlaying: Bool = false
 
+    var showUpNextOverlay: Bool = false
+    var upNextSecondsRemaining: Int = 0
+    var upNextProgressFraction: Double = 0.0
+    var areControlsVisible: Bool = true
+
     private(set) var currentPositionTicks: Int = 0
+    private(set) var initialResumeTicks: Int = 0
     private(set) var durationTicks: Int = 0
     private(set) var playSessionID: String?
     private(set) var mediaSourceID: String?
     private(set) var mediaSource: MediaSourceInfo?
     private(set) var maxBitrate: Int?
     private(set) var videoNaturalSize: CGSize?
+
+    private var isPreloadingNext: Bool = false
+    private var isSwitchingToNext: Bool = false
+    private var isAutoPlayDismissedForCurrentItem: Bool = false
+    private var preloadedMedia: PreparedMedia?
 
     private var timeObserverToken: Any?
     private var endObserver: NSObjectProtocol?
@@ -51,24 +64,47 @@ final class PlayerViewModel: Identifiable {
     private var hasAppliedInitialSeek: Bool = false
     private var currentPlayMethod: PlayMethod = .directStream
 
+    private struct PreparedMedia {
+        let request: PlaybackManager.PlaybackRequest
+        let playerItem: AVPlayerItem
+        let mediaSource: MediaSourceInfo?
+        let mediaSourceID: String?
+        let playSessionID: String?
+        let playMethod: PlayMethod
+        let artworkImage: UIImage?
+        let videoNaturalSize: CGSize?
+    }
+
     init(
         request: PlaybackManager.PlaybackRequest,
         client: JellyfinClient?,
         userID: String?,
-        libraryViewModel: LibraryViewModel?
+        libraryViewModel: LibraryViewModel?,
+        queue: [BaseItemDto] = [],
+        initialQueueIndex: Int = 0
     ) {
         self.request = request
         self.client = client
         self.userID = userID
         self.libraryViewModel = libraryViewModel
+        self.queue = queue
+        self.currentIndex = initialQueueIndex
         self.durationTicks = request.item.runTimeTicks.map { Int($0) } ?? 0
         self.mediaSourceID = request.mediaSourceID
         self.maxBitrate = request.maxBitrate
-        AppLogger.info("Initialized PlayerViewModel for '\(request.item.name ?? "Unknown")' (ID: \(request.item.id ?? "nil"))", tag: "Player")
+        let resume = request.startFromBeginning ? 0 : request.item.resumePlaybackTicks
+        self.initialResumeTicks = resume
+        self.currentPositionTicks = resume
+        AppLogger.info("Initialized PlayerViewModel for '\(request.item.name ?? "Unknown")' (ID: \(request.item.id ?? "nil"), resumeTicks: \(resume)) [Queue: \(queue.count) items, index: \(initialQueueIndex)]", tag: "Player")
     }
 
     var item: BaseItemDto {
         request.item
+    }
+
+    var nextItem: BaseItemDto? {
+        guard currentIndex + 1 < queue.count else { return nil }
+        return queue[currentIndex + 1]
     }
 
     var title: String {
@@ -126,7 +162,6 @@ final class PlayerViewModel: Identifiable {
         return nil
     }
 
-    /// Device profile representing Apple's AVPlayer capabilities (MP4/MOV direct play, HLS transcoding for MKV/etc.)
     private static var appleDeviceProfile: DeviceProfile {
         DeviceProfile(
             directPlayProfiles: [
@@ -230,8 +265,51 @@ final class PlayerViewModel: Identifiable {
         return "MediaBrowser \(fields)"
     }
 
-    /// Prepares playback asynchronously in the background.
-    /// Returns true when the player item is readyToPlay, or false if preparation/stream loading failed.
+    private func resolveQueueIfNeeded() async {
+        guard queue.isEmpty, let client else { return }
+        if item.type == .episode, let seriesID = item.seriesID {
+            AppLogger.info("Resolving queue for series '\(item.seriesName ?? seriesID)'", tag: "Player")
+            let cached = (libraryViewModel?.episodes ?? [])
+                .filter { $0.seriesID == seriesID }
+                .sorted { a, b in
+                    let sA = a.parentIndexNumber ?? 1
+                    let sB = b.parentIndexNumber ?? 1
+                    if sA != sB { return sA < sB }
+                    return (a.indexNumber ?? 1) < (b.indexNumber ?? 1)
+                }
+
+            if !cached.isEmpty {
+                self.queue = cached
+                if let idx = cached.firstIndex(where: { $0.id == item.id }) {
+                    self.currentIndex = idx
+                }
+                return
+            }
+
+            if let result = try? await client.send(
+                Paths.getEpisodes(
+                    seriesID: seriesID,
+                    parameters: .init(
+                        userID: userID,
+                        fields: [.primaryImageAspectRatio, .mediaSources, .mediaStreams],
+                        enableUserData: true
+                    )
+                )
+            ).value.items {
+                let sorted = result.sorted { a, b in
+                    let sA = a.parentIndexNumber ?? 1
+                    let sB = b.parentIndexNumber ?? 1
+                    if sA != sB { return sA < sB }
+                    return (a.indexNumber ?? 1) < (b.indexNumber ?? 1)
+                }
+                self.queue = sorted
+                if let idx = sorted.firstIndex(where: { $0.id == item.id }) {
+                    self.currentIndex = idx
+                }
+            }
+        }
+    }
+
     func prepare() async -> Bool {
         guard !isCleanedUp else {
             AppLogger.warning("Aborted player preparation: already cleaned up", tag: "Player")
@@ -242,7 +320,6 @@ final class PlayerViewModel: Identifiable {
         hasAppliedInitialSeek = false
         AppLogger.info("Starting player preparation for '\(title)'", tag: "Player")
 
-        // Configure audio session immediately before preparing player
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo)
             try await activateAudioSession()
@@ -257,40 +334,139 @@ final class PlayerViewModel: Identifiable {
             }
         }
 
-        guard let itemID = item.id else {
-            errorMessage = "Invalid media item."
+        await resolveQueueIfNeeded()
+
+        guard let prepared = await prepareMediaItem(for: request) else {
             isLoading = false
-            AppLogger.error("Failed to start playback: Item ID is nil", tag: "Player")
             return false
         }
 
-        let resumeTicks = request.startFromBeginning ? 0 : (item.userData?.playbackPositionTicks ?? 0)
-        self.currentPositionTicks = resumeTicks
+        self.mediaSource = prepared.mediaSource
+        self.mediaSourceID = prepared.mediaSourceID
+        self.playSessionID = prepared.playSessionID
+        self.currentPlayMethod = prepared.playMethod
+        self.loadedArtworkImage = prepared.artworkImage
+        self.videoNaturalSize = prepared.videoNaturalSize
 
+        let avPlayer = AVPlayer(playerItem: prepared.playerItem)
+        avPlayer.allowsExternalPlayback = true
+        avPlayer.usesExternalPlaybackWhileExternalScreenIsActive = true
+        self.player = avPlayer
+
+        startAsyncArtworkFetchIfNeeded()
+
+        var lastNonZeroVolume: Float = 1.0
+        muteObserver = avPlayer.observe(\.isMuted, options: [.new]) { player, _ in
+            if player.isMuted {
+                if player.volume > 0.0 {
+                    lastNonZeroVolume = player.volume
+                }
+                player.isMuted = false
+                player.volume = lastNonZeroVolume > 0.0 ? lastNonZeroVolume : 1.0
+            }
+        }
+
+        timeObserverToken = avPlayer.addPeriodicTimeObserver(
+            forInterval: CMTime(value: 1, timescale: 4),
+            queue: .main
+        ) { [weak self] time in
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                let seconds = CMTimeGetSeconds(time)
+                if seconds.isFinite && seconds >= 0 {
+                    if self.hasAppliedInitialSeek || self.initialResumeTicks == 0 {
+                        self.currentPositionTicks = Int(seconds * 10_000_000.0)
+                    }
+                }
+                if let dur = avPlayer.currentItem?.duration {
+                    let durationSec = CMTimeGetSeconds(dur)
+                    if durationSec.isFinite && durationSec > 0 {
+                        self.durationTicks = Int(durationSec * 10_000_000.0)
+                        if !self.hasAppliedInitialSeek && self.initialResumeTicks == 0 && !self.request.startFromBeginning {
+                            if let percent = self.request.item.userData?.playedPercentage, percent > 0 {
+                                let calculated = Int((Double(self.durationTicks) * percent) / 100.0)
+                                self.initialResumeTicks = calculated
+                                self.currentPositionTicks = calculated
+                            }
+                        }
+                    }
+                }
+                self.checkUpNextTrigger(currentSeconds: seconds)
+            }
+        }
+
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: prepared.playerItem,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                AppLogger.info("Playback reached end of media item", tag: "Player")
+                self?.handlePlaybackFinished()
+            }
+        }
+
+        let isReady = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                await self.waitForReadiness(playerItem: prepared.playerItem)
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(30))
+                return false
+            }
+            let firstResult = await group.next() ?? false
+            group.cancelAll()
+            return firstResult
+        }
+
+        if !isReady && errorMessage == nil {
+            errorMessage = "Playback connection timed out. Please try again."
+        }
+        return isReady
+    }
+
+    private func prepareMediaItem(for req: PlaybackManager.PlaybackRequest) async -> PreparedMedia? {
+        guard let itemID = req.item.id else {
+            errorMessage = "Invalid media item."
+            AppLogger.error("Failed to prepare playback: Item ID is nil", tag: "Player")
+            return nil
+        }
+
+        let resumeTicks: Int = {
+            if req.startFromBeginning { return 0 }
+            if initialResumeTicks > 0 { return initialResumeTicks }
+            return req.item.resumePlaybackTicks
+        }()
+        if initialResumeTicks == 0 && resumeTicks > 0 {
+            self.initialResumeTicks = resumeTicks
+            self.currentPositionTicks = resumeTicks
+        }
         var preparedItem: AVPlayerItem?
         var usedLocal = false
+        var resolvedPlayMethod: PlayMethod = .directStream
+        var sessionID: String?
+        var selectedSource: MediaSourceInfo?
+        var natSize: CGSize?
 
-        let isLocalPlayable = request.localFileURL.map { url in
+        let isLocalPlayable = req.localFileURL.map { url in
             let ext = url.pathExtension.lowercased()
             return ["mp4", "m4v", "mov"].contains(ext)
         } ?? false
 
-        if let localURL = request.localFileURL, isLocalPlayable {
+        if let localURL = req.localFileURL, isLocalPlayable {
             let asset = AVURLAsset(url: localURL)
             let isPlayable = (try? await asset.load(.isPlayable)) ?? false
             if isPlayable {
                 AppLogger.info("Preparing local file playback from: \(localURL.path)", tag: "Player")
-                let item = AVPlayerItem(asset: asset)
+                let pItem = AVPlayerItem(asset: asset)
 
-                // Aspect ratio normalization for anamorphic or non-standard local media
                 if let tracks = try? await asset.loadTracks(withMediaType: .video),
                    let videoTrack = tracks.first,
                    let naturalSize = try? await videoTrack.load(.naturalSize),
                    naturalSize.width > 0, naturalSize.height > 0 {
-                    self.videoNaturalSize = naturalSize
+                    natSize = naturalSize
                     let trackDAR = naturalSize.width / naturalSize.height
                     if let targetDAR = self.targetAspectRatio, abs(trackDAR - targetDAR) / targetDAR > 0.02 {
-                        AppLogger.info("Applying aspect ratio correction for local playback: track \(naturalSize.width)x\(naturalSize.height) (\(String(format: "%.2f", trackDAR))) -> target ratio \(String(format: "%.2f", targetDAR))", tag: "Player")
                         let preferredTransform = (try? await videoTrack.load(.preferredTransform)) ?? .identity
                         let renderWidth = naturalSize.height * targetDAR
                         let renderHeight = naturalSize.height
@@ -314,12 +490,12 @@ final class PlayerViewModel: Identifiable {
                         compositionConfig.frameDuration = CMTime(value: 1, timescale: fps)
 
                         let composition = AVVideoComposition(configuration: compositionConfig)
-                        item.videoComposition = composition
+                        pItem.videoComposition = composition
                     }
                 }
 
-                preparedItem = item
-                currentPlayMethod = .directPlay
+                preparedItem = pItem
+                resolvedPlayMethod = .directPlay
                 usedLocal = true
             } else {
                 AppLogger.warning("Local file at \(localURL.path) cannot be opened by AVPlayer. Falling back to server stream.", tag: "Player")
@@ -327,26 +503,24 @@ final class PlayerViewModel: Identifiable {
         }
 
         if !usedLocal, let client {
-            if let localURL = request.localFileURL {
+            if let localURL = req.localFileURL {
                 AppLogger.warning("Downloaded file at '\(localURL.path)' is not playable natively offline. Streaming from server instead.", tag: "Player")
             }
             var streamURL: URL?
-            var selectedMediaSource: MediaSourceInfo?
 
-            AppLogger.debug("Requesting playback info with Apple DeviceProfile for item \(itemID)", tag: "Player")
-            let targetBitrate: Int? = request.maxBitrate
-            let allowDirect = request.maxBitrate == nil
-            let subIndex = request.subtitleStreamIndex
+            let targetBitrate: Int? = req.maxBitrate
+            let allowDirect = req.maxBitrate == nil
+            let subIndex = req.subtitleStreamIndex
             let playbackDto = PlaybackInfoDto(
                 allowAudioStreamCopy: true,
                 allowVideoStreamCopy: allowDirect,
-                audioStreamIndex: request.audioStreamIndex,
+                audioStreamIndex: req.audioStreamIndex,
                 deviceProfile: Self.appleDeviceProfile,
                 enableDirectPlay: allowDirect,
                 enableDirectStream: allowDirect,
                 enableTranscoding: true,
                 maxStreamingBitrate: targetBitrate,
-                mediaSourceID: request.mediaSourceID,
+                mediaSourceID: req.mediaSourceID,
                 startTimeTicks: resumeTicks,
                 subtitleStreamIndex: subIndex,
                 userID: userID
@@ -360,22 +534,17 @@ final class PlayerViewModel: Identifiable {
                         playbackDto
                     )
                 ).value
-                self.playSessionID = playbackInfo.playSessionID
-                AppLogger.debug("Received playback info. Session ID: \(playbackInfo.playSessionID ?? "nil")", tag: "Player")
+                sessionID = playbackInfo.playSessionID
 
-                let matchingSource = playbackInfo.mediaSources?.first(where: { $0.id == request.mediaSourceID })
+                let matchingSource = playbackInfo.mediaSources?.first(where: { $0.id == req.mediaSourceID })
                     ?? playbackInfo.mediaSources?.first
 
                 if let first = matchingSource {
-                    selectedMediaSource = first
-                    self.mediaSource = first
-                    self.mediaSourceID = first.id
-                    AppLogger.debug("Media source container: \(first.container ?? "unknown"), directPlay: \(first.isSupportsDirectPlay ?? false), directStream: \(first.isSupportsDirectStream ?? false), transcoding: \(first.isSupportsTranscoding ?? false)", tag: "Player")
-
+                    selectedSource = first
                     if let transURL = first.transcodingURL, !transURL.isEmpty {
-                        currentPlayMethod = (request.maxBitrate != nil) ? .transcode : ((first.isSupportsDirectStream == true && first.isSupportsTranscoding != true) ? .directStream : .transcode)
+                        resolvedPlayMethod = (req.maxBitrate != nil) ? .transcode : ((first.isSupportsDirectStream == true && first.isSupportsTranscoding != true) ? .directStream : .transcode)
                         var fullTransURL = transURL
-                        if let maxBitrate = request.maxBitrate, !fullTransURL.contains("MaxStreamingBitrate=") {
+                        if let maxBitrate = req.maxBitrate, !fullTransURL.contains("MaxStreamingBitrate=") {
                             let sep = fullTransURL.contains("?") ? "&" : "?"
                             fullTransURL += "\(sep)VideoBitRate=\(maxBitrate)&MaxStreamingBitrate=\(maxBitrate)"
                         }
@@ -387,41 +556,40 @@ final class PlayerViewModel: Identifiable {
                 AppLogger.warning("Failed to get posted playback info: \(error.localizedDescription)", tag: "Player")
             }
 
-            // Fallback if no server transcoding URL was returned
             if streamURL == nil {
-                let container = selectedMediaSource?.container?.lowercased() ?? ""
+                let container = selectedSource?.container?.lowercased() ?? ""
                 let isAppleNativeContainer = ["mp4", "m4v", "mov"].contains(container)
-                let hasCustomStreams = request.audioStreamIndex != nil || (request.subtitleStreamIndex != nil && request.subtitleStreamIndex! >= 0) || request.maxBitrate != nil
-                let canDirectPlay = selectedMediaSource?.isSupportsDirectPlay == true && isAppleNativeContainer && !hasCustomStreams
+                let hasCustomStreams = req.audioStreamIndex != nil || (req.subtitleStreamIndex != nil && req.subtitleStreamIndex! >= 0) || req.maxBitrate != nil
+                let canDirectPlay = selectedSource?.isSupportsDirectPlay == true && isAppleNativeContainer && !hasCustomStreams
 
                 if canDirectPlay {
-                    currentPlayMethod = .directPlay
+                    resolvedPlayMethod = .directPlay
                     AppLogger.info("Media container is '\(container)'; using direct static stream", tag: "Player")
                     streamURL = client.url(
                         with: Paths.getVideoStream(
                             itemID: itemID,
                             parameters: .init(
                                 isStatic: true,
-                                playSessionID: self.playSessionID,
-                                mediaSourceID: selectedMediaSource?.id
+                                playSessionID: sessionID,
+                                mediaSourceID: selectedSource?.id
                             )
                         ),
                         queryAPIKey: true
                     )
                 } else {
-                    currentPlayMethod = (request.maxBitrate != nil) ? .transcode : .directStream
+                    resolvedPlayMethod = (req.maxBitrate != nil) ? .transcode : .directStream
                     AppLogger.info("Container '\(container)' requires HLS remuxing/transcoding for AVPlayer; requesting master.m3u8", tag: "Player")
-                    let sourceID = selectedMediaSource?.id ?? request.mediaSourceID ?? itemID
-                    let sessionID = self.playSessionID ?? UUID().uuidString
-                    self.playSessionID = sessionID
-                    var hlsPath = "/Videos/\(itemID)/master.m3u8?MediaSourceId=\(sourceID)&PlaySessionId=\(sessionID)&VideoCodec=h264,hevc&AudioCodec=aac,mp3,ac3,eac3&TranscodingMaxAudioChannels=6&SegmentContainer=mp4&MinSegments=1&BreakOnNonKeyFrames=True&StartTimeTicks=\(resumeTicks)"
-                    if let audioIndex = request.audioStreamIndex {
+                    let sourceID = selectedSource?.id ?? req.mediaSourceID ?? itemID
+                    let sid = sessionID ?? UUID().uuidString
+                    sessionID = sid
+                    var hlsPath = "/Videos/\(itemID)/master.m3u8?MediaSourceId=\(sourceID)&PlaySessionId=\(sid)&VideoCodec=h264,hevc&AudioCodec=aac,mp3,ac3,eac3&TranscodingMaxAudioChannels=6&SegmentContainer=mp4&MinSegments=1&BreakOnNonKeyFrames=True&StartTimeTicks=\(resumeTicks)"
+                    if let audioIndex = req.audioStreamIndex {
                         hlsPath += "&AudioStreamIndex=\(audioIndex)"
                     }
-                    if let subtitleIndex = request.subtitleStreamIndex {
+                    if let subtitleIndex = req.subtitleStreamIndex {
                         hlsPath += "&SubtitleStreamIndex=\(subtitleIndex)"
                     }
-                    if let maxBitrate = request.maxBitrate {
+                    if let maxBitrate = req.maxBitrate {
                         hlsPath += "&VideoBitRate=\(maxBitrate)&MaxStreamingBitrate=\(maxBitrate)"
                     }
                     streamURL = resolveServerURL(path: hlsPath, client: client)
@@ -429,14 +597,11 @@ final class PlayerViewModel: Identifiable {
             }
 
             guard var url = streamURL else {
-                let err = "Unable to construct stream URL."
-                errorMessage = err
-                isLoading = false
+                errorMessage = "Unable to construct stream URL."
                 AppLogger.error("Failed to construct stream URL for item \(itemID)", tag: "Player")
-                return false
+                return nil
             }
 
-            // Ensure api_key is present on the stream URL so AVPlayer HLS sub-segment requests authenticate
             if let token = client.configuration.accessToken,
                var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
                 var queryItems = components.queryItems ?? []
@@ -450,7 +615,6 @@ final class PlayerViewModel: Identifiable {
             }
 
             AppLogger.info("Resolved streaming URL: \(url.absoluteString)", tag: "Player")
-
             var headers: [String: String] = [
                 "Authorization": authorizationHeader(for: client)
             ]
@@ -458,37 +622,75 @@ final class PlayerViewModel: Identifiable {
                 headers["X-Emby-Token"] = token
             }
 
-            AppLogger.debug("Creating AVURLAsset with authentication headers", tag: "Player")
             let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
             preparedItem = AVPlayerItem(asset: asset)
         } else if !usedLocal {
-            if let localURL = request.localFileURL, !isLocalPlayable {
+            if let localURL = req.localFileURL, !isLocalPlayable {
                 errorMessage = "This video is downloaded in .\(localURL.pathExtension.uppercased()) format, which iOS cannot play offline. Please connect to your server to stream or re-download as MP4."
-            } else if request.localFileURL != nil {
+            } else if req.localFileURL != nil {
                 errorMessage = "The downloaded file could not be opened and server connection is unavailable."
             } else {
                 errorMessage = "Server connection is unavailable."
             }
-            isLoading = false
             AppLogger.error("Failed to start playback: \(errorMessage ?? "")", tag: "Player")
-            return false
+            return nil
         }
 
         guard let playerItem = preparedItem else {
             errorMessage = "Failed to initialize player item."
-            isLoading = false
-            return false
+            return nil
         }
 
-        // Configure external metadata for lock screen & AirPlay
+        let artwork = await loadArtwork(for: req.item)
+        let meta = createMetadata(for: req.item, artworkData: artwork?.0)
+        playerItem.externalMetadata = meta
+
+        return PreparedMedia(
+            request: req,
+            playerItem: playerItem,
+            mediaSource: selectedSource,
+            mediaSourceID: selectedSource?.id,
+            playSessionID: sessionID,
+            playMethod: resolvedPlayMethod,
+            artworkImage: artwork?.1,
+            videoNaturalSize: natSize
+        )
+    }
+
+    private func createMetadata(for targetItem: BaseItemDto, artworkData: Data?) -> [AVMetadataItem] {
         var meta: [AVMetadataItem] = []
+
+        let titleText: String = {
+            if targetItem.type == .episode {
+                var parts: [String] = []
+                if let season = targetItem.parentIndexNumber, let episode = targetItem.indexNumber {
+                    parts.append("S\(season):E\(episode)")
+                }
+                if let name = targetItem.name, !name.isEmpty {
+                    parts.append(name)
+                }
+                return parts.isEmpty ? (targetItem.name ?? "Episode") : parts.joined(separator: " - ")
+            }
+            return targetItem.name ?? "Video"
+        }()
+
         let titleItem = AVMutableMetadataItem()
         titleItem.identifier = .commonIdentifierTitle
-        titleItem.value = title as (NSCopying & NSObjectProtocol)
+        titleItem.value = titleText as (NSCopying & NSObjectProtocol)
         titleItem.extendedLanguageTag = "und"
         meta.append(titleItem)
 
-        if let sub = subtitle {
+        let subtitleText: String? = {
+            if targetItem.type == .episode {
+                return targetItem.seriesName
+            }
+            if let year = targetItem.productionYear {
+                return String(year)
+            }
+            return nil
+        }()
+
+        if let sub = subtitleText {
             let artistItem = AVMutableMetadataItem()
             artistItem.identifier = .commonIdentifierArtist
             artistItem.value = sub as (NSCopying & NSObjectProtocol)
@@ -502,7 +704,7 @@ final class PlayerViewModel: Identifiable {
             meta.append(trackSubTitleItem)
         }
 
-        if let overview = request.item.overview, !overview.isEmpty {
+        if let overview = targetItem.overview, !overview.isEmpty {
             let descItem = AVMutableMetadataItem()
             descItem.identifier = .commonIdentifierDescription
             descItem.value = overview as (NSCopying & NSObjectProtocol)
@@ -510,7 +712,7 @@ final class PlayerViewModel: Identifiable {
             meta.append(descItem)
         }
 
-        if let genres = request.item.genres, !genres.isEmpty {
+        if let genres = targetItem.genres, !genres.isEmpty {
             let genreItem = AVMutableMetadataItem()
             genreItem.identifier = .quickTimeMetadataGenre
             genreItem.value = genres.joined(separator: ", ") as (NSCopying & NSObjectProtocol)
@@ -518,7 +720,7 @@ final class PlayerViewModel: Identifiable {
             meta.append(genreItem)
         }
 
-        if let rating = request.item.officialRating, !rating.isEmpty {
+        if let rating = targetItem.officialRating, !rating.isEmpty {
             let ratingItem = AVMutableMetadataItem()
             ratingItem.identifier = .iTunesMetadataContentRating
             ratingItem.value = rating as (NSCopying & NSObjectProtocol)
@@ -526,65 +728,161 @@ final class PlayerViewModel: Identifiable {
             meta.append(ratingItem)
         }
 
-        // Load cached artwork or fetch immediately
-        if let (artworkData, artworkImage) = await loadArtwork() {
+        if let artworkData {
             let artworkItem = AVMutableMetadataItem()
             artworkItem.identifier = .commonIdentifierArtwork
             artworkItem.dataType = kCMMetadataBaseDataType_JPEG as String
             artworkItem.value = artworkData as (NSCopying & NSObjectProtocol)
             artworkItem.extendedLanguageTag = "und"
             meta.append(artworkItem)
-            self.loadedArtworkImage = artworkImage
-            updateNowPlayingInfo(with: artworkImage)
         }
 
-        playerItem.externalMetadata = meta
+        return meta
+    }
 
-        let avPlayer = AVPlayer(playerItem: playerItem)
-        avPlayer.allowsExternalPlayback = true
-        avPlayer.usesExternalPlaybackWhileExternalScreenIsActive = true
-        self.player = avPlayer
+    // MARK: - Up Next & In-Place Progression
 
-        // Start background artwork fetch if artwork was not yet available in cache
-        startAsyncArtworkFetchIfNeeded()
+    private func checkUpNextTrigger(currentSeconds: Double) {
+        guard let dur = player?.currentItem?.duration else { return }
+        let durationSec = CMTimeGetSeconds(dur)
+        guard durationSec.isFinite && durationSec > 60 else { return }
 
-        // Observe mute status to ensure CoreAudio/Simulator volume stays in sync
-        var lastNonZeroVolume: Float = 1.0
-        muteObserver = avPlayer.observe(\.isMuted, options: [.new]) { player, _ in
-            if player.isMuted {
-                if player.volume > 0.0 {
-                    lastNonZeroVolume = player.volume
-                    player.volume = 0.0
-                }
-            } else {
-                player.volume = lastNonZeroVolume > 0.0 ? lastNonZeroVolume : 1.0
+        let remainingSec = durationSec - currentSeconds
+
+        guard nextItem != nil else {
+            if showUpNextOverlay {
+                showUpNextOverlay = false
+        upNextSecondsRemaining = 0
+        upNextProgressFraction = 0.0
             }
+            return
         }
 
-        // Observe playback time
-        timeObserverToken = avPlayer.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 1, preferredTimescale: 1),
-            queue: .main
-        ) { [weak self] time in
-            guard let self else { return }
-            MainActor.assumeIsolated {
-                let seconds = CMTimeGetSeconds(time)
-                if seconds.isFinite && seconds >= 0 {
-                    self.currentPositionTicks = Int(seconds * 10_000_000.0)
-                }
-                if let dur = avPlayer.currentItem?.duration {
-                    let durationSec = CMTimeGetSeconds(dur)
-                    if durationSec.isFinite && durationSec > 0 {
-                        self.durationTicks = Int(durationSec * 10_000_000.0)
-                    }
+        if remainingSec <= 30 && remainingSec >= 0 {
+            upNextSecondsRemaining = max(0, Int(round(remainingSec)))
+            upNextProgressFraction = max(0.0, min(1.0, (30.0 - remainingSec) / 30.0))
+
+            if !isAutoPlayDismissedForCurrentItem && !showUpNextOverlay {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+                    showUpNextOverlay = true
                 }
             }
+
+            if preloadedMedia == nil && !isPreloadingNext {
+                Task {
+                    await preloadNextMedia()
+                }
+            }
+        } else {
+            if showUpNextOverlay {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showUpNextOverlay = false
+                }
+            }
+        }
+    }
+
+    func dismissUpNextOverlay() {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            showUpNextOverlay = false
+            upNextSecondsRemaining = 0
+            upNextProgressFraction = 0.0
+        }
+        isAutoPlayDismissedForCurrentItem = true
+    }
+
+    private func preloadNextMedia() async {
+        guard let next = nextItem, !isPreloadingNext, preloadedMedia == nil else { return }
+        isPreloadingNext = true
+        defer { isPreloadingNext = false }
+
+        AppLogger.info("Preloading next media item: '\(next.name ?? "Unknown")'", tag: "Player")
+
+        let resolvedLocalURL: URL? = {
+            #if DEBUG
+            if DebugSettings.shared.forceStreamFallback { return nil }
+            #endif
+            guard let id = next.id, DownloadManager.shared.isLocallyPlayable(id: id) else { return nil }
+            return DownloadManager.shared.localFileURL(for: id)
+        }()
+
+        let nextReq = PlaybackManager.PlaybackRequest(
+            item: next,
+            startFromBeginning: true,
+            localFileURL: resolvedLocalURL
+        )
+
+        if let prepared = await prepareMediaItem(for: nextReq) {
+            self.preloadedMedia = prepared
+            AppLogger.success("Successfully preloaded next item: '\(next.name ?? "Unknown")'", tag: "Player")
+        }
+    }
+
+    func playNextItem() async {
+        guard let next = nextItem, !isSwitchingToNext else { return }
+        isSwitchingToNext = true
+        defer { isSwitchingToNext = false }
+
+        AppLogger.info("Transitioning to next item: '\(next.name ?? "Unknown")'", tag: "Player")
+
+        handlePlaybackFinished(isSwitchingToNext: true)
+
+        withAnimation(.easeInOut(duration: 0.25)) {
+            showUpNextOverlay = false
+        }
+        isAutoPlayDismissedForCurrentItem = false
+
+        let mediaToPlay: PreparedMedia
+        if let preloaded = preloadedMedia, preloaded.request.item.id == next.id {
+            mediaToPlay = preloaded
+            preloadedMedia = nil
+            AppLogger.info("Using preloaded player item for '\(next.name ?? "Unknown")'", tag: "Player")
+        } else {
+            isLoading = true
+            let resolvedLocalURL: URL? = {
+                #if DEBUG
+                if DebugSettings.shared.forceStreamFallback { return nil }
+                #endif
+                guard let id = next.id, DownloadManager.shared.isLocallyPlayable(id: id) else { return nil }
+                return DownloadManager.shared.localFileURL(for: id)
+            }()
+            let nextReq = PlaybackManager.PlaybackRequest(
+                item: next,
+                startFromBeginning: true,
+                localFileURL: resolvedLocalURL
+            )
+            guard let newlyPrepared = await prepareMediaItem(for: nextReq) else {
+                isLoading = false
+                AppLogger.error("Failed to prepare next item for playback", tag: "Player")
+                return
+            }
+            mediaToPlay = newlyPrepared
+            isLoading = false
         }
 
-        // Observe end of media
+        self.request = mediaToPlay.request
+        self.durationTicks = mediaToPlay.request.item.runTimeTicks.map { Int($0) } ?? 0
+        let nextResume = mediaToPlay.request.startFromBeginning ? 0 : mediaToPlay.request.item.resumePlaybackTicks
+        self.initialResumeTicks = nextResume
+        self.currentPositionTicks = nextResume
+        self.mediaSource = mediaToPlay.mediaSource
+        self.mediaSourceID = mediaToPlay.mediaSourceID
+        self.playSessionID = mediaToPlay.playSessionID
+        self.currentPlayMethod = mediaToPlay.playMethod
+        self.loadedArtworkImage = mediaToPlay.artworkImage
+        self.videoNaturalSize = mediaToPlay.videoNaturalSize
+        self.hasReportedStart = false
+        self.hasAppliedInitialSeek = false
+        self.currentIndex += 1
+
+        player?.replaceCurrentItem(with: mediaToPlay.playerItem)
+
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
-            object: playerItem,
+            object: mediaToPlay.playerItem,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -593,24 +891,32 @@ final class PlayerViewModel: Identifiable {
             }
         }
 
-        // Wait for player readiness or failure (with a 30s timeout)
-        let isReady = await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                await self.waitForReadiness(playerItem: playerItem)
-            }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(30))
-                return false
-            }
-            let firstResult = await group.next() ?? false
-            group.cancelAll()
-            return firstResult
+        if let img = loadedArtworkImage {
+            updateNowPlayingInfo(with: img)
         }
 
-        if !isReady && errorMessage == nil {
-            errorMessage = "Playback connection timed out. Please try again."
+        await selectRequestedSubtitle(in: mediaToPlay.playerItem)
+
+        if !self.hasAppliedInitialSeek && self.initialResumeTicks > 0 {
+            self.hasAppliedInitialSeek = true
+            let seconds = Double(self.initialResumeTicks) / 10_000_000.0
+            let currentSec = CMTimeGetSeconds(self.player?.currentTime() ?? .zero)
+            if abs(currentSec - seconds) > 2.0 {
+                AppLogger.info("Seeking queue item to resume position: \(String(format: "%.1f", seconds))s (ticks: \(self.initialResumeTicks))", tag: "Player")
+                let targetTime = CMTime(seconds: seconds, preferredTimescale: 600)
+                await self.player?.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            }
+            self.currentPositionTicks = self.initialResumeTicks
+        } else {
+            self.hasAppliedInitialSeek = true
         }
-        return isReady
+
+        player?.play()
+        isPlaying = true
+        hasReportedStart = true
+        await reportPlaybackStart()
+        startPeriodicReporting()
+        AppLogger.success("Now playing next item: '\(title)'", tag: "Player")
     }
 
     private nonisolated final class ReadinessBox: @unchecked Sendable {
@@ -697,16 +1003,17 @@ final class PlayerViewModel: Identifiable {
             let trackInfo = tracks.map { track -> String in
                 let mediaType = track.assetTrack?.mediaType.rawValue ?? "unknown"
                 return "\(mediaType) (isEnabled: \(track.isEnabled))"
-            }.joined(separator: ", ")
-            AppLogger.info("Current item ready with \(tracks.count) tracks: [\(trackInfo)]", tag: "Player")
+            }
+            AppLogger.info("PlayerItem ready with \(tracks.count) tracks: [\(trackInfo.joined(separator: ", "))]", tag: "Player")
 
             let videoTracks = tracks.filter { $0.assetTrack?.mediaType == .video }
             if videoTracks.isEmpty {
-                AppLogger.warning("⚠️ Media asset contains NO video tracks! Only audio will play.", tag: "Player")
-            } else if !videoTracks.contains(where: { $0.isEnabled }) {
-                AppLogger.warning("⚠️ Video track is present in asset but disabled in playerItem!", tag: "Player")
+                AppLogger.warning("PlayerItem has NO video tracks active. PresentationSize: \(current.presentationSize)", tag: "Player")
             } else {
-                AppLogger.success("✅ Video track is present and enabled for display.", tag: "Player")
+                for vt in videoTracks {
+                    let size = (try? await vt.assetTrack?.load(.naturalSize)) ?? .zero
+                    AppLogger.debug("Video track enabled: \(vt.isEnabled), size: \(size.width)x\(size.height)", tag: "Player")
+                }
             }
 
             if self.videoNaturalSize == nil, let firstVideoTrack = videoTracks.compactMap({ $0.assetTrack }).first {
@@ -717,15 +1024,18 @@ final class PlayerViewModel: Identifiable {
 
             await selectRequestedSubtitle(in: current)
         }
-        if !self.hasAppliedInitialSeek && self.currentPositionTicks > 0 {
+        if !self.hasAppliedInitialSeek && self.initialResumeTicks > 0 {
             self.hasAppliedInitialSeek = true
-            let seconds = Double(self.currentPositionTicks) / 10_000_000.0
+            let seconds = Double(self.initialResumeTicks) / 10_000_000.0
             let currentSec = CMTimeGetSeconds(self.player?.currentTime() ?? .zero)
             if abs(currentSec - seconds) > 2.0 {
-                AppLogger.info("Seeking to resume position: \(String(format: "%.1f", seconds))s (ticks: \(self.currentPositionTicks))", tag: "Player")
+                AppLogger.info("Seeking to resume position: \(String(format: "%.1f", seconds))s (ticks: \(self.initialResumeTicks))", tag: "Player")
                 let targetTime = CMTime(seconds: seconds, preferredTimescale: 600)
                 await self.player?.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
             }
+            self.currentPositionTicks = self.initialResumeTicks
+        } else {
+            self.hasAppliedInitialSeek = true
         }
         self.player?.play()
         self.isPlaying = true
@@ -776,13 +1086,10 @@ final class PlayerViewModel: Identifiable {
         periodicReportTimer?.invalidate()
         periodicReportTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, self.player?.timeControlStatus != .paused else { return }
-                await self.reportPlaybackProgress()
+                await self?.reportPlaybackProgress()
             }
         }
     }
-
-    // MARK: - Jellyfin Session Reporting
 
     func reportPlaybackStart() async {
         guard let client, let itemID = item.id else { return }
@@ -846,7 +1153,7 @@ final class PlayerViewModel: Identifiable {
         }
     }
 
-    private func handlePlaybackFinished() {
+    private func handlePlaybackFinished(isSwitchingToNext: Bool = false) {
         let finalTicks = durationTicks > 0 ? durationTicks : currentPositionTicks
         currentPositionTicks = finalTicks
         AppLogger.success("Playback marked as watched (100%)", tag: "Player")
@@ -862,6 +1169,17 @@ final class PlayerViewModel: Identifiable {
                     positionTicks: finalTicks
                 )
                 _ = try? await client.send(Paths.reportPlaybackStopped(stopInfo))
+            }
+        }
+
+        if !isSwitchingToNext {
+            if nextItem != nil {
+                Task { @MainActor [weak self] in
+                    await self?.playNextItem()
+                }
+            } else {
+                AppLogger.info("Final item in queue completed. Dismissing player.", tag: "Player")
+                PlaybackManager.shared.stop()
             }
         }
     }
@@ -888,10 +1206,10 @@ final class PlayerViewModel: Identifiable {
 
     // MARK: - Poster Artwork & Now Playing Info
 
-    private func resolveArtworkURLs() -> [URL] {
+    private func resolveArtworkURLs(for targetItem: BaseItemDto? = nil) -> [URL] {
         guard let client else { return [] }
         var urls: [URL] = []
-        let currentItem = request.item
+        let currentItem = targetItem ?? request.item
 
         // 1. LibraryViewModel posterURL (matches the card / detail cache key)
         if let libURL = libraryViewModel?.posterURL(for: currentItem, client: client) {
@@ -966,8 +1284,8 @@ final class PlayerViewModel: Identifiable {
         return urls
     }
 
-    private func loadArtwork(timeoutSeconds: Double = 2.5) async -> (Data, UIImage)? {
-        let urls = resolveArtworkURLs()
+    private func loadArtwork(for targetItem: BaseItemDto? = nil, timeoutSeconds: Double = 2.5) async -> (Data, UIImage)? {
+        let urls = resolveArtworkURLs(for: targetItem)
         guard !urls.isEmpty else { return nil }
 
         // 1. Check SDWebImage memory or disk cache first (instant)
@@ -1010,111 +1328,96 @@ final class PlayerViewModel: Identifiable {
             defer { lock.unlock() }
             guard !resumed else { return }
             resumed = true
+            operation?.cancel()
+            operation = nil
             continuation.resume(returning: image)
         }
 
         func cancel() {
             lock.lock()
-            let op = operation
+            defer { lock.unlock() }
+            operation?.cancel()
             operation = nil
-            lock.unlock()
-            op?.cancel()
         }
     }
 
     private func fetchImage(for url: URL, timeoutSeconds: Double) async -> UIImage? {
-        await withTaskGroup(of: UIImage?.self) { group in
-            group.addTask {
-                let box = ArtworkFetchBox()
-                return await withTaskCancellationHandler {
-                    await withCheckedContinuation { continuation in
-                        let op = SDWebImageManager.shared.loadImage(
-                            with: url,
-                            options: [.highPriority, .continueInBackground],
-                            progress: nil
-                        ) { image, _, _, _, finished, _ in
-                            if finished {
-                                box.resume(with: continuation, image: image)
-                            }
-                        }
-                        box.setOperation(op)
-                        if op == nil {
-                            box.resume(with: continuation, image: nil)
-                        }
+        let fetchBox = ArtworkFetchBox()
+
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let op = SDWebImageManager.shared.loadImage(
+                    with: url,
+                    options: [.continueInBackground, .retryFailed, .highPriority],
+                    progress: nil
+                ) { [weak self] image, _, error, _, _, _ in
+                    guard self != nil else {
+                        fetchBox.resume(with: continuation, image: nil)
+                        return
                     }
-                } onCancel: {
-                    box.cancel()
+                    if let image {
+                        fetchBox.resume(with: continuation, image: image)
+                    } else {
+                        if let error {
+                            AppLogger.debug("SDWebImage fetch failed for \(url.lastPathComponent): \(error.localizedDescription)", tag: "Player")
+                        }
+                        fetchBox.resume(with: continuation, image: nil)
+                    }
+                }
+                fetchBox.setOperation(op)
+
+                Task {
+                    try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                    fetchBox.resume(with: continuation, image: nil)
                 }
             }
-
-            group.addTask {
-                try? await Task.sleep(for: .seconds(timeoutSeconds))
-                return nil
-            }
-
-            let result = await group.next() ?? nil
-            group.cancelAll()
-            return result
+        } onCancel: {
+            fetchBox.cancel()
         }
     }
 
     private func startAsyncArtworkFetchIfNeeded() {
         guard loadedArtworkImage == nil else { return }
-
+        artworkTask?.cancel()
         artworkTask = Task { @MainActor [weak self] in
             guard let self else { return }
             if let (data, img) = await self.loadArtwork(timeoutSeconds: 8.0) {
                 guard !Task.isCancelled else { return }
                 self.loadedArtworkImage = img
-                self.applyArtwork(data: data, image: img)
+                self.updateNowPlayingInfo(with: img)
+
+                if let currentItem = self.player?.currentItem {
+                    var meta = currentItem.externalMetadata
+                    meta.removeAll(where: { $0.identifier == .commonIdentifierArtwork })
+                    let artworkItem = AVMutableMetadataItem()
+                    artworkItem.identifier = .commonIdentifierArtwork
+                    artworkItem.dataType = kCMMetadataBaseDataType_JPEG as String
+                    artworkItem.value = data as (NSCopying & NSObjectProtocol)
+                    artworkItem.extendedLanguageTag = "und"
+                    meta.append(artworkItem)
+                    currentItem.externalMetadata = meta
+                    AppLogger.debug("Attached delayed poster artwork to active playerItem metadata", tag: "Player")
+                }
             }
         }
     }
 
-    private func applyArtwork(data: Data, image: UIImage) {
-        guard let currentItem = player?.currentItem else { return }
-        var meta = currentItem.externalMetadata
-        meta.removeAll { $0.identifier == .commonIdentifierArtwork }
-
-        let artworkItem = AVMutableMetadataItem()
-        artworkItem.identifier = .commonIdentifierArtwork
-        artworkItem.dataType = kCMMetadataBaseDataType_JPEG as String
-        artworkItem.value = data as (NSCopying & NSObjectProtocol)
-        artworkItem.extendedLanguageTag = "und"
-        meta.append(artworkItem)
-
-        currentItem.externalMetadata = meta
-        updateNowPlayingInfo(with: image)
-        AppLogger.info("Applied poster artwork to current playerItem and MPNowPlayingInfoCenter", tag: "Player")
-    }
-
-    private func updateNowPlayingInfo(with image: UIImage?) {
+    private func updateNowPlayingInfo(with artworkImage: UIImage) {
         #if canImport(MediaPlayer)
-        guard let image else { return }
-        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-        info[MPMediaItemPropertyTitle] = title
+        var nowPlayingInfo: [String: Any] = [:]
+        nowPlayingInfo[MPMediaItemPropertyTitle] = title
         if let sub = subtitle {
-            info[MPMediaItemPropertyArtist] = sub
+            nowPlayingInfo[MPMediaItemPropertyArtist] = sub
         }
-        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-        info[MPMediaItemPropertyArtwork] = artwork
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = Double(durationTicks) / 10_000_000.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(currentPositionTicks) / 10_000_000.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
 
-        if let dur = player?.currentItem?.duration {
-            let sec = CMTimeGetSeconds(dur)
-            if sec.isFinite && sec > 0 {
-                info[MPMediaItemPropertyPlaybackDuration] = sec
-            }
-        }
-        if let cur = player?.currentTime() {
-            let sec = CMTimeGetSeconds(cur)
-            if sec.isFinite {
-                info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = sec
-            }
-        }
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        let artwork = MPMediaItemArtwork(boundsSize: artworkImage.size) { _ in artworkImage }
+        nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
 
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        AppLogger.debug("Updated MPNowPlayingInfoCenter artwork for \(title)", tag: "Player")
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        AppLogger.debug("Updated MPNowPlayingInfoCenter with title: '\(title)', artist: '\(subtitle ?? "nil")', artwork: \(Int(artworkImage.size.width))x\(Int(artworkImage.size.height))", tag: "Player")
         #endif
     }
 
@@ -1146,31 +1449,31 @@ final class PlayerViewModel: Identifiable {
         artworkTask = nil
         loadedArtworkImage = nil
         videoNaturalSize = nil
+
+        showUpNextOverlay = false
+        if let preloaded = preloadedMedia {
+            (preloaded.playerItem.asset as? AVURLAsset)?.cancelLoading()
+            preloadedMedia = nil
+        }
+
         #if canImport(MediaPlayer)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         #endif
 
-        // Immediately pause and stop audio playback
         player?.pause()
         player?.rate = 0.0
 
-        // Cancel any pending asset loading and tear down the current item
         if let currentItem = player?.currentItem {
             (currentItem.asset as? AVURLAsset)?.cancelLoading()
         }
         player?.replaceCurrentItem(with: nil)
         player = nil
 
-        // Clear HTTP URL cache for streamed media chunks
         URLCache.shared.removeAllCachedResponses()
-
-        // Deactivate audio session to release the audio pipeline asynchronously
         deactivateAudioSession()
 
-        // Report stop & update final progress
-        let finalTicks = currentPositionTicks
-        updateLocalProgress(positionTicks: finalTicks)
         if hasReportedStart, let client, let itemID = item.id {
+            let finalTicks = currentPositionTicks
             let sessionID = playSessionID
             let sourceID = mediaSourceID
             Task.detached {

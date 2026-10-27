@@ -52,6 +52,35 @@ class MediaCardViewModel {
         return item.isInProgress
     }
 
+    func watchProgress(in libraryViewModel: LibraryViewModel?) -> Double? {
+        if isProgressReset { return nil }
+        if isWatched(in: libraryViewModel) { return 1.0 }
+        if item.type == .series {
+            return item.seriesWatchProgress(allEpisodes: libraryViewModel?.episodes ?? [])
+        }
+        return item.watchProgress
+    }
+
+    func isWatched(in libraryViewModel: LibraryViewModel?) -> Bool {
+        if isProgressReset { return false }
+        if item.type == .series {
+            return item.isSeriesWatched(allEpisodes: libraryViewModel?.episodes ?? [])
+        }
+        return item.isWatched
+    }
+
+    func isWatching(in libraryViewModel: LibraryViewModel?) -> Bool {
+        if isProgressReset { return false }
+        if isWatched(in: libraryViewModel) { return false }
+        if item.type == .series {
+            return item.isSeriesInProgress(
+                allEpisodes: libraryViewModel?.episodes ?? [],
+                resumeShows: libraryViewModel?.resumeShows ?? []
+            )
+        }
+        return item.isInProgress
+    }
+
     func hasProgress(in libraryViewModel: LibraryViewModel?) -> Bool {
         if isProgressReset { return false }
         if item.hasProgress { return true }
@@ -63,8 +92,8 @@ class MediaCardViewModel {
 
     func isInProgress(in libraryViewModel: LibraryViewModel?) -> Bool {
         if isProgressReset { return false }
-        if isWatched { return false }
-        return item.isInProgress || (item.type == .series && hasProgress(in: libraryViewModel))
+        if isWatched(in: libraryViewModel) { return false }
+        return isWatching(in: libraryViewModel)
     }
 
     var episodeTitle: String? {

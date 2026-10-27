@@ -77,7 +77,7 @@ struct ContentView: View {
             presenting: playbackManager.currentError
         ) { errorInfo in
             Button("Retry") {
-                errorInfo.retryAction()
+                errorInfo.retryAction?()
             }
             .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {
@@ -97,13 +97,21 @@ struct ContentView: View {
         ) { playerVM in
             if let player = playerVM.player {
                 ZStack(alignment: .topLeading) {
-                    NativePlayerView(player: player) {
-                        #if os(iOS)
-                        OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
-                        #endif
-                        playerVM.cleanup()
-                        playbackManager.stop()
-                    }
+                    NativePlayerView(
+                        player: player,
+                        onDismiss: {
+                            #if os(iOS)
+                            OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
+                            #endif
+                            playerVM.cleanup()
+                            playbackManager.stop()
+                        },
+                        onControlsVisibilityChanged: { isVisible in
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                playerVM.areControlsVisible = isVisible
+                            }
+                        }
+                    )
                     .ignoresSafeArea()
                     .statusBarHidden(true)
 
@@ -120,6 +128,28 @@ struct ContentView: View {
                             .allowsHitTesting(false)
                     }
                     #endif
+
+                    if playerVM.showUpNextOverlay, let nextItem = playerVM.nextItem {
+                        UpNextOverlayView(
+                            nextItem: nextItem,
+                            secondsRemaining: playerVM.upNextSecondsRemaining,
+                            progressFraction: playerVM.upNextProgressFraction,
+                            areControlsVisible: playerVM.areControlsVisible,
+                            onPlayNow: {
+                                Task {
+                                    await playerVM.playNextItem()
+                                }
+                            },
+                            onDismiss: {
+                                playerVM.dismissUpNextOverlay()
+                            }
+                        )
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.85).combined(with: .opacity),
+                            removal: .scale(scale: 0.85).combined(with: .opacity)
+                        ))
+                        .zIndex(100)
+                    }
                 }
                 .onAppear {
                     #if os(iOS)

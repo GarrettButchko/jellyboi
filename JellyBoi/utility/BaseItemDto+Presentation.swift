@@ -90,6 +90,21 @@ extension BaseItemDto {
         return (watchProgress ?? 0) >= 0.85
     }
 
+    /// Playback position in ticks for resuming playback.
+    /// Prefers `playbackPositionTicks` if positive; otherwise computes from `playedPercentage` and `runTimeTicks`.
+    var resumePlaybackTicks: Int {
+        if let ticks = userData?.playbackPositionTicks, ticks > 0 {
+            return ticks
+        }
+        if let percent = userData?.playedPercentage, percent > 0 {
+            let total = runTimeTicks.map { Int($0) } ?? 0
+            if total > 0 {
+                return Int((Double(total) * percent) / 100.0)
+            }
+        }
+        return 0
+    }
+
     /// Whether the item has positive playback progress (ticks or percent >= 1%).
     var hasProgress: Bool {
         if let percent = userData?.playedPercentage, percent >= 1.0 { return true }
@@ -138,6 +153,72 @@ extension BaseItemDto {
         let hours = remainingSeconds / 3600
         let minutes = (remainingSeconds % 3600) / 60
         return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    }
+
+    // MARK: - Cumulative & Series Progress Helpers
+
+    /// Computes cumulative watched progress (from 0.0 to 1.0) across an array of media items.
+    /// Each completed item contributes 1.0, while in-progress items contribute their individual watchProgress.
+    public static func cumulativeProgress(for items: [BaseItemDto], allEpisodes: [BaseItemDto] = []) -> Double {
+        guard !items.isEmpty else { return 0.0 }
+        let total = Double(items.count)
+        let sum = items.reduce(0.0) { runningSum, item in
+            if item.isWatched {
+                return runningSum + 1.0
+            }
+            if item.type == .series, let seriesID = item.id {
+                let seriesEpisodes = allEpisodes.filter { $0.seriesID == seriesID }
+                if !seriesEpisodes.isEmpty {
+                    return runningSum + cumulativeProgress(for: seriesEpisodes, allEpisodes: allEpisodes)
+                }
+            }
+            return runningSum + (item.watchProgress ?? 0.0)
+        }
+        return sum / total
+    }
+
+    /// Evaluates whether a series is watched based on its episode data and user data.
+    public func isSeriesWatched(allEpisodes: [BaseItemDto] = []) -> Bool {
+        guard type == .series else { return isWatched }
+        if let unplayed = userData?.unplayedItemCount, unplayed == 0 { return true }
+        if userData?.isPlayed == true { return true }
+        let showEpisodes = allEpisodes.filter { $0.seriesID == id }
+        if !showEpisodes.isEmpty {
+            return showEpisodes.allSatisfy { $0.isWatched }
+        }
+        return false
+    }
+
+    /// Computes the series watch progress (0.0 to 1.0) matching the MediaDetailView progress ring.
+    public func seriesWatchProgress(allEpisodes: [BaseItemDto] = []) -> Double? {
+        guard type == .series else { return watchProgress }
+        if isSeriesWatched(allEpisodes: allEpisodes) { return 1.0 }
+        let showEpisodes = allEpisodes.filter { $0.seriesID == id }
+        if !showEpisodes.isEmpty {
+            return BaseItemDto.cumulativeProgress(for: showEpisodes, allEpisodes: allEpisodes)
+        }
+        if let unplayed = userData?.unplayedItemCount,
+           let total = recursiveItemCount ?? episodeCount, total > 0 {
+            return max(0.0, min(1.0, Double(total - unplayed) / Double(total)))
+        }
+        return watchProgress
+    }
+
+    /// Evaluates whether a series is currently in-progress.
+    public func isSeriesInProgress(allEpisodes: [BaseItemDto] = [], resumeShows: [BaseItemDto] = []) -> Bool {
+        guard type == .series else { return isInProgress }
+        if isSeriesWatched(allEpisodes: allEpisodes) { return false }
+        let showEpisodes = allEpisodes.filter { $0.seriesID == id }
+        if !showEpisodes.isEmpty {
+            return showEpisodes.contains { $0.isWatched || $0.isInProgress }
+        }
+        if resumeShows.contains(where: { $0.seriesID == id || $0.id == id }) {
+            return true
+        }
+        if let progress = seriesWatchProgress(allEpisodes: allEpisodes), progress > 0 {
+            return true
+        }
+        return isInProgress
     }
 }
 

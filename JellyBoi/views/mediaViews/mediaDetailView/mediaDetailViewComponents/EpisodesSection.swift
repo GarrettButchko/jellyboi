@@ -84,10 +84,10 @@ extension MediaDetailView {
                                             zoomID: zoomID,
                                             imageAspectRatio: episode.imageAspectRatio,
                                             onContinueWatching: {
-                                                playbackManager.play(item: episode, fromBeginning: false)
+                                                playbackManager.play(item: episode, fromBeginning: false, queue: detailVM.episodes)
                                             },
                                             onStartFromBeginning: {
-                                                playbackManager.play(item: episode, fromBeginning: true)
+                                                playbackManager.play(item: episode, fromBeginning: true, queue: detailVM.episodes)
                                             }
                                         )
                                         .frame(width: cardWidth, height: episodeCardHeight)

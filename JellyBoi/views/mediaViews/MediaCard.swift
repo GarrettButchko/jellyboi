@@ -66,12 +66,16 @@ struct MediaCard: View {
     }
 
     var body: some View {
+        let isWatched = viewModel.isWatched(in: libraryViewModel)
+        let isWatching = viewModel.isWatching(in: libraryViewModel)
+        let watchProgress = viewModel.watchProgress(in: libraryViewModel)
+
         Button(action: onSelect) {
             posterImage
                 .aspectRatio(viewModel.cardAspectRatio(overrideRatio: imageAspectRatio), contentMode: .fit)
                 .overlay(alignment: .bottomTrailing) {
                     VStack(alignment: .trailing, spacing: 6) {
-                        if let progress = viewModel.watchProgress, !viewModel.isWatched && viewModel.isWatching && Int(progress * 100) > 0 {
+                        if let progress = watchProgress, !isWatched && isWatching && Int(progress * 100) > 0 {
                             GlassProgressBar(progress: progress, barWidth: 40)
                                 .transition(.scale(scale: 0.8).combined(with: .opacity))
                         }
@@ -80,10 +84,10 @@ struct MediaCard: View {
                         }
                     }
                     .padding(8)
-                    .animation(.smooth(duration: 0.3), value: viewModel.isWatching)
+                    .animation(.smooth(duration: 0.3), value: isWatching)
                 }
                 .overlay(alignment: .topTrailing) {
-                    if viewModel.isWatched {
+                    if isWatched {
                         Image(systemName: "checkmark")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(Color.mainOpp)
@@ -98,7 +102,7 @@ struct MediaCard: View {
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 16, style: .continuous))
         .contextMenu {
             Section {
-                if viewModel.isInProgress(in: libraryViewModel) {
+                if isWatching {
                     Button {
                         if let onContinueWatching {
                             onContinueWatching()
@@ -127,7 +131,7 @@ struct MediaCard: View {
                     } label: {
                         Label("Reset Progress", systemImage: "xmark.circle")
                     }
-                } else if viewModel.isWatched {
+                } else if isWatched {
                     Button {
                         if let onStartFromBeginning {
                             onStartFromBeginning()

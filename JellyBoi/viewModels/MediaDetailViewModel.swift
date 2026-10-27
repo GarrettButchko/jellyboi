@@ -80,9 +80,15 @@ class MediaDetailViewModel {
     }
 
     func playableItem(libraryViewModel: LibraryViewModel?, fromBeginning: Bool = false) -> BaseItemDto {
-        let currentItem = displayItem ?? BaseItemDto()
+        var currentItem = displayItem ?? BaseItemDto()
         if currentItem.type == .series || currentItem.type == .boxSet {
             return nextPlayableEpisode(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning) ?? currentItem
+        }
+        if let id = currentItem.id,
+           currentItem.resumePlaybackTicks == 0,
+           let matching = libraryViewModel?.movies.first(where: { $0.id == id }) ?? libraryViewModel?.resumeShows.first(where: { $0.id == id }),
+           matching.resumePlaybackTicks > 0 {
+            currentItem.userData = matching.userData
         }
         return currentItem
     }
@@ -152,6 +158,15 @@ class MediaDetailViewModel {
         libraryViewModel: LibraryViewModel
     ) {
         let itemToPlay = playableItem(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning)
+        let queue: [BaseItemDto]? = {
+            if displayItem?.type == .series, !episodes.isEmpty {
+                return episodes
+            }
+            if displayItem?.type == .boxSet, !collectionItems.isEmpty {
+                return collectionItems
+            }
+            return nil
+        }()
 
         playbackManager.play(
             item: itemToPlay,
@@ -162,7 +177,8 @@ class MediaDetailViewModel {
             mediaSourceID: selectedMediaSourceID,
             audioStreamIndex: selectedAudioStreamIndex,
             subtitleStreamIndex: selectedSubtitleStreamIndex,
-            maxBitrate: selectedMaxBitrate
+            maxBitrate: selectedMaxBitrate,
+            queue: queue
         )
     }
 
@@ -184,11 +200,10 @@ class MediaDetailViewModel {
         guard displayItem?.type == .series else { return false }
         if let unplayed = displayItem?.userData?.unplayedItemCount, unplayed == 0 { return true }
         if displayItem?.userData?.isPlayed == true { return true }
-        let showEpisodes = !episodes.isEmpty ? episodes : (libraryViewModel?.episodes.filter { $0.seriesID == displayItem?.id } ?? [])
-        if !showEpisodes.isEmpty {
-            return showEpisodes.allSatisfy { $0.isWatched }
+        if !episodes.isEmpty {
+            return episodes.allSatisfy { $0.isWatched }
         }
-        return false
+        return displayItem?.isSeriesWatched(allEpisodes: libraryViewModel?.episodes ?? []) ?? false
     }
 
     var isWatched: Bool {
@@ -202,21 +217,7 @@ class MediaDetailViewModel {
     }
 
     private func cumulativeProgress(for items: [BaseItemDto]) -> Double {
-        guard !items.isEmpty else { return 0.0 }
-        let total = Double(items.count)
-        let sum = items.reduce(0.0) { runningSum, item in
-            if item.isWatched {
-                return runningSum + 1.0
-            }
-            if item.type == .series, let seriesID = item.id {
-                let seriesEpisodes = (libraryViewModel?.episodes ?? []).filter { $0.seriesID == seriesID }
-                if !seriesEpisodes.isEmpty {
-                    return runningSum + cumulativeProgress(for: seriesEpisodes)
-                }
-            }
-            return runningSum + (item.watchProgress ?? 0.0)
-        }
-        return sum / total
+        BaseItemDto.cumulativeProgress(for: items, allEpisodes: libraryViewModel?.episodes ?? [])
     }
 
     var hasProgress: Bool {
@@ -230,8 +231,13 @@ class MediaDetailViewModel {
             return collectionItems.contains { $0.isWatched || $0.isInProgress }
         }
         if displayItem?.type == .series {
-            let showEpisodes = !episodes.isEmpty ? episodes : (libraryViewModel?.episodes.filter { $0.seriesID == displayItem?.id } ?? [])
-            return showEpisodes.contains { $0.isWatched || $0.isInProgress }
+            if !episodes.isEmpty {
+                return episodes.contains { $0.isWatched || $0.isInProgress }
+            }
+            return displayItem?.isSeriesInProgress(
+                allEpisodes: libraryViewModel?.episodes ?? [],
+                resumeShows: libraryViewModel?.resumeShows ?? []
+            ) ?? false
         }
         return displayItem?.isInProgress ?? false
     }
@@ -245,11 +251,10 @@ class MediaDetailViewModel {
             return 0.0
         }
         if displayItem?.type == .series {
-            let showEpisodes = !episodes.isEmpty ? episodes : (libraryViewModel?.episodes.filter { $0.seriesID == displayItem?.id } ?? [])
-            if !showEpisodes.isEmpty {
-                return cumulativeProgress(for: showEpisodes)
+            if !episodes.isEmpty {
+                return cumulativeProgress(for: episodes)
             }
-            return 0.0
+            return displayItem?.seriesWatchProgress(allEpisodes: libraryViewModel?.episodes ?? []) ?? 0.0
         }
         return displayItem?.watchProgress
     }
@@ -385,7 +390,8 @@ class MediaDetailViewModel {
             mediaSourceID: selectedMediaSourceID,
             audioStreamIndex: selectedAudioStreamIndex,
             subtitleStreamIndex: selectedSubtitleStreamIndex,
-            maxBitrate: selectedMaxBitrate
+            maxBitrate: selectedMaxBitrate,
+            queue: !episodes.isEmpty ? episodes : nil
         )
     }
 

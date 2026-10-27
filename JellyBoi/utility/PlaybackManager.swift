@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AVKit
 import Observation
 import Get
 import JellyfinAPI
@@ -16,7 +17,13 @@ struct PlaybackErrorInfo: Identifiable {
     let id = UUID()
     let title: String
     let message: String
-    let retryAction: () -> Void
+    let retryAction: (() -> Void)?
+
+    init(title: String, message: String, retryAction: (() -> Void)? = nil) {
+        self.title = title
+        self.message = message
+        self.retryAction = retryAction
+    }
 }
 
 @Observable
@@ -33,6 +40,8 @@ final class PlaybackManager {
         let audioStreamIndex: Int?
         let subtitleStreamIndex: Int?
         let maxBitrate: Int?
+        let queue: [BaseItemDto]
+        let initialQueueIndex: Int
 
         init(
             item: BaseItemDto,
@@ -41,7 +50,9 @@ final class PlaybackManager {
             mediaSourceID: String? = nil,
             audioStreamIndex: Int? = nil,
             subtitleStreamIndex: Int? = nil,
-            maxBitrate: Int? = nil
+            maxBitrate: Int? = nil,
+            queue: [BaseItemDto] = [],
+            initialQueueIndex: Int = 0
         ) {
             self.id = (item.id ?? UUID().uuidString) + (startFromBeginning ? "-start" : "-resume")
             self.item = item
@@ -51,6 +62,8 @@ final class PlaybackManager {
             self.audioStreamIndex = audioStreamIndex
             self.subtitleStreamIndex = subtitleStreamIndex
             self.maxBitrate = maxBitrate
+            self.queue = queue
+            self.initialQueueIndex = initialQueueIndex
         }
     }
 
@@ -76,7 +89,8 @@ final class PlaybackManager {
         mediaSourceID: String? = nil,
         audioStreamIndex: Int? = nil,
         subtitleStreamIndex: Int? = nil,
-        maxBitrate: Int? = nil
+        maxBitrate: Int? = nil,
+        queue: [BaseItemDto]? = nil
     ) {
         guard item.id != nil else {
             AppLogger.warning("Cannot start playback: Item ID is missing", tag: "PlaybackManager")
@@ -100,6 +114,8 @@ final class PlaybackManager {
         activeTask = Task { @MainActor [weak self] in
             guard let self else { return }
             var targetItem = item
+            var activeQueue: [BaseItemDto] = queue ?? []
+
             if targetItem.type == .boxSet {
                 if let resolved = await self.resolveNextItemInCollection(
                     collection: targetItem,
@@ -108,7 +124,8 @@ final class PlaybackManager {
                     userID: resolvedUserID,
                     libraryViewModel: resolvedLibrary
                 ) {
-                    targetItem = resolved
+                    targetItem = resolved.playable
+                    activeQueue = resolved.queue
                     AppLogger.info("Resolved collection '\(item.name ?? "")' to next item '\(targetItem.name ?? "Unknown")'", tag: "PlaybackManager")
                 } else {
                     withAnimation(statusOverlaySpring) {
@@ -128,7 +145,8 @@ final class PlaybackManager {
                                 mediaSourceID: mediaSourceID,
                                 audioStreamIndex: audioStreamIndex,
                                 subtitleStreamIndex: subtitleStreamIndex,
-                                maxBitrate: maxBitrate
+                                maxBitrate: maxBitrate,
+                                queue: queue
                             )
                         }
                     )
@@ -145,7 +163,8 @@ final class PlaybackManager {
                     userID: resolvedUserID,
                     libraryViewModel: resolvedLibrary
                 ) {
-                    targetItem = resolved
+                    targetItem = resolved.playable
+                    activeQueue = resolved.queue
                     AppLogger.info("Resolved series '\(item.name ?? "")' to episode '\(targetItem.name ?? "Unknown")'", tag: "PlaybackManager")
                 } else {
                     withAnimation(statusOverlaySpring) {
@@ -165,12 +184,42 @@ final class PlaybackManager {
                                 mediaSourceID: mediaSourceID,
                                 audioStreamIndex: audioStreamIndex,
                                 subtitleStreamIndex: subtitleStreamIndex,
-                                maxBitrate: maxBitrate
+                                maxBitrate: maxBitrate,
+                                queue: queue
                             )
                         }
                     )
                     self.showErrorAlert = true
                     return
+                }
+            }
+
+            if targetItem.type == .episode && activeQueue.isEmpty, let seriesID = targetItem.seriesID {
+                if let resolved = await self.resolvePlayableEpisode(
+                    for: BaseItemDto(id: seriesID),
+                    fromBeginning: false,
+                    client: resolvedClient,
+                    userID: resolvedUserID,
+                    libraryViewModel: resolvedLibrary
+                ) {
+                    activeQueue = resolved.queue
+                }
+            }
+
+            let resolvedIndex: Int = {
+                if let idx = activeQueue.firstIndex(where: { $0.id == targetItem.id }) {
+                    return idx
+                }
+                return 0
+            }()
+
+            if !fromBeginning && targetItem.resumePlaybackTicks == 0 {
+                if let id = targetItem.id,
+                   let match = resolvedLibrary?.movies.first(where: { $0.id == id })
+                            ?? resolvedLibrary?.resumeShows.first(where: { $0.id == id })
+                            ?? resolvedLibrary?.episodes.first(where: { $0.id == id }),
+                   match.resumePlaybackTicks > 0 {
+                    targetItem = match
                 }
             }
 
@@ -192,13 +241,17 @@ final class PlaybackManager {
                 mediaSourceID: mediaSourceID,
                 audioStreamIndex: audioStreamIndex,
                 subtitleStreamIndex: subtitleStreamIndex,
-                maxBitrate: maxBitrate
+                maxBitrate: maxBitrate,
+                queue: activeQueue,
+                initialQueueIndex: resolvedIndex
             )
             let vm = PlayerViewModel(
                 request: request,
                 client: resolvedClient,
                 userID: resolvedUserID,
-                libraryViewModel: resolvedLibrary
+                libraryViewModel: resolvedLibrary,
+                queue: activeQueue,
+                initialQueueIndex: resolvedIndex
             )
 
             let success = await vm.prepare()
@@ -232,7 +285,8 @@ final class PlaybackManager {
                             mediaSourceID: mediaSourceID,
                             audioStreamIndex: audioStreamIndex,
                             subtitleStreamIndex: subtitleStreamIndex,
-                            maxBitrate: maxBitrate
+                            maxBitrate: maxBitrate,
+                            queue: queue
                         )
                     }
                 )
@@ -241,7 +295,7 @@ final class PlaybackManager {
         }
     }
 
-    func playLocal(item: BaseItemDto, fileURL: URL, fromBeginning: Bool = false) {
+    func playLocal(item: BaseItemDto, fileURL: URL, fromBeginning: Bool = false, queue: [BaseItemDto]? = nil) {
         guard item.id != nil else {
             AppLogger.warning("Cannot start local playback: Item ID is missing", tag: "PlaybackManager")
             return
@@ -258,12 +312,22 @@ final class PlaybackManager {
 
         activeTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let request = PlaybackRequest(item: item, startFromBeginning: fromBeginning, localFileURL: fileURL)
+            let activeQueue = queue ?? [item]
+            let resolvedIndex = activeQueue.firstIndex(where: { $0.id == item.id }) ?? 0
+            let request = PlaybackRequest(
+                item: item,
+                startFromBeginning: fromBeginning,
+                localFileURL: fileURL,
+                queue: activeQueue,
+                initialQueueIndex: resolvedIndex
+            )
             let vm = PlayerViewModel(
                 request: request,
                 client: self.client,
                 userID: self.userID,
-                libraryViewModel: self.libraryViewModel
+                libraryViewModel: self.libraryViewModel,
+                queue: activeQueue,
+                initialQueueIndex: resolvedIndex
             )
 
             let success = await vm.prepare()
@@ -285,7 +349,7 @@ final class PlaybackManager {
                     title: "Playback Error",
                     message: err,
                     retryAction: { [weak self] in
-                        self?.playLocal(item: item, fileURL: fileURL, fromBeginning: fromBeginning)
+                        self?.playLocal(item: item, fileURL: fileURL, fromBeginning: fromBeginning, queue: queue)
                     }
                 )
                 self.showErrorAlert = true
@@ -322,7 +386,7 @@ final class PlaybackManager {
         client: JellyfinClient?,
         userID: String?,
         libraryViewModel: LibraryViewModel?
-    ) async -> BaseItemDto? {
+    ) async -> (playable: BaseItemDto, queue: [BaseItemDto])? {
         guard let collectionID = collection.id, let client else { return nil }
         var params = Paths.GetItemsParameters()
         params.userID = userID
@@ -355,7 +419,8 @@ final class PlaybackManager {
                 ?? item
         }
 
-        return resolvedList.nextPlayableItem(fromBeginning: fromBeginning)
+        guard let playable = resolvedList.nextPlayableItem(fromBeginning: fromBeginning) else { return nil }
+        return (playable, resolvedList)
     }
 
     private func resolvePlayableEpisode(
@@ -364,12 +429,8 @@ final class PlaybackManager {
         client: JellyfinClient?,
         userID: String?,
         libraryViewModel: LibraryViewModel?
-    ) async -> BaseItemDto? {
+    ) async -> (playable: BaseItemDto, queue: [BaseItemDto])? {
         guard let seriesID = series.id else { return nil }
-
-        if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == seriesID }) {
-            return resumeEp
-        }
 
         let cached = (libraryViewModel?.episodes ?? [])
             .filter { $0.seriesID == seriesID }
@@ -380,8 +441,13 @@ final class PlaybackManager {
                 return (a.indexNumber ?? 1) < (b.indexNumber ?? 1)
             }
 
-        if !cached.isEmpty {
-            return cached.nextPlayableItem(fromBeginning: fromBeginning)
+        if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == seriesID }) {
+            let queue = cached.isEmpty ? [resumeEp] : cached
+            return (resumeEp, queue)
+        }
+
+        if !cached.isEmpty, let playable = cached.nextPlayableItem(fromBeginning: fromBeginning) {
+            return (playable, cached)
         }
 
         guard let client else { return nil }
@@ -403,6 +469,7 @@ final class PlaybackManager {
             return (a.indexNumber ?? 1) < (b.indexNumber ?? 1)
         }
 
-        return sorted.nextPlayableItem(fromBeginning: fromBeginning)
+        guard let playable = sorted.nextPlayableItem(fromBeginning: fromBeginning) else { return nil }
+        return (playable, sorted)
     }
 }
