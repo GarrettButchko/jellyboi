@@ -15,6 +15,10 @@ extension MediaDetailView {
         horizontalSizeClass == .regular ? 140 : 110
     }
 
+    private var specialFeatureItemHeight: CGFloat {
+        specialFeatureCardHeight + 46
+    }
+
     @ViewBuilder
     var specialFeaturesSection: some View {
         if !detailVM.isSpecialFeaturesHidden {
@@ -85,6 +89,7 @@ extension MediaDetailView {
                                         }
                                         .frame(width: cardWidth, alignment: .leading)
                                     }
+                                    .frame(width: cardWidth, height: specialFeatureItemHeight, alignment: .top)
                                     .id(featureID)
                                 }
                             }
@@ -92,6 +97,7 @@ extension MediaDetailView {
                         .padding(.horizontal, 16)
                         .scrollTargetLayout()
                     }
+                    .frame(height: specialFeatureItemHeight)
                     .scrollClipDisabled()
                     .scrollIndicators(.hidden)
                     .scrollTargetBehavior(.viewAligned)

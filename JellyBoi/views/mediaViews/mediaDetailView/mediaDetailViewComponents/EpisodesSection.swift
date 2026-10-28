@@ -92,6 +92,7 @@ extension MediaDetailView {
                             .padding(.horizontal, 16)
                             .scrollTargetLayout()
                         }
+                        .frame(height: episodeCardHeight)
                         .scrollClipDisabled()
                         .scrollIndicators(.hidden)
                         .scrollTargetBehavior(.viewAligned)

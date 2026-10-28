@@ -16,6 +16,7 @@ extension MediaDetailView {
         if detailVM.hasExtraInfo {
             extraInfoContent
                 .padding(.horizontal, 20)
+                .padding(.top, 16)
         }
     }
 

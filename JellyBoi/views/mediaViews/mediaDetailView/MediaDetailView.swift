@@ -67,13 +67,17 @@ struct MediaDetailView: View {
                         hasSpecialFeatures: (displayItem.specialFeatureCount ?? 0) > 0
                     )
                 } content: {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
                         overviewSection
                         infoChipsScrollView
-                        episodesSection
+                        if displayItem.type == .series {
+                            episodesSection
+                        }
                         castSection
                         specialFeaturesSection
-                        collectionSection
+                        if displayItem.type == .boxSet {
+                            collectionSection
+                        }
                         similarItemsSection
                         tagsSection
                         extraInfoSection

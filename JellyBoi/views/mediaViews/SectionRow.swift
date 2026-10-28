@@ -15,17 +15,20 @@ import JellyfinAPI
 struct SectionRow<Content: View, HeaderAccessory: View>: View {
     let title: String
     var onTitleTap: (() -> Void)? = nil
+    var topPadding: CGFloat = 16
     @ViewBuilder let headerAccessory: () -> HeaderAccessory
     @ViewBuilder let content: () -> Content
 
     init(
         title: String,
         onTitleTap: (() -> Void)? = nil,
+        topPadding: CGFloat = 16,
         @ViewBuilder headerAccessory: @escaping () -> HeaderAccessory,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.onTitleTap = onTitleTap
+        self.topPadding = topPadding
         self.headerAccessory = headerAccessory
         self.content = content
     }
@@ -35,6 +38,7 @@ struct SectionRow<Content: View, HeaderAccessory: View>: View {
             header
             content()
         }
+        .padding(.top, topPadding)
     }
 
     private var header: some View {
@@ -71,11 +75,13 @@ extension SectionRow where HeaderAccessory == EmptyView {
     init(
         title: String,
         onTitleTap: (() -> Void)? = nil,
+        topPadding: CGFloat = 16,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
             title: title,
             onTitleTap: onTitleTap,
+            topPadding: topPadding,
             headerAccessory: { EmptyView() },
             content: content
         )
@@ -90,12 +96,14 @@ extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == Em
         rowKey: String? = nil,
         imageAspectRatio: CGFloat? = 2.0 / 3.0,
         onTitleTap: (() -> Void)? = nil,
+        topPadding: CGFloat = 16,
         onSelect: @escaping (BaseItemDto, AnyHashable) -> Void,
         posterURL: @escaping (BaseItemDto) -> URL?
     ) {
         self.init(
             title: title,
             onTitleTap: onTitleTap,
+            topPadding: topPadding,
             headerAccessory: { EmptyView() },
             content: {
                 SectionRowMediaList(
@@ -148,6 +156,7 @@ struct SectionRowMediaList: View {
             .padding(.horizontal, 16)
             .scrollTargetLayout()
         }
+        .frame(height: cardHeight)
         .scrollClipDisabled()
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.viewAligned)

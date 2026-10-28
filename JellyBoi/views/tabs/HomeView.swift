@@ -131,7 +131,6 @@ struct HomeView: View {
                                                 case .seriesPoster: return libraryViewModel.seriesPosterURL(for: item, client: client)
                                                 }
                                             }
-                                            .padding(.top, 16)
                                             .transition(.opacity)
                                         }
                                     }

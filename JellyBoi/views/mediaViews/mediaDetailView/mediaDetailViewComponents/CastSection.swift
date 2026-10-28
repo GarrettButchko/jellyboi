@@ -20,6 +20,8 @@ extension MediaDetailView {
         }
     }
 
+    private var castRowHeight: CGFloat { 125 }
+
     private func castContent(_ people: [BaseItemPerson]) -> some View {
         var seen = Set<String>()
         let uniquePeople = people.filter { person in
@@ -39,12 +41,14 @@ extension MediaDetailView {
                                 person: person,
                                 imageURL: castImageURL(for: person)
                             )
+                            .frame(width: 74, height: castRowHeight, alignment: .top)
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 16)
             }
+            .frame(height: castRowHeight)
             .scrollClipDisabled()
             .scrollIndicators(.hidden)
         }
