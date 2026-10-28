@@ -20,8 +20,6 @@ extension MediaDetailView {
         }
     }
 
-    private var castRowHeight: CGFloat { 125 }
-
     private func castContent(_ people: [BaseItemPerson]) -> some View {
         var seen = Set<String>()
         let uniquePeople = people.filter { person in
@@ -32,30 +30,25 @@ extension MediaDetailView {
 
         return SectionRow(title: "Cast & Crew") {
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .top, spacing: 16) {
                     ForEach(uniquePeople, id: \.id) { person in
                         Button {
                             selectedPerson = person
                         } label: {
                             CastCircle(
                                 person: person,
-                                imageURL: castImageURL(for: person)
+                                imageURL: detailVM.castImageURL(for: person, client: serverViewModel.client)
                             )
-                            .frame(width: 74, height: castRowHeight, alignment: .top)
+                            .frame(width: 74, alignment: .top)
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 16)
             }
-            .frame(height: castRowHeight)
             .scrollClipDisabled()
             .scrollIndicators(.hidden)
         }
-    }
-
-    func castImageURL(for person: BaseItemPerson) -> URL? {
-        detailVM.castImageURL(for: person, client: serverViewModel.client)
     }
 }
 

@@ -100,6 +100,11 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
         Self.formattedTimeRemaining(for: activeDownloads)
     }
 
+    public var activeStatusIcon: String? {
+        guard !activeDownloads.isEmpty else { return nil }
+        return DownloadGrouping.activeStatusIcon(for: activeDownloads)
+    }
+
     public static func == (lhs: ShowDownloadGroup, rhs: ShowDownloadGroup) -> Bool {
         lhs.id == rhs.id &&
         lhs.seriesName == rhs.seriesName &&
@@ -199,19 +204,10 @@ public enum DownloadGrouping {
     }
 
     public static func activeStatusIcon(for items: [DownloadItem]) -> String {
-        if items.contains(where: { $0.status == .converting || $0.status == .finalizing }) {
-            return "arrow.triangle.2.circlepath"
-        } else if items.contains(where: { $0.status == .downloading }) {
-            return "arrow.down"
-        } else if !items.isEmpty && items.allSatisfy({ $0.status == .failed }) {
-            return "exclamationmark.triangle.fill"
-        } else if !items.isEmpty && items.allSatisfy({ $0.status == .queued }) {
-            return "clock"
-        } else if let icon = items.first?.statusIcon {
-            return icon
-        } else {
-            return "arrow.down"
-        }
+        let activeItem = items.first(where: { $0.status == .converting || $0.status == .finalizing })
+            ?? items.first(where: { $0.status == .downloading })
+            ?? items.first
+        return activeItem?.statusIcon ?? DownloadStatus.downloading.iconName
     }
 
     public static func activeStatusText(for items: [DownloadItem]) -> String {
@@ -244,7 +240,7 @@ public enum DownloadGrouping {
                 isCompleted: true,
                 posterImageData: nil,
                 posterURL: nil,
-                statusIcon: "checkmark",
+                statusIcon: DownloadStatus.completed.iconName,
                 statusText: "Ready offline",
                 isQueued: false,
                 isConverting: false,

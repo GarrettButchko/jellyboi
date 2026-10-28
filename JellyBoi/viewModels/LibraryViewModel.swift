@@ -19,20 +19,47 @@ import SDWebImage
 @MainActor
 class LibraryViewModel {
 
-    // MARK: - Raw library data
+    // MARK: - Normalized store
 
-    private(set) var movies: [BaseItemDto] = []
-    private(set) var tvShows: [BaseItemDto] = []
-    private(set) var episodes: [BaseItemDto] = []
+    private var itemsByID: [String: BaseItemDto] = [:]
+
+    // MARK: - Ordered ID lists
+
+    private(set) var movieIDs: [String] = []
+    private(set) var tvShowIDs: [String] = []
+    private(set) var episodeIDs: [String] = []
+    private(set) var collectionIDs: [String] = []
+    private(set) var recommendedIDs: [String] = []
+    private(set) var recentlyAddedMovieIDs: [String] = []
+    private(set) var recentlyAddedShowIDs: [String] = []
+    private(set) var recentlyAddedIDs: [String] = []
+    private(set) var resumeShowIDs: [String] = []
+
+    // MARK: - Derived library data
+
+    var movies: [BaseItemDto] { movieIDs.compactMap { itemsByID[$0] } }
+    var tvShows: [BaseItemDto] { tvShowIDs.compactMap { itemsByID[$0] } }
+    var episodes: [BaseItemDto] { episodeIDs.compactMap { itemsByID[$0] } }
+    var collections: [BaseItemDto] { collectionIDs.compactMap { itemsByID[$0] } }
+    var recommended: [BaseItemDto] { recommendedIDs.compactMap { itemsByID[$0] } }
+    var recentlyAddedMovies: [BaseItemDto] { recentlyAddedMovieIDs.compactMap { itemsByID[$0] } }
+    var recentlyAddedShows: [BaseItemDto] { recentlyAddedShowIDs.compactMap { itemsByID[$0] } }
+    var recentlyAdded: [BaseItemDto] { recentlyAddedIDs.compactMap { itemsByID[$0] } }
+    var resumeShows: [BaseItemDto] { resumeShowIDs.compactMap { itemsByID[$0] } }
+
+    // MARK: - Lookup & Store Helpers
+
+    func item(for itemID: String) -> BaseItemDto? {
+        itemsByID[itemID]
+    }
+
+    func updateItem(_ item: BaseItemDto) {
+        guard let id = item.id else { return }
+        itemsByID[id] = item
+    }
 
     // MARK: - Home aggregates
 
-    private(set) var collections: [BaseItemDto] = []
-    private(set) var recommended: [BaseItemDto] = []
-    private(set) var recentlyAddedMovies: [BaseItemDto] = []
-    private(set) var recentlyAddedShows: [BaseItemDto] = []
-    private(set) var recentlyAdded: [BaseItemDto] = []
-    private(set) var resumeShows: [BaseItemDto] = []
     private(set) var inProgressMovies: [BaseItemDto] = []
     private(set) var topWatchedMovies: [BaseItemDto] = []
     private(set) var tvSeriesCount: Int = 0
@@ -123,8 +150,9 @@ class LibraryViewModel {
                 guard let self else { break }
                 if let itemID = notification.object as? String,
                    let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
+                    let userData = notification.userInfo?["userData"] as? UserItemDataDto
                     withAnimation(.smooth(duration: 0.35)) {
-                        self.updateFavorite(for: itemID, isFavorite: isFavorite)
+                        self.updateFavorite(for: itemID, isFavorite: isFavorite, userData: userData)
                     }
                 }
             }
@@ -143,10 +171,10 @@ class LibraryViewModel {
     var errorMessage: String?
 
     /// True when no media of any kind has been fetched yet (brand-new or fully empty library).
-    var isLibraryEmpty: Bool { movies.isEmpty && tvShows.isEmpty && episodes.isEmpty }
+    var isLibraryEmpty: Bool { movieIDs.isEmpty && tvShowIDs.isEmpty && episodeIDs.isEmpty }
 
     func load(using client: JellyfinClient, userID: String? = nil) async {
-        guard movies.isEmpty && tvShows.isEmpty && episodes.isEmpty else { return }
+        guard movieIDs.isEmpty && tvShowIDs.isEmpty && episodeIDs.isEmpty else { return }
         guard !isFetching else { return }
         await refresh(using: client, userID: userID)
     }
@@ -161,7 +189,7 @@ class LibraryViewModel {
         }
         let effectiveUserID = userID ?? currentUserID
 
-        let isInitialLoad = movies.isEmpty && tvShows.isEmpty && episodes.isEmpty
+        let isInitialLoad = movieIDs.isEmpty && tvShowIDs.isEmpty && episodeIDs.isEmpty
         if isInitialLoad {
             isLoading = true
         }
@@ -266,19 +294,45 @@ class LibraryViewModel {
             let fetchedNextUp        = (await nextUpResponse)?.value.items ?? []
             let fetchedFavorites     = (await favoritesResponse)?.value.totalRecordCount ?? 0
 
+            var newItemsByID: [String: BaseItemDto] = [:]
+
+            func record(_ items: [BaseItemDto]) -> [String] {
+                var ids: [String] = []
+                ids.reserveCapacity(items.count)
+                for item in items {
+                    guard let id = item.id else { continue }
+                    if newItemsByID[id] == nil {
+                        newItemsByID[id] = item
+                    }
+                    ids.append(id)
+                }
+                return ids
+            }
+
+            let recordedMovieIDs         = record(fetchedMovies)
+            let recordedShowIDs          = record(fetchedShows)
+            let recordedEpisodeIDs       = record(fetchedEpisodes)
+            let recordedCollectionIDs    = record(fetchedCollections)
+            let recordedRecommendedIDs   = record(fetchedRecommended)
+            let recordedRecentMovieIDs   = record(fetchedRecentMovies)
+            let recordedRecentShowIDs    = record(fetchedRecentShows)
+            let recordedRecentIDs        = record(fetchedRecent)
+            let recordedNextUpIDs        = record(fetchedNextUp)
+
             withAnimation(.smooth(duration: 0.45)) {
-                movies              = fetchedMovies
-                tvShows             = fetchedShows
-                episodes            = fetchedEpisodes
-                collections         = fetchedCollections
-                recommended         = fetchedRecommended
-                recentlyAddedMovies = fetchedRecentMovies
-                recentlyAddedShows  = fetchedRecentShows
-                recentlyAdded       = fetchedRecent
-                resumeShows         = fetchedNextUp
-                favoritesCount      = fetchedFavorites
-                tvSeriesCount       = fetchedShows.count
-                episodeCount        = fetchedEpisodes.count > 0 ? fetchedEpisodes.count : fetchedEpisodeCount
+                itemsByID             = newItemsByID
+                movieIDs              = recordedMovieIDs
+                tvShowIDs             = recordedShowIDs
+                episodeIDs            = recordedEpisodeIDs
+                collectionIDs         = recordedCollectionIDs
+                recommendedIDs        = recordedRecommendedIDs
+                recentlyAddedMovieIDs = recordedRecentMovieIDs
+                recentlyAddedShowIDs  = recordedRecentShowIDs
+                recentlyAddedIDs      = recordedRecentIDs
+                resumeShowIDs         = recordedNextUpIDs
+                favoritesCount        = fetchedFavorites
+                tvSeriesCount         = fetchedShows.count
+                episodeCount          = fetchedEpisodes.count > 0 ? fetchedEpisodes.count : fetchedEpisodeCount
 
                 updateAggregates()
             }
@@ -292,52 +346,43 @@ class LibraryViewModel {
     // MARK: - Progress Management
 
     func clearProgress(for itemID: String) {
-        movies.clearProgress(for: itemID, matchingSeries: true)
-        tvShows.clearProgress(for: itemID, matchingSeries: true)
-        episodes.clearProgress(for: itemID, matchingSeries: true)
-        recentlyAddedMovies.clearProgress(for: itemID, matchingSeries: true)
-        recentlyAddedShows.clearProgress(for: itemID, matchingSeries: true)
-        recentlyAdded.clearProgress(for: itemID, matchingSeries: true)
-        recommended.clearProgress(for: itemID, matchingSeries: true)
-        resumeShows.removeAll { $0.id == itemID || $0.seriesID == itemID }
+        if var item = itemsByID[itemID] {
+            item.clearProgress()
+            itemsByID[itemID] = item
+        }
+        for (id, var item) in itemsByID where item.seriesID == itemID {
+            item.clearProgress()
+            itemsByID[id] = item
+        }
+        resumeShowIDs.removeAll { id in
+            guard let item = itemsByID[id] else { return true }
+            return item.id == itemID || item.seriesID == itemID
+        }
 
         updateAggregates()
     }
 
     func updateProgress(for itemID: String, positionTicks: Int, totalTicks: Int?) {
-        movies.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
-        tvShows.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
-        episodes.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
-        recentlyAddedMovies.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
-        recentlyAddedShows.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
-        recentlyAdded.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
-        recommended.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
-        resumeShows.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        if var item = itemsByID[itemID] {
+            item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
+            itemsByID[itemID] = item
+        }
 
         updateAggregates()
     }
 
     // MARK: - Favorite Management
 
-    func updateFavorite(for itemID: String, isFavorite: Bool) {
-        var wasFavorite: Bool? = nil
-        let allLists = [movies, tvShows, episodes, collections, recommended, recentlyAddedMovies, recentlyAddedShows, recentlyAdded]
-        for list in allLists {
-            if let found = list.first(where: { $0.id == itemID }) {
-                wasFavorite = found.userData?.isFavorite ?? false
-                break
-            }
-        }
+    func updateFavorite(for itemID: String, isFavorite: Bool, userData: UserItemDataDto? = nil) {
+        guard var item = itemsByID[itemID] else { return }
+        let wasFavorite = item.userData?.isFavorite ?? false
 
-        movies.updateFavorite(for: itemID, isFavorite: isFavorite)
-        tvShows.updateFavorite(for: itemID, isFavorite: isFavorite)
-        episodes.updateFavorite(for: itemID, isFavorite: isFavorite)
-        collections.updateFavorite(for: itemID, isFavorite: isFavorite)
-        recommended.updateFavorite(for: itemID, isFavorite: isFavorite)
-        recentlyAddedMovies.updateFavorite(for: itemID, isFavorite: isFavorite)
-        recentlyAddedShows.updateFavorite(for: itemID, isFavorite: isFavorite)
-        recentlyAdded.updateFavorite(for: itemID, isFavorite: isFavorite)
-        resumeShows.updateFavorite(for: itemID, isFavorite: isFavorite)
+        if let userData {
+            item.userData = userData
+        } else {
+            item.setFavorite(isFavorite)
+        }
+        itemsByID[itemID] = item
 
         if wasFavorite != isFavorite {
             favoritesCount = max(0, favoritesCount + (isFavorite ? 1 : -1))

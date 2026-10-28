@@ -27,51 +27,9 @@ class MediaButtonColumnViewModel {
 
     // MARK: - Server-derived Playback State
 
-    var watchProgress: Double? {
-        if isProgressReset { return nil }
-        if item.userData?.isPlayed == true { return 1.0 }
-        guard let percent = item.userData?.playedPercentage else { return nil }
-        return min(max(percent / 100.0, 0), 1.0)
-    }
-
-    var isWatched: Bool {
-        if isProgressReset { return false }
-        if item.userData?.isPlayed == true { return true }
-        return (watchProgress ?? 0) >= 0.85
-    }
-
-    var hasProgress: Bool {
-        if isProgressReset { return false }
-        if let percent = item.userData?.playedPercentage, percent >= 1.0 { return true }
-        if let ticks = item.userData?.playbackPositionTicks, ticks > 0 {
-            let total = item.runTimeTicks.map { Int($0) } ?? 0
-            if total > 0 {
-                return (Double(ticks) / Double(total)) * 100.0 >= 1.0
-            }
-            return true
-        }
-        return false
-    }
-
-    var isInProgress: Bool {
-        if isProgressReset { return false }
-        if isWatched { return false }
-        return hasProgress && Int((watchProgress ?? 0) * 100) > 0
-    }
-
-    var progressVisible: Bool {
-        if isWatched { return true }
-        guard isInProgress, let wp = watchProgress else { return false }
-        return Int(wp * 100) > 0
-    }
-
     var progressValue: Double {
-        if isWatched { return 1.0 }
-        return watchProgress ?? 0.0
-    }
-
-    var percentText: String {
-        "\(Int(progressValue * 100))%"
+        if isProgressReset { return 0.0 }
+        return item.isWatched ? 1.0 : (item.watchProgress ?? 0.0)
     }
 
     var contextMenuTitle: String {
@@ -149,9 +107,9 @@ class MediaButtonColumnViewModel {
         onContinueWatching: (() -> Void)? = nil,
         onStartFromBeginning: (() -> Void)? = nil
     ) {
-        if isInProgress {
+        if !isProgressReset && item.isInProgress {
             handleContinueWatching(onPlay: onPlay, onContinueWatching: onContinueWatching)
-        } else if isWatched {
+        } else if !isProgressReset && item.isWatched {
             handleStartFromBeginning(onStartFromBeginning: onStartFromBeginning)
         } else {
             handleStart(onPlay: onPlay, onStartFromBeginning: onStartFromBeginning)

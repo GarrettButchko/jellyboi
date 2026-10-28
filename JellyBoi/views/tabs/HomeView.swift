@@ -10,7 +10,6 @@ import JellyfinAPI
 import SDWebImageSwiftUI
 
 struct HomeView: View {
-    @EnvironmentObject var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(HomeViewModel.self) private var viewModel
@@ -23,6 +22,7 @@ struct HomeView: View {
     @State private var headerHeight: CGFloat = 120
     @State private var heroItem: BaseItemDto?
     @State private var safeAreaTop: CGFloat = 0
+    @State private var selectedItem: BaseItemDto?
     @State private var zoomSourceID: AnyHashable?
     @State private var isShowingCollections: Bool = false
     
@@ -33,7 +33,7 @@ struct HomeView: View {
                     .ignoresSafeArea()
 
                 ScrollToTopScrollView(topInset: headerHeight, scrollOffset: $scrollOffset) { proxy in
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 24) {
                             if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
                                 EmptyStateView(
                                     icon: "wifi.exclamationmark",
@@ -73,7 +73,7 @@ struct HomeView: View {
                                             return libraryViewModel.backdropURL(for: item, client: client)
                                         } onSelect: { item in
                                             zoomSourceID = AnyHashable(item)
-                                            viewManager.navigateToMedia(item)
+                                            selectedItem = item
                                         } onSnap: { index, item in
                                             withAnimation(.smooth(duration: 0.4)) { heroItem = item }
                                             if let client = serverViewModel.client {
@@ -86,7 +86,6 @@ struct HomeView: View {
                                 
                                 SkeletonZone(showsContent: !viewModel.isLoading) {
                                     SkeletonStatsRow()
-                                        .padding(.top, 16)
                                 } content: {
                                     if !viewModel.movies.isEmpty {
                                         ScrollView(.horizontal) {
@@ -104,14 +103,12 @@ struct HomeView: View {
                                             .padding(.horizontal, 16)
                                         }
                                         .scrollIndicators(.hidden)
-                                        .padding(.top, 16)
                                     }
                                 }
                                 
                                 ForEach(sectionRows) { config in
                                     SkeletonZone(showsContent: !viewModel.isLoading) {
                                         SkeletonSectionRow()
-                                            .padding(.top, 16)
                                     } content: {
                                         if !config.items.isEmpty {
                                             SectionRow(
@@ -122,7 +119,7 @@ struct HomeView: View {
                                                 onTitleTap: config.onTitleTap,
                                                 onSelect: { item, zoomID in
                                                     zoomSourceID = zoomID
-                                                    viewManager.navigateToMedia(item)
+                                                    selectedItem = item
                                                 }
                                             ) { item in
                                                 guard let client = serverViewModel.client else { return nil }
@@ -138,7 +135,6 @@ struct HomeView: View {
                             }
                             
                         }
-                        .padding(.bottom, 8)
                         .background(alignment: .top) {
                             if let item = heroItem ?? viewModel.currentCarouselItem,
                                let client = serverViewModel.client {
@@ -158,7 +154,7 @@ struct HomeView: View {
                         await viewModel.refresh(using: client)
                     }
                 }
-                .navigationDestination(item: $viewManager.selectedMediaItem) { item in
+                .navigationDestination(item: $selectedItem) { item in
                     MediaDetailView(item: item)
                         .navigationTransition(.zoom(sourceID: zoomSourceID ?? AnyHashable(item), in: zoomTransition))
                 }
@@ -166,6 +162,7 @@ struct HomeView: View {
                     MediaResultsView(collections: viewModel.collections)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
+                    selectedItem = nil
                     isShowingCollections = false
                 }
                 .toolbarVisibility(.hidden, for: .navigationBar)

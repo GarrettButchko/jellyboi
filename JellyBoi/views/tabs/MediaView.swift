@@ -4,7 +4,6 @@ import SDWebImageSwiftUI
 import JellyfinAPI
 
 struct MediaView: View {
-    @EnvironmentObject private var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(DownloadManager.self) private var downloadManager
@@ -122,9 +121,6 @@ struct MediaView: View {
                 MediaDetailView(item: item)
                     .navigationTransition(.zoom(sourceID: item, in: zoomTransition))
             }
-            .navigationDestination(item: $viewManager.selectedMediaItem) { item in
-                MediaDetailView(item: item)
-            }
             .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
                 selectedItem = nil
             }
@@ -175,13 +171,10 @@ struct MediaView: View {
                         favoriteSection(title: "Shows", items: downloadedShows)
                         favoriteSection(title: "Episodes", items: downloadedEpisodes)
                     }
-                    .padding(.bottom, 8)
                 } else if !downloadedShows.isEmpty {
                     favoriteSection(title: "Shows", items: downloadedShows)
-                        .padding(.bottom, 8)
                 } else if !downloadedEpisodes.isEmpty {
                     favoriteSection(title: "Episodes", items: downloadedEpisodes)
-                        .padding(.bottom, 8)
                 } else {
                     emptyDownloadsView
                 }
@@ -230,13 +223,10 @@ struct MediaView: View {
                             favoriteSection(title: "Shows", items: viewModel.favoriteShows)
                             favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
                         }
-                        .padding(.bottom, 8)
                     } else if !viewModel.favoriteShows.isEmpty {
                         favoriteSection(title: "Shows", items: viewModel.favoriteShows)
-                            .padding(.bottom, 8)
                     } else {
                         favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
-                            .padding(.bottom, 8)
                     }
                 }
             }

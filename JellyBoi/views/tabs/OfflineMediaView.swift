@@ -13,7 +13,6 @@ import JellyfinAPI
 struct OfflineMediaView: View {
     var onRetry: (() async -> Bool)? = nil
 
-    @EnvironmentObject private var viewManager: ViewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(LibraryViewModel.self) private var libraryViewModel
@@ -52,7 +51,6 @@ struct OfflineMediaView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 120)
                 }
                 .animation(.easeInOut(duration: 0.2), value: filter)
 
@@ -65,8 +63,8 @@ struct OfflineMediaView: View {
                 MediaDetailView(item: item)
                     .navigationTransition(.zoom(sourceID: item, in: zoomTransition))
             }
-            .navigationDestination(item: $viewManager.selectedMediaItem) { item in
-                MediaDetailView(item: item)
+            .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
+                selectedItem = nil
             }
             .toolbarVisibility(.hidden, for: .navigationBar)
             .background(Color.bg.ignoresSafeArea())

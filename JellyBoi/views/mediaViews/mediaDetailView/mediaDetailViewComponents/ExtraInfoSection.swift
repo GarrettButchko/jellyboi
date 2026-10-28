@@ -16,7 +16,6 @@ extension MediaDetailView {
         if detailVM.hasExtraInfo {
             extraInfoContent
                 .padding(.horizontal, 20)
-                .padding(.top, 16)
         }
     }
 
@@ -25,7 +24,7 @@ extension MediaDetailView {
         let directors = people.filter { $0.type == .director }.compactMap(\.name)
         let writers   = people.filter { $0.type == .writer   }.compactMap(\.name)
 
-        return VStack(alignment: .leading, spacing: 16) {
+        return VStack(alignment: .leading, spacing: 12) {
             Text("Extra Info")
                 .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(Color.mainOpp)
@@ -51,18 +50,25 @@ extension MediaDetailView {
 
 // MARK: - ExtraInfoRow
 
-struct ExtraInfoRow: View {
+private struct ExtraInfoRow: View {
     let label: String
     let value: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .top, spacing: 8) {
             Text(label)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                .foregroundStyle(Color.mainOpp.opacity(0.45))
-            Text(value)
-                .font(.system(.body, design: .rounded))
-                .foregroundStyle(Color.mainOpp)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.mainOpp.opacity(0.55))
+                .frame(width: 80, alignment: .leading)
+
+            ScrollView(.horizontal) {
+                HStack{
+                    Text(value)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.mainOpp)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
         }
     }
 }

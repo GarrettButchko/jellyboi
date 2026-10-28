@@ -139,7 +139,7 @@ public final class DownloadActivityCoordinator {
             totalItems: 0,
             isCompleted: true,
             posterImageData: lastPosterData,
-            statusIcon: "checkmark",
+            statusIcon: DownloadStatus.completed.iconName,
             statusText: "Ready offline",
             isQueued: false,
             isConverting: false,

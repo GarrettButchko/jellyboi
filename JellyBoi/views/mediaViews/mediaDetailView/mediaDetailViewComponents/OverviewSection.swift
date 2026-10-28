@@ -13,9 +13,15 @@ extension MediaDetailView {
 
     @ViewBuilder
     var overviewSection: some View {
-        if !detailVM.isOverviewHidden, let overview = displayItem.overview, !overview.isEmpty {
-            ExpandableText(overview)
-                .padding(.horizontal, 20)
+        VStack(alignment: .leading, spacing: 16){
+            VStack(alignment: .leading, spacing: 6){
+                episodeHeaderSection
+                if !detailVM.isOverviewHidden, let overview = displayItem.overview, !overview.isEmpty {
+                    ExpandableText(overview)
+                        .padding(.horizontal, 20)
+                }
+            }
+            infoChipsScrollView
         }
     }
 }

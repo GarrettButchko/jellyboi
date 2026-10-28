@@ -635,14 +635,7 @@ struct DownloadsSheet: View {
                                 }
                             }()
 
-                            let activeIcon: String? = {
-                                if group.activeDownloads.contains(where: { $0.status == .converting || $0.status == .finalizing }) {
-                                    return "arrow.triangle.2.circlepath"
-                                } else if group.activeDownloads.contains(where: { $0.status == .downloading }) {
-                                    return "arrow.down"
-                                }
-                                return nil
-                            }()
+                            let activeIcon: String? = group.activeStatusIcon
 
                             HStack(spacing: 4) {
                                 if let icon = activeIcon {

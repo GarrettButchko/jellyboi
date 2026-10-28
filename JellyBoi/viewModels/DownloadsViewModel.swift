@@ -312,13 +312,6 @@ final class DownloadsViewModel {
     }
 
     func groupActiveIcon(for group: ShowDownloadGroup) -> String? {
-        if group.activeDownloads.contains(where: { $0.status == .converting }) {
-            return "arrow.triangle.2.circlepath"
-        } else if group.activeDownloads.contains(where: { $0.status == .downloading }) {
-            return "arrow.down"
-        } else if group.isAllQueued {
-            return "clock"
-        }
-        return nil
+        group.activeStatusIcon
     }
 }

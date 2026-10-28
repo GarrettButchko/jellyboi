@@ -16,7 +16,6 @@ extension MediaDetailView {
         if !detailVM.areTagsHidden, let tags = displayItem.tags, !tags.isEmpty {
             tagsContent(tags)
                 .padding(.horizontal, 20)
-                .padding(.top, 16)
         }
     }
 

@@ -58,8 +58,7 @@ struct MediaDetailView: View {
         ) { _ in
             VStack(alignment: .leading, spacing: 0) {
                 heroSection
-                episodeHeaderSection
-
+                
                 SkeletonZone(showsContent: detailVM.detailedItem != nil) {
                     SkeletonDetailContent(
                         isSeries: displayItem.type == .series,
@@ -67,9 +66,9 @@ struct MediaDetailView: View {
                         hasSpecialFeatures: (displayItem.specialFeatureCount ?? 0) > 0
                     )
                 } content: {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 24) {
                         overviewSection
-                        infoChipsScrollView
+                        
                         if displayItem.type == .series {
                             episodesSection
                         }
@@ -82,8 +81,7 @@ struct MediaDetailView: View {
                         tagsSection
                         extraInfoSection
                     }
-                    .padding(.top, displayItem.type == .episode ? 8 : 16)
-                    .padding(.bottom, 48)
+                    .padding(.top, 16)
                 }
             }
         }

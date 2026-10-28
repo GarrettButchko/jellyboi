@@ -74,20 +74,11 @@ extension MediaDetailView {
                                         )
                                         .frame(width: cardWidth, height: specialFeatureCardHeight)
 
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(feature.name ?? "Special Feature")
-                                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                                .foregroundStyle(Color.mainOpp)
-                                                .lineLimit(1)
-
-                                            if let runtime = feature.formattedRuntime {
-                                                Text(runtime)
-                                                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                                                    .foregroundStyle(Color.mainOpp.opacity(0.6))
-                                                    .lineLimit(1)
-                                            }
-                                        }
-                                        .frame(width: cardWidth, alignment: .leading)
+                                        Text(feature.name ?? "Special Feature")
+                                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(Color.mainOpp)
+                                            .lineLimit(2)
+                                            .fixedSize(horizontal: false, vertical: true)
                                     }
                                     .frame(width: cardWidth, height: specialFeatureItemHeight, alignment: .top)
                                     .id(featureID)

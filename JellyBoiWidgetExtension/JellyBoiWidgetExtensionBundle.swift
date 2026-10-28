@@ -11,7 +11,6 @@ import SwiftUI
 @main
 struct JellyBoiWidgetExtensionBundle: WidgetBundle {
     var body: some Widget {
-        JellyBoiWidgetExtension()
         DownloadActivityWidget()
     }
 }

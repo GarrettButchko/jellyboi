@@ -72,19 +72,7 @@ struct ActiveDownloadFloatingBar: View {
     }
 
     private var ringIcon: String {
-        if activeDownloads.contains(where: { $0.status == .converting || $0.status == .finalizing }) {
-            return "arrow.triangle.2.circlepath"
-        } else if activeDownloads.contains(where: { $0.status == .downloading }) {
-            return "arrow.down"
-        } else if activeDownloads.contains(where: { $0.status == .failed }) {
-            return "exclamationmark.triangle.fill"
-        } else if !activeDownloads.isEmpty && activeDownloads.allSatisfy({ $0.status == .queued }) {
-            return "clock"
-        } else if let icon = activeDownloads.first?.statusIcon {
-            return icon
-        } else {
-            return "arrow.down"
-        }
+        DownloadGrouping.activeStatusIcon(for: activeDownloads)
     }
 
     private var percent: Int {

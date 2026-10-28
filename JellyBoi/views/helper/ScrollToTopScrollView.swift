@@ -37,7 +37,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
     private let threshold: CGFloat
     private let headerCollapseThreshold: CGFloat
     private let topInset: CGFloat
-    private let bottomInset: CGFloat
+    private var bottomInset: CGFloat = 16
     private let showsScrollToTop: Bool
     private let scrollToTopTrigger: Binding<Bool>?
     private let isHeaderCollapsedBinding: Binding<Bool>?
@@ -57,7 +57,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
         threshold: CGFloat = 300,
         headerCollapseThreshold: CGFloat = 40,
         topInset: CGFloat = 0,
-        bottomInset: CGFloat = 0,
+        bottomInset: CGFloat = 16,
         showsScrollToTop: Bool = true,
         isHeaderCollapsed: Binding<Bool>? = nil,
         scrollState: Binding<ScrollToTopScrollState>? = nil,
@@ -91,7 +91,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
         threshold: CGFloat = 300,
         headerCollapseThreshold: CGFloat = 40,
         topInset: CGFloat = 0,
-        bottomInset: CGFloat = 0,
+        bottomInset: CGFloat = 16,
         showsScrollToTop: Bool = true,
         isHeaderCollapsed: Binding<Bool>? = nil,
         scrollState: Binding<ScrollToTopScrollState>? = nil,
@@ -200,7 +200,7 @@ extension ScrollToTopScrollView where Header == EmptyView {
         threshold: CGFloat = 300,
         headerCollapseThreshold: CGFloat = 40,
         topInset: CGFloat = 0,
-        bottomInset: CGFloat = 0,
+        bottomInset: CGFloat = 16,
         showsScrollToTop: Bool = true,
         isHeaderCollapsed: Binding<Bool>? = nil,
         scrollState: Binding<ScrollToTopScrollState>? = nil,
@@ -235,7 +235,7 @@ extension ScrollToTopScrollView where Header == EmptyView {
         threshold: CGFloat = 300,
         headerCollapseThreshold: CGFloat = 40,
         topInset: CGFloat = 0,
-        bottomInset: CGFloat = 0,
+        bottomInset: CGFloat = 16,
         showsScrollToTop: Bool = true,
         isHeaderCollapsed: Binding<Bool>? = nil,
         scrollState: Binding<ScrollToTopScrollState>? = nil,

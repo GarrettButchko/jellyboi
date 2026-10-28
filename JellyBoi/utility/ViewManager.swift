@@ -25,7 +25,6 @@ class ViewManager: ObservableObject {
     @Published var isSignedIn: Bool
     @Published var showSignInFlow: Bool = false
     @Published var showServerSignIn: Bool = false
-    @Published var selectedMediaItem: BaseItemDto?
     @Published var selectedTab: AppTab = .home
 
     init() {
@@ -56,21 +55,12 @@ class ViewManager: ObservableObject {
         showServerSignIn = false
     }
 
-    func navigateToMedia(_ item: BaseItemDto) {
-        selectedMediaItem = item
-    }
-
-    func dismissMedia() {
-        selectedMediaItem = nil
-    }
-
     func navigateToDownloads() {
         selectedTab = .media
         dismissToRoot()
     }
 
     func dismissToRoot() {
-        selectedMediaItem = nil
         NotificationCenter.default.post(name: .dismissMediaDetailToRoot, object: nil)
     }
 }

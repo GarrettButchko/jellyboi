@@ -38,7 +38,6 @@ struct MediaGrid: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 8)
     }
 
     private func posterURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
