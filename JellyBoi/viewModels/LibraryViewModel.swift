@@ -45,6 +45,10 @@ class LibraryViewModel {
 
     private var similarItemsCache: [String: [BaseItemDto]] = [:]
 
+    func cachedSimilarItems(for itemID: String) -> [BaseItemDto]? {
+        similarItemsCache[itemID]
+    }
+
     func similarItems(for itemID: String, client: JellyfinClient, userID: String?) async -> [BaseItemDto] {
         if let cached = similarItemsCache[itemID] { return cached }
         let result = (try? await client.send(
@@ -58,6 +62,23 @@ class LibraryViewModel {
             )
         ).value.items) ?? []
         similarItemsCache[itemID] = result
+        return result
+    }
+
+    // MARK: - Special features cache
+
+    private var specialFeaturesCache: [String: [BaseItemDto]] = [:]
+
+    func cachedSpecialFeatures(for itemID: String) -> [BaseItemDto]? {
+        specialFeaturesCache[itemID]
+    }
+
+    func specialFeatures(for itemID: String, client: JellyfinClient, userID: String?) async -> [BaseItemDto] {
+        if let cached = specialFeaturesCache[itemID] { return cached }
+        let result = (try? await client.send(
+            Paths.getSpecialFeatures(itemID: itemID, userID: userID)
+        ).value) ?? []
+        specialFeaturesCache[itemID] = result
         return result
     }
 

@@ -1,0 +1,103 @@
+//
+//  SpecialFeaturesSection.swift
+//  JellyBoi
+//
+//  Created by Garrett Butchko on 10/28/26.
+//
+
+import SwiftUI
+import BaseColors
+import JellyfinAPI
+
+extension MediaDetailView {
+
+    private var specialFeatureCardHeight: CGFloat {
+        horizontalSizeClass == .regular ? 140 : 110
+    }
+
+    @ViewBuilder
+    var specialFeaturesSection: some View {
+        if !detailVM.isSpecialFeaturesHidden {
+            if detailVM.specialFeatures.isEmpty {
+                if detailVM.isLoadingSpecialFeatures && (displayItem.specialFeatureCount ?? 0) > 0 {
+                    SkeletonSpecialFeaturesSection()
+                        .transition(.opacity)
+                }
+            } else {
+                SectionRow(title: "Special Features") {
+                    ScrollView(.horizontal) {
+                        LazyHStack(alignment: .top, spacing: 14) {
+                            ForEach(detailVM.specialFeatures, id: \.id) { feature in
+                                if let featureID = feature.id {
+                                    let ratio = feature.imageAspectRatio
+                                    let cardWidth = specialFeatureCardHeight * ratio
+                                    let zoomID: AnyHashable = AnyHashable("specialFeature-\(featureID)")
+
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        MediaCard(
+                                            item: feature,
+                                            posterURL: detailVM.specialFeatureThumbnailURL(for: feature, client: serverViewModel.client),
+                                            namespace: specialFeatureTransition,
+                                            onSelect: {
+                                                playbackManager.play(
+                                                    item: feature,
+                                                    fromBeginning: false,
+                                                    client: serverViewModel.client,
+                                                    userID: serverViewModel.currentUser?.id,
+                                                    libraryViewModel: libraryViewModel
+                                                )
+                                            },
+                                            zoomID: zoomID,
+                                            imageAspectRatio: ratio,
+                                            onContinueWatching: {
+                                                playbackManager.play(
+                                                    item: feature,
+                                                    fromBeginning: false,
+                                                    client: serverViewModel.client,
+                                                    userID: serverViewModel.currentUser?.id,
+                                                    libraryViewModel: libraryViewModel
+                                                )
+                                            },
+                                            onStartFromBeginning: {
+                                                playbackManager.play(
+                                                    item: feature,
+                                                    fromBeginning: true,
+                                                    client: serverViewModel.client,
+                                                    userID: serverViewModel.currentUser?.id,
+                                                    libraryViewModel: libraryViewModel
+                                                )
+                                            }
+                                        )
+                                        .frame(width: cardWidth, height: specialFeatureCardHeight)
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(feature.name ?? "Special Feature")
+                                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                                .foregroundStyle(Color.mainOpp)
+                                                .lineLimit(1)
+
+                                            if let runtime = feature.formattedRuntime {
+                                                Text(runtime)
+                                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                                    .foregroundStyle(Color.mainOpp.opacity(0.6))
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        .frame(width: cardWidth, alignment: .leading)
+                                    }
+                                    .id(featureID)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .scrollTargetLayout()
+                    }
+                    .scrollClipDisabled()
+                    .scrollIndicators(.hidden)
+                    .scrollTargetBehavior(.viewAligned)
+                }
+                .transition(.opacity)
+            }
+        }
+    }
+}

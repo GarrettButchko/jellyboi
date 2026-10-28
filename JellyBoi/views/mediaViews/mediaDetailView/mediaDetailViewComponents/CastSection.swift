@@ -28,12 +28,7 @@ extension MediaDetailView {
             return seen.insert(key).inserted
         }
 
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("Cast & Crew")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(Color.mainOpp)
-                .padding(.horizontal, 16)
-
+        return SectionRow(title: "Cast & Crew") {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 16) {
                     ForEach(uniquePeople, id: \.id) { person in
@@ -50,6 +45,7 @@ extension MediaDetailView {
                 }
                 .padding(.horizontal, 16)
             }
+            .scrollClipDisabled()
             .scrollIndicators(.hidden)
         }
     }

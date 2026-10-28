@@ -231,7 +231,7 @@ struct SkeletonSectionRow: View {
     private var cardHeight: CGFloat { cardWidth * 1.5 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             SkeletonBlock(cornerRadius: 6)
                 .frame(width: 160, height: 22)
                 .padding(.horizontal, 16)
@@ -314,6 +314,45 @@ struct SkeletonEpisodesSection: View {
     }
 }
 
+// MARK: - Special features section skeleton
+
+/// Loading placeholder that mirrors the special features section of a detail view.
+struct SkeletonSpecialFeaturesSection: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    private var cardHeight: CGFloat { sizeClass == .regular ? 140 : 110 }
+    private var cardWidth: CGFloat { cardHeight * (16.0 / 9.0) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SkeletonBlock(cornerRadius: 6)
+                .frame(width: 140, height: 22)
+                .padding(.horizontal, 16)
+
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 14) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        VStack(alignment: .leading, spacing: 6) {
+                            SkeletonBlock(cornerRadius: 16)
+                                .frame(width: cardWidth, height: cardHeight)
+
+                            SkeletonBlock(cornerRadius: 4)
+                                .frame(width: cardWidth * 0.7, height: 12)
+
+                            SkeletonBlock(cornerRadius: 4)
+                                .frame(width: cardWidth * 0.35, height: 10)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .scrollClipDisabled()
+            .scrollIndicators(.hidden)
+            .disabled(true)
+        }
+    }
+}
+
 // MARK: - Detail content skeleton
 
 /// Loading placeholder that mirrors the content area of `MediaDetailView`
@@ -321,6 +360,7 @@ struct SkeletonEpisodesSection: View {
 struct SkeletonDetailContent: View {
     var isSeries: Bool = false
     var isCollection: Bool = false
+    var hasSpecialFeatures: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -379,6 +419,11 @@ struct SkeletonDetailContent: View {
                     }
                     .scrollIndicators(.hidden)
                     .disabled(true)
+                }
+
+                if hasSpecialFeatures {
+                    // Special Features section skeleton
+                    SkeletonSpecialFeaturesSection()
                 }
 
                 // More Like This

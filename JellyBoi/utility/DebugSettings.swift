@@ -44,6 +44,7 @@ public final class DebugSettings {
     public var hidePoster = false
     public var hideCastAndCrew = false
     public var hideEpisodes = false
+    public var hideSpecialFeatures = false
     public var hideTags = false
     public var hideSimilarItems = false
 
@@ -130,6 +131,7 @@ public final class DebugSettings {
         hidePoster = false
         hideCastAndCrew = false
         hideEpisodes = false
+        hideSpecialFeatures = false
         hideTags = false
         hideSimilarItems = false
 
@@ -227,6 +229,7 @@ public struct DebugSettingsView: View {
                 Toggle("Hide Poster Image", isOn: $debugSettings.hidePoster)
                 Toggle("Hide Cast & Crew", isOn: $debugSettings.hideCastAndCrew)
                 Toggle("Hide Episodes", isOn: $debugSettings.hideEpisodes)
+                Toggle("Hide Special Features", isOn: $debugSettings.hideSpecialFeatures)
                 Toggle("Hide Tags", isOn: $debugSettings.hideTags)
                 Toggle("Hide 'More Like This'", isOn: $debugSettings.hideSimilarItems)
             } header: {

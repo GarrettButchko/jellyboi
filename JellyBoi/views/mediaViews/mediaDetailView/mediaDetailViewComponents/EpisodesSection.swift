@@ -46,20 +46,14 @@ extension MediaDetailView {
         }()
         if showEpisodes, displayItem.type == .series, (!detailVM.seasons.isEmpty || detailVM.isLoadingEpisodes) {
             ScrollViewReader { proxy in
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .center) {
-                        Text("Episodes")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(Color.mainOpp)
-
-                        Spacer()
-
+                SectionRow(
+                    title: "Episodes",
+                    headerAccessory: {
                         if detailVM.seasons.count > 1 {
                             seasonMenu(proxy: proxy)
                         }
                     }
-                    .padding(.horizontal, 16)
-
+                ) {
                     if detailVM.episodes.isEmpty {
                         if detailVM.isLoadingEpisodes {
                             SkeletonEpisodesRow()

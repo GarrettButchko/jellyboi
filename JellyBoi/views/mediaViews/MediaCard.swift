@@ -52,7 +52,7 @@ struct MediaCard: View {
     }
 
     private func playAction(fromBeginning: Bool) {
-        if item.type == .movie || item.type == .episode || item.type == .series || item.type == .boxSet {
+        if item.type == .movie || item.type == .episode || item.type == .series || item.type == .boxSet || item.type == .video || item.type == .trailer {
             playbackManager?.play(
                 item: item,
                 fromBeginning: fromBeginning,

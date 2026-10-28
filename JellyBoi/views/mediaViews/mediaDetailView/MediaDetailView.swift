@@ -43,6 +43,7 @@ struct MediaDetailView: View {
     @State var episodeZoomID: AnyHashable?
     @State var selectedPerson: BaseItemPerson?
     @State var selectedSeries: BaseItemDto?
+    @Namespace var specialFeatureTransition
     @Namespace var glassNamespace
     @Namespace var trailingButtonsNamespace
 
@@ -62,14 +63,16 @@ struct MediaDetailView: View {
                 SkeletonZone(showsContent: detailVM.detailedItem != nil) {
                     SkeletonDetailContent(
                         isSeries: displayItem.type == .series,
-                        isCollection: displayItem.type == .boxSet
+                        isCollection: displayItem.type == .boxSet,
+                        hasSpecialFeatures: (displayItem.specialFeatureCount ?? 0) > 0
                     )
                 } content: {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 16) {
                         overviewSection
                         infoChipsScrollView
                         episodesSection
                         castSection
+                        specialFeaturesSection
                         collectionSection
                         similarItemsSection
                         tagsSection

@@ -22,6 +22,7 @@ class MediaDetailViewModel {
     var sourceItem: BaseItemDto?
     var seriesItem: BaseItemDto?
     var similarItems: [BaseItemDto] = []
+    var specialFeatures: [BaseItemDto] = []
     var seasons: [BaseItemDto] = []
     var episodes: [BaseItemDto] = []
     var collectionItems: [BaseItemDto] = []
@@ -34,6 +35,7 @@ class MediaDetailViewModel {
     var isLoading = false
     var isLoadingCollectionItems = false
     var isLoadingEpisodes = false
+    var isLoadingSpecialFeatures = false
     private var client: JellyfinClient?
     private weak var libraryViewModel: LibraryViewModel?
     private static var collectionItemsCache: [String: [BaseItemDto]] = [:]
@@ -683,11 +685,13 @@ class MediaDetailViewModel {
     var isCastHidden: Bool { DebugSettings.shared.hideCastAndCrew }
     var areTagsHidden: Bool { DebugSettings.shared.hideTags }
     var areSimilarItemsHidden: Bool { DebugSettings.shared.hideSimilarItems }
+    var isSpecialFeaturesHidden: Bool { DebugSettings.shared.hideSpecialFeatures }
     #else
     var isOverviewHidden: Bool { false }
     var isCastHidden: Bool { false }
     var areTagsHidden: Bool { false }
     var areSimilarItemsHidden: Bool { false }
+    var isSpecialFeaturesHidden: Bool { false }
     #endif
 
     func isFavorite(fallback: BaseItemDto) -> Bool {
@@ -772,6 +776,21 @@ class MediaDetailViewModel {
         self.libraryViewModel = libraryViewModel
         self.hasInitialEpisodeScrolled = false
         self.scrolledEpisodeID = nil
+        if let id = item.id, let lvm = libraryViewModel {
+            if let cached = lvm.cachedSpecialFeatures(for: id) {
+                self.specialFeatures = cached
+                self.isLoadingSpecialFeatures = false
+            } else {
+                self.specialFeatures = []
+                self.isLoadingSpecialFeatures = true
+            }
+            if let cachedSimilar = lvm.cachedSimilarItems(for: id) {
+                self.similarItems = cachedSimilar
+            }
+        } else {
+            self.specialFeatures = []
+            self.isLoadingSpecialFeatures = true
+        }
         if item.type == .series {
             self.isLoadingEpisodes = true
             if let seriesID = item.id, let lvm = libraryViewModel {
@@ -861,6 +880,9 @@ class MediaDetailViewModel {
         async let similarResult: [BaseItemDto] = libraryViewModel.similarItems(
             for: itemID, client: client, userID: userID
         )
+        async let specialFeaturesResult: [BaseItemDto] = libraryViewModel.specialFeatures(
+            for: itemID, client: client, userID: userID
+        )
 
         // Load collection items / episodes concurrently so cumulative progress resolves immediately without waiting for details/similar
         if item.type == .series || resolvedItem.type == .series {
@@ -876,6 +898,8 @@ class MediaDetailViewModel {
 
         detailedItem = await detailResult
         similarItems = await similarResult
+        specialFeatures = await specialFeaturesResult
+        isLoadingSpecialFeatures = false
 
         if let sources = detailedItem?.mediaSources ?? sourceItem?.mediaSources, !sources.isEmpty {
             self.mediaSources = sources
@@ -1100,6 +1124,17 @@ class MediaDetailViewModel {
         guard let client, let id = episode.id else { return nil }
         let imageType = episode.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
         return client.url(with: Paths.getItemImage(
+            itemID: id,
+            imageType: imageType,
+            parameters: .init(maxWidth: 600, quality: 90)
+        ))
+    }
+
+    func specialFeatureThumbnailURL(for item: BaseItemDto, client fallbackClient: JellyfinClient? = nil) -> URL? {
+        let activeClient = client ?? fallbackClient
+        guard let activeClient, let id = item.id else { return nil }
+        let imageType = item.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
+        return activeClient.url(with: Paths.getItemImage(
             itemID: id,
             imageType: imageType,
             parameters: .init(maxWidth: 600, quality: 90)

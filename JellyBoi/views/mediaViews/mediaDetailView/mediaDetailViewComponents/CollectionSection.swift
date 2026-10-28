@@ -18,12 +18,7 @@ extension MediaDetailView {
     @ViewBuilder
     var collectionSection: some View {
         if displayItem.type == .boxSet {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Movies & Shows")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Color.mainOpp)
-                    .padding(.horizontal, 16)
-
+            SectionRow(title: "Movies & Shows") {
                 if detailVM.collectionItems.isEmpty {
                     if detailVM.isLoadingCollectionItems {
                         SkeletonMediaGrid()

@@ -12,12 +12,12 @@ import JellyfinAPI
 extension BaseItemDto {
 
     /// Standard aspect ratio (width / height) for poster/thumbnail cards.
-    /// Uses `primaryImageAspectRatio` if positive, else defaults to 16:9 for episodes and 2:3 for others.
+    /// Uses `primaryImageAspectRatio` if positive, else defaults to 16:9 for episodes/videos/trailers and 2:3 for others.
     var imageAspectRatio: CGFloat {
         if let ratio = primaryImageAspectRatio, ratio > 0 {
             return CGFloat(ratio)
         }
-        return type == .episode ? (16.0 / 9.0) : (2.0 / 3.0)
+        return (type == .episode || type == .video || type == .trailer) ? (16.0 / 9.0) : (2.0 / 3.0)
     }
 
     /// Formatted runtime string (e.g. "2h 15m" or "45m") from `runTimeTicks`.

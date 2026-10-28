@@ -1,5 +1,5 @@
 //
-//  MediaRow.swift
+//  SectionRow.swift
 //  JellyBoi
 //
 //  Created by Garrett Butchko on 8/31/26.
@@ -9,23 +9,36 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 
-/// A reusable horizontal-scroll row of `MediaCard`s with a bold section title.
-/// Used on both the Home screen and the media detail screen.
-struct SectionRow: View {
+/// A reusable section container with a bold section title, optional trailing header accessory,
+/// and customizable row content. Used across Home and MediaDetail views (episodes, cast & crew,
+/// special features, more like this, etc.).
+struct SectionRow<Content: View, HeaderAccessory: View>: View {
     let title: String
-    let items: [BaseItemDto]
-    let namespace: Namespace.ID
-    var rowKey: String? = nil
     var onTitleTap: (() -> Void)? = nil
-    let onSelect: (BaseItemDto, AnyHashable) -> Void
-    let posterURL: (BaseItemDto) -> URL?
+    @ViewBuilder let headerAccessory: () -> HeaderAccessory
+    @ViewBuilder let content: () -> Content
 
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
-    private var cardWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
+    init(
+        title: String,
+        onTitleTap: (() -> Void)? = nil,
+        @ViewBuilder headerAccessory: @escaping () -> HeaderAccessory,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.onTitleTap = onTitleTap
+        self.headerAccessory = headerAccessory
+        self.content = content
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            content()
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center) {
             if let onTitleTap {
                 Button(action: onTitleTap) {
                     HStack(spacing: 6) {
@@ -36,38 +49,107 @@ struct SectionRow: View {
                     }
                     .foregroundStyle(Color.mainOpp)
                     .contentShape(Rectangle())
-                    .padding(.horizontal, 16)
                 }
                 .buttonStyle(.plain)
             } else {
                 Text(title)
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(Color.mainOpp)
-                    .padding(.horizontal, 16)
             }
 
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 16) {
-                    ForEach(items, id: \.id) { item in
-                        let zoomID: AnyHashable = rowKey.map { AnyHashable("\($0)-\(item.id ?? "")") } ?? AnyHashable(item)
-                        MediaCard(
-                            item: item,
-                            posterURL: posterURL(item),
-                            namespace: namespace,
-                            onSelect: {
-                                onSelect(item, zoomID)
-                            },
-                            zoomID: zoomID
-                        )
-                        .frame(width: cardWidth)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .scrollTargetLayout()
-            }
-            .scrollClipDisabled()
-            .scrollIndicators(.hidden)
-            .scrollTargetBehavior(.viewAligned)
+            Spacer()
+
+            headerAccessory()
         }
+        .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - Convenience initializers
+
+extension SectionRow where HeaderAccessory == EmptyView {
+    init(
+        title: String,
+        onTitleTap: (() -> Void)? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.init(
+            title: title,
+            onTitleTap: onTitleTap,
+            headerAccessory: { EmptyView() },
+            content: content
+        )
+    }
+}
+
+extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == EmptyView {
+    init(
+        title: String,
+        items: [BaseItemDto],
+        namespace: Namespace.ID,
+        rowKey: String? = nil,
+        imageAspectRatio: CGFloat? = 2.0 / 3.0,
+        onTitleTap: (() -> Void)? = nil,
+        onSelect: @escaping (BaseItemDto, AnyHashable) -> Void,
+        posterURL: @escaping (BaseItemDto) -> URL?
+    ) {
+        self.init(
+            title: title,
+            onTitleTap: onTitleTap,
+            headerAccessory: { EmptyView() },
+            content: {
+                SectionRowMediaList(
+                    items: items,
+                    namespace: namespace,
+                    rowKey: rowKey,
+                    imageAspectRatio: imageAspectRatio,
+                    onSelect: onSelect,
+                    posterURL: posterURL
+                )
+            }
+        )
+    }
+}
+
+// MARK: - SectionRowMediaList
+
+/// Standard horizontal scroll list of `MediaCard` items used by `SectionRow`.
+struct SectionRowMediaList: View {
+    let items: [BaseItemDto]
+    let namespace: Namespace.ID
+    var rowKey: String? = nil
+    var imageAspectRatio: CGFloat? = 2.0 / 3.0
+    let onSelect: (BaseItemDto, AnyHashable) -> Void
+    let posterURL: (BaseItemDto) -> URL?
+
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    private var cardWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
+    private var cardHeight: CGFloat { cardWidth * 1.5 }
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 16) {
+                ForEach(items, id: \.id) { item in
+                    let zoomID: AnyHashable = rowKey.map { AnyHashable("\($0)-\(item.id ?? "")") } ?? AnyHashable(item)
+                    MediaCard(
+                        item: item,
+                        posterURL: posterURL(item),
+                        namespace: namespace,
+                        onSelect: {
+                            onSelect(item, zoomID)
+                        },
+                        zoomID: zoomID,
+                        imageAspectRatio: imageAspectRatio
+                    )
+                    .frame(width: cardWidth, height: cardHeight)
+                }
+            }
+            .padding(.horizontal, 16)
+            .scrollTargetLayout()
+        }
+        .scrollClipDisabled()
+        .scrollIndicators(.hidden)
+        .scrollTargetBehavior(.viewAligned)
     }
 }
