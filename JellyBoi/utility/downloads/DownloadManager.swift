@@ -836,22 +836,7 @@ public final class DownloadManager: NSObject {
             let cacheKey = SDWebImageManager.shared.cacheKey(for: posterURL) ?? posterURL.absoluteString
             if let image = SDImageCache.shared.imageFromMemoryCache(forKey: cacheKey) ?? SDImageCache.shared.imageFromDiskCache(forKey: cacheKey) {
                 let thumbData = image.liveActivityThumbnailData()
-                presentation = DownloadSummaryPresentation(
-                    title: presentation.title,
-                    subtitle: presentation.subtitle,
-                    detailText: presentation.detailText,
-                    progress: presentation.progress,
-                    itemsRemaining: presentation.itemsRemaining,
-                    totalItems: presentation.totalItems,
-                    isCompleted: presentation.isCompleted,
-                    posterImageData: thumbData,
-                    posterURL: posterURL,
-                    statusIcon: presentation.statusIcon,
-                    statusText: presentation.statusText,
-                    isQueued: presentation.isQueued,
-                    isConverting: presentation.isConverting,
-                    isSingleElement: presentation.isSingleElement
-                )
+                presentation = presentation.with(posterImageData: thumbData)
             } else {
                 SDWebImageManager.shared.loadImage(
                     with: posterURL,

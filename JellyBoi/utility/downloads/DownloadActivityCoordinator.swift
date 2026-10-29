@@ -69,12 +69,8 @@ public final class DownloadActivityCoordinator {
             progress: presentation.progress,
             itemsRemaining: presentation.itemsRemaining,
             totalItems: presentation.totalItems,
-            isCompleted: presentation.isCompleted,
+            status: presentation.status,
             posterImageData: presentation.isSingleElement ? (presentation.posterImageData ?? lastPosterData) : nil,
-            statusIcon: presentation.statusIcon,
-            statusText: presentation.statusText,
-            isQueued: presentation.isQueued,
-            isConverting: presentation.isConverting,
             isSingleElement: presentation.isSingleElement
         )
 
@@ -133,12 +129,8 @@ public final class DownloadActivityCoordinator {
             progress: 1.0,
             itemsRemaining: 0,
             totalItems: 0,
-            isCompleted: true,
+            status: .completed,
             posterImageData: lastPosterData,
-            statusIcon: DownloadStatus.completed.iconName,
-            statusText: "Ready offline",
-            isQueued: false,
-            isConverting: false,
             isSingleElement: lastPosterData != nil
         )
 

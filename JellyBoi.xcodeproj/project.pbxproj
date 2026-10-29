@@ -72,6 +72,13 @@
 			);
 			target = 2161FFC03087D4CD00196CDF /* JellyBoiWidgetExtensionExtension */;
 		};
+		2161FFDF3087D4CE00196CDF /* Exceptions for "JellyBoi" folder in "JellyBoiWidgetExtensionExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				utility/downloads/DownloadActivityAttributes.swift,
+			);
+			target = 2161FFC03087D4CD00196CDF /* JellyBoiWidgetExtensionExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -87,6 +94,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				2158DFBC307416D100D34F98 /* Exceptions for "JellyBoi" folder in "JellyBoi" target */,
+				2161FFDF3087D4CE00196CDF /* Exceptions for "JellyBoi" folder in "JellyBoiWidgetExtensionExtension" target */,
 			);
 			path = JellyBoi;
 			sourceTree = "<group>";

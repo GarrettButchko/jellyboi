@@ -35,18 +35,16 @@ struct DownloadActivityWidget: Widget {
                     if context.state.isSingleElement {
                         PosterView(
                             imageData: context.state.posterImageData,
-                            isCompleted: context.state.isCompleted,
-                            statusIcon: context.state.statusIcon,
-                            isQueued: context.state.isQueued,
+                            status: context.state.status,
                             width: 14,
                             height: 21,
                             cornerRadius: 3.5
                         )
                     } else {
                         // Multiple unrelated elements: SHOW ONLY THE ICON!
-                        Image(systemName: context.state.statusIcon)
+                        Image(systemName: context.state.status.icon)
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(iconTint(for: context.state))
+                            .foregroundStyle(context.state.status.tintColor)
                     }
                 }
                 .padding(.leading, 6)
@@ -61,11 +59,11 @@ struct DownloadActivityWidget: Widget {
                     .padding(.vertical, 2)
             } minimal: {
                 Group {
-                    if context.state.isQueued {
+                    if context.state.status == .queued {
                         Image(systemName: "clock")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(Color.orange)
-                    } else if context.state.isCompleted {
+                    } else if context.state.status == .completed {
                         Image(systemName: "checkmark")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(Color.green)
@@ -83,37 +81,26 @@ struct DownloadActivityWidget: Widget {
         }
     }
 
-    private func iconTint(for state: DownloadActivityAttributes.ContentState) -> Color {
-        if state.isCompleted {
-            return Color.green
-        }
-        if state.isQueued {
-            return Color.orange
-        }
-        if state.isConverting || state.statusIcon == "arrow.triangle.2.circlepath" {
-            return Color.purple
-        }
-        return Color.indigo
-    }
-
     private func compactPercentageText(for state: DownloadActivityAttributes.ContentState) -> String {
-        if state.isCompleted {
+        switch state.status {
+        case .completed:
             return "100%"
-        }
-        if state.isQueued {
+        case .queued:
             return "Queued"
+        default:
+            return "\(Int(state.progress * 100))%"
         }
-        return "\(Int(state.progress * 100))%"
     }
 
     private func compactPercentageColor(for state: DownloadActivityAttributes.ContentState) -> Color {
-        if state.isCompleted {
+        switch state.status {
+        case .completed:
             return Color.green
-        }
-        if state.isQueued {
+        case .queued:
             return Color.orange
+        default:
+            return Color.white.opacity(0.9)
         }
-        return Color.white.opacity(0.9)
     }
 }
 
@@ -123,27 +110,15 @@ private struct LockScreenDownloadView: View {
     let state: DownloadActivityAttributes.ContentState
     var isDynamicIsland: Bool = false
 
-    private var progressTint: Color {
-        if state.isCompleted {
-            return Color.green
-        }
-        if state.isQueued {
-            return Color.orange
-        }
-        if state.isConverting || state.statusIcon == "arrow.triangle.2.circlepath" {
-            return Color.purple
-        }
-        return Color.indigo
-    }
-
     private var percentageText: String {
-        if state.isCompleted {
+        switch state.status {
+        case .completed:
             return "Done"
-        }
-        if state.isQueued {
+        case .queued:
             return "Queued"
+        default:
+            return "\(Int(state.progress * 100))%"
         }
-        return "\(Int(state.progress * 100))%"
     }
 
     var body: some View {
@@ -156,8 +131,8 @@ private struct LockScreenDownloadView: View {
                     .foregroundStyle(Color.white)
                     .lineLimit(1)
 
-                ProgressView(value: state.isQueued ? 0.0 : state.progress)
-                    .tint(progressTint)
+                ProgressView(value: state.status == .queued ? 0.0 : state.progress)
+                    .tint(state.status.tintColor)
 
                 bottomStatusRow
             }
@@ -173,9 +148,7 @@ private struct LockScreenDownloadView: View {
             // Exactly 1 element (movie, episode, series, collection): SHOW POSTER
             PosterView(
                 imageData: state.posterImageData,
-                isCompleted: state.isCompleted,
-                statusIcon: state.statusIcon,
-                isQueued: state.isQueued,
+                status: state.status,
                 width: 32,
                 height: 48,
                 cornerRadius: 6.5
@@ -184,9 +157,7 @@ private struct LockScreenDownloadView: View {
             // Multiple unrelated elements: SHOW ONLY THE ICON!
             ProgressRingIndicator(
                 progress: state.progress,
-                isCompleted: state.isCompleted,
-                icon: state.statusIcon,
-                isQueued: state.isQueued,
+                status: state.status,
                 size: 32,
                 lineWidth: 3
             )
@@ -199,7 +170,7 @@ private struct LockScreenDownloadView: View {
         if !state.isSingleElement {
             // Multiple items: show percent only under the bar (amount of items is only shown once in the title above)
             HStack(spacing: 4) {
-                Image(systemName: state.statusIcon)
+                Image(systemName: state.status.icon)
                     .font(.system(size: 10, weight: .medium))
 
                 Text(percentageText)
@@ -213,7 +184,7 @@ private struct LockScreenDownloadView: View {
             // Single element: shows icon + status (e.g. 1 min left / Converting / 3 episodes left) and percent on the right
             HStack {
                 HStack(spacing: 4) {
-                    Image(systemName: state.statusIcon)
+                    Image(systemName: state.status.icon)
                         .font(.system(size: 10, weight: .medium))
 
                     Text(statusDetail(for: state))
@@ -237,38 +208,10 @@ private struct LockScreenDownloadView: View {
 
 private struct PosterView: View {
     let imageData: Data?
-    let isCompleted: Bool
-    var statusIcon: String? = nil
-    var isQueued: Bool = false
+    let status: DownloadStatus
     var width: CGFloat = 32
     var height: CGFloat = 48
     var cornerRadius: CGFloat = 6.5
-
-    private var placeholderIcon: String {
-        if isCompleted {
-            return "checkmark"
-        }
-        if let icon = statusIcon {
-            return icon
-        }
-        if isQueued {
-            return "clock"
-        }
-        return "arrow.down"
-    }
-
-    private var placeholderColor: Color {
-        if isCompleted {
-            return Color.green
-        }
-        if isQueued {
-            return Color.orange
-        }
-        if statusIcon == "arrow.triangle.2.circlepath" {
-            return Color.purple
-        }
-        return Color.indigo
-    }
 
     var body: some View {
         Group {
@@ -297,9 +240,9 @@ private struct PosterView: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.08))
 
-            Image(systemName: placeholderIcon)
+            Image(systemName: status.icon)
                 .font(.system(size: max(8, width * 0.4), weight: .bold))
-                .foregroundStyle(placeholderColor)
+                .foregroundStyle(status.tintColor)
         }
         .frame(width: width, height: height)
         .overlay(
@@ -313,24 +256,9 @@ private struct PosterView: View {
 
 private struct ProgressRingIndicator: View {
     let progress: Double
-    let isCompleted: Bool
-    var icon: String = "arrow.down"
-    var isQueued: Bool = false
+    let status: DownloadStatus
     var size: CGFloat = 20
     var lineWidth: CGFloat = 2
-
-    private var accentColor: Color {
-        if isCompleted {
-            return Color.green
-        }
-        if isQueued {
-            return Color.orange
-        }
-        if icon == "arrow.triangle.2.circlepath" {
-            return Color.purple
-        }
-        return Color.indigo
-    }
 
     var body: some View {
         ZStack {
@@ -338,13 +266,13 @@ private struct ProgressRingIndicator: View {
                 .stroke(Color.white.opacity(0.15), lineWidth: lineWidth)
 
             Circle()
-                .trim(from: 0, to: isCompleted ? 1.0 : (isQueued ? 0.05 : max(0.05, CGFloat(progress))))
-                .stroke(accentColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .trim(from: 0, to: status.isCompleted ? 1.0 : (status.isQueued ? 0.05 : max(0.05, CGFloat(progress))))
+                .stroke(status.tintColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
 
-            Image(systemName: icon)
+            Image(systemName: status.icon)
                 .font(.system(size: max(6, size * 0.42), weight: .bold))
-                .foregroundStyle(accentColor)
+                .foregroundStyle(status.tintColor)
         }
         .frame(width: size, height: size)
     }
@@ -353,31 +281,33 @@ private struct ProgressRingIndicator: View {
 // MARK: - Helpers
 
 private func statusDetail(for state: DownloadActivityAttributes.ContentState) -> String {
-    if state.isCompleted {
+    switch state.status {
+    case .completed:
         return "Ready offline"
-    }
-    if state.isQueued {
+    case .queued:
         if state.itemsRemaining > 1 {
             return "\(state.itemsRemaining) items queued"
         }
         return "Queued"
-    }
-    if state.isConverting || state.statusIcon == "arrow.triangle.2.circlepath" {
+    case .converting, .finalizing:
         if state.itemsRemaining > 1 {
             return "\(state.itemsRemaining) left • Converting"
         }
         return "Converting"
+    case .failed:
+        return "Failed"
+    case .downloading:
+        if let extra = cleanExtraInfo(state.detailText, itemsRemaining: state.itemsRemaining) {
+            return extra
+        }
+        if let subtitle = state.subtitle, !subtitle.isEmpty {
+            return subtitle
+        }
+        if state.itemsRemaining > 1 {
+            return "\(state.itemsRemaining) items left"
+        }
+        return "Downloading"
     }
-    if let extra = cleanExtraInfo(state.detailText, itemsRemaining: state.itemsRemaining) {
-        return extra
-    }
-    if let subtitle = state.subtitle, !subtitle.isEmpty {
-        return subtitle
-    }
-    if state.itemsRemaining > 1 {
-        return "\(state.itemsRemaining) items left"
-    }
-    return "Downloading"
 }
 
 private func cleanExtraInfo(_ detailText: String?, itemsRemaining: Int) -> String? {

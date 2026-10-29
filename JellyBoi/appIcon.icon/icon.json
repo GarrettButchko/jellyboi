@@ -19,10 +19,93 @@
     {
       "layers" : [
         {
+          "blend-mode" : "normal",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "srgb:0.38039,0.33333,0.96078,1.00000",
+                  "srgb:0.00000,0.76471,0.81569,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.5000000000000002,
+                    "y" : 1.8555150439040815
+                  },
+                  "stop" : {
+                    "x" : 0.5000000000000002,
+                    "y" : 0
+                  }
+                }
+              }
+            }
+          ],
+          "glass-specializations" : [
+            {
+              "idiom" : "square",
+              "value" : true
+            }
+          ],
+          "image-name" : "Jellyboi-03.svg",
+          "name" : "Jellyboi-03",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 1.57,
+            "translation-in-points" : [
+              -8.211099999999988,
+              -142
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "srgb:0.00000,0.76471,0.81569,1.00000",
+                  "srgb:0.38039,0.33333,0.96078,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.5,
+                    "y" : -0.7515160005794506
+                  },
+                  "stop" : {
+                    "x" : 0.5,
+                    "y" : 1
+                  }
+                }
+              }
+            }
+          ],
+          "image-name" : "Jellyboi-02.svg",
+          "name" : "Jellyboi-02",
+          "position" : {
+            "scale" : 1.57,
+            "translation-in-points" : [
+              12,
+              152.43144009428727
+            ]
+          }
+        },
+        {
           "fill" : {
             "solid" : "extended-gray:1.00000,1.00000"
           },
           "glass" : true,
+          "hidden" : true,
           "image-name" : "Jellyboi copy.svg",
           "name" : "Jellyboi copy",
           "position" : {

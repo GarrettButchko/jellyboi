@@ -8,40 +8,9 @@
 import Foundation
 import JellyfinAPI
 
-public enum DownloadStatus: String, Codable, Sendable {
-    case queued
-    case downloading
-    case converting
-    case finalizing
-    case completed
-    case failed
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let raw = try container.decode(String.self)
-        switch raw {
-        case "downloading": self = .downloading
-        case "converting": self = .converting
-        case "finalizing": self = .finalizing
-        case "completed": self = .completed
-        case "failed": self = .failed
-        default: self = .queued
-        }
-    }
-
-    public var iconName: String {
-        switch self {
-        case .downloading:
-            return "arrow.down"
-        case .converting, .finalizing:
-            return "arrow.triangle.2.circlepath"
-        case .queued:
-            return "clock"
-        case .completed:
-            return "checkmark"
-        case .failed:
-            return "exclamationmark.triangle"
-        }
+extension DownloadStatus {
+    public init(items: [DownloadItem]) {
+        self.init(items.map(\.status))
     }
 }
 

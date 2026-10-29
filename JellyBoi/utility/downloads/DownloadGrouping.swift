@@ -39,16 +39,21 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
         return (completed + active) / Double(totalCount)
     }
 
+    public var status: DownloadStatus {
+        DownloadStatus(items: activeDownloads)
+    }
+
+
     public var isAllFailed: Bool {
-        !activeDownloads.isEmpty && activeDownloads.allSatisfy { $0.status == .failed }
+        status == .failed
     }
 
     public var isAllQueued: Bool {
-        !activeDownloads.isEmpty && activeDownloads.allSatisfy { $0.status == .queued }
+        status == .queued
     }
 
     public var isConverting: Bool {
-        activeDownloads.contains { $0.status == .converting || $0.status == .finalizing }
+        status == .converting
     }
 
     public var representativeItem: BaseItemDto? {
@@ -102,7 +107,7 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
 
     public var activeStatusIcon: String? {
         guard !activeDownloads.isEmpty else { return nil }
-        return DownloadGrouping.activeStatusIcon(for: activeDownloads)
+        return status.icon
     }
 
     public static func == (lhs: ShowDownloadGroup, rhs: ShowDownloadGroup) -> Bool {
@@ -125,14 +130,16 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
     public let progress: Double
     public let itemsRemaining: Int
     public let totalItems: Int
-    public let isCompleted: Bool
+    public let status: DownloadStatus
     public let posterImageData: Data?
     public let posterURL: URL?
-    public let statusIcon: String
-    public let statusText: String
-    public let isQueued: Bool
-    public let isConverting: Bool
     public let isSingleElement: Bool
+
+    public var statusIcon: String { status.icon }
+    public var statusText: String { status.text }
+    public var isQueued: Bool { status.isQueued }
+    public var isConverting: Bool { status.isConverting }
+    public var isCompleted: Bool { status.isCompleted }
 
     public init(
         title: String,
@@ -141,13 +148,9 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
         progress: Double,
         itemsRemaining: Int,
         totalItems: Int,
-        isCompleted: Bool = false,
+        status: DownloadStatus = .downloading,
         posterImageData: Data? = nil,
         posterURL: URL? = nil,
-        statusIcon: String = "arrow.down",
-        statusText: String = "Downloading",
-        isQueued: Bool = false,
-        isConverting: Bool = false,
         isSingleElement: Bool = true
     ) {
         self.title = title
@@ -156,14 +159,25 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
         self.progress = progress
         self.itemsRemaining = itemsRemaining
         self.totalItems = totalItems
-        self.isCompleted = isCompleted
+        self.status = status
         self.posterImageData = posterImageData
         self.posterURL = posterURL
-        self.statusIcon = statusIcon
-        self.statusText = statusText
-        self.isQueued = isQueued
-        self.isConverting = isConverting
         self.isSingleElement = isSingleElement
+    }
+
+    public func with(posterImageData: Data?) -> DownloadSummaryPresentation {
+        DownloadSummaryPresentation(
+            title: title,
+            subtitle: subtitle,
+            detailText: detailText,
+            progress: progress,
+            itemsRemaining: itemsRemaining,
+            totalItems: totalItems,
+            status: status,
+            posterImageData: posterImageData,
+            posterURL: posterURL,
+            isSingleElement: isSingleElement
+        )
     }
 }
 
@@ -204,24 +218,7 @@ public enum DownloadGrouping {
     }
 
     public static func activeStatusIcon(for items: [DownloadItem]) -> String {
-        let activeItem = items.first(where: { $0.status == .converting || $0.status == .finalizing })
-            ?? items.first(where: { $0.status == .downloading })
-            ?? items.first
-        return activeItem?.statusIcon ?? DownloadStatus.downloading.iconName
-    }
-
-    public static func activeStatusText(for items: [DownloadItem]) -> String {
-        if !items.isEmpty && items.allSatisfy({ $0.status == .failed }) {
-            return "Failed"
-        } else if items.contains(where: { $0.status == .converting || $0.status == .finalizing }) {
-            return items.first(where: { $0.status == .converting || $0.status == .finalizing })?.statusText ?? "Converting"
-        } else if items.contains(where: { $0.status == .downloading }) {
-            return "Downloading"
-        } else if !items.isEmpty && items.allSatisfy({ $0.status == .queued }) {
-            return "Queued"
-        } else {
-            return "Downloading"
-        }
+        DownloadStatus(items: items).icon
     }
 
     public static func currentPresentation(
@@ -237,13 +234,9 @@ public enum DownloadGrouping {
                 progress: 1.0,
                 itemsRemaining: 0,
                 totalItems: completed.count,
-                isCompleted: true,
+                status: .completed,
                 posterImageData: nil,
                 posterURL: nil,
-                statusIcon: DownloadStatus.completed.iconName,
-                statusText: "Ready offline",
-                isQueued: false,
-                isConverting: false,
                 isSingleElement: false
             )
         }
@@ -252,13 +245,6 @@ public enum DownloadGrouping {
         let standalones = standaloneDownloads(from: active, groupedIDs: Set(computedGroups.map(\.id)))
         let totalActiveCount = active.count
         let totalItemsCount = active.count + completed.count
-
-        let totalElements = computedGroups.count + standalones.count
-
-        let isAllQueued = !active.isEmpty && active.allSatisfy { $0.status == .queued }
-        let isConverting = active.contains { $0.status == .converting || $0.status == .finalizing }
-        let globalStatusIcon = activeStatusIcon(for: active)
-        let globalStatusText = activeStatusText(for: active)
 
         // Case 1: Exactly 1 group (Series or Collection) and no standalone items -> 1 element (shows poster)
         if computedGroups.count == 1 && standalones.isEmpty, let singleGroup = computedGroups.first {
@@ -283,8 +269,6 @@ public enum DownloadGrouping {
             }
 
             let posterURL = singleGroup.posterURL(client: client)
-            let groupIcon = activeStatusIcon(for: singleGroup.activeDownloads)
-            let groupText = activeStatusText(for: singleGroup.activeDownloads)
 
             return DownloadSummaryPresentation(
                 title: singleGroup.seriesName,
@@ -293,13 +277,9 @@ public enum DownloadGrouping {
                 progress: singleGroup.overallProgress,
                 itemsRemaining: singleGroup.episodesLeft,
                 totalItems: singleGroup.totalCount,
-                isCompleted: false,
+                status: singleGroup.status,
                 posterImageData: nil,
                 posterURL: posterURL,
-                statusIcon: groupIcon,
-                statusText: groupText,
-                isQueued: singleGroup.isAllQueued,
-                isConverting: singleGroup.isConverting,
                 isSingleElement: true
             )
         }
@@ -327,29 +307,26 @@ public enum DownloadGrouping {
             }
 
             let posterURL = singleItem.artworkURL(client: client)
-            let isItemQueued = singleItem.status == .queued
-            let isItemConverting = singleItem.status == .converting || singleItem.status == .finalizing
 
             return DownloadSummaryPresentation(
                 title: singleItem.title,
-                subtitle: byteProgressText ?? (isItemQueued ? "Queued" : status),
+                subtitle: byteProgressText ?? (singleItem.status == .queued ? "Queued" : status),
                 detailText: detail,
                 progress: singleItem.progress,
                 itemsRemaining: 1,
                 totalItems: 1,
-                isCompleted: false,
+                status: singleItem.status,
                 posterImageData: nil,
                 posterURL: posterURL,
-                statusIcon: singleItem.statusIcon,
-                statusText: singleItem.statusText,
-                isQueued: isItemQueued,
-                isConverting: isItemConverting,
                 isSingleElement: true
             )
         }
 
         // Case 3: Multiple unrelated elements -> NO POSTER, ONLY THE ICON!
         let overallProgress = active.reduce(0.0) { $0 + $1.progress } / Double(max(active.count, 1))
+        let globalStatus = DownloadStatus(items: active)
+        let isAllQueued = globalStatus == .queued
+        let isConverting = globalStatus == .converting
         let activeItem = active.first(where: { $0.status == .downloading || $0.status == .converting || $0.status == .finalizing }) ?? active.first
         let currentDownloadingTitle: String? = {
             if isAllQueued {
@@ -363,7 +340,7 @@ public enum DownloadGrouping {
         }()
 
         let detail: String = {
-            if !active.isEmpty && active.allSatisfy({ $0.status == .failed }) {
+            if globalStatus == .failed {
                 return "\(totalActiveCount) items left (Failed)"
             } else if isAllQueued {
                 return "\(totalActiveCount) items queued"
@@ -382,13 +359,9 @@ public enum DownloadGrouping {
             progress: overallProgress,
             itemsRemaining: totalActiveCount,
             totalItems: totalItemsCount,
-            isCompleted: false,
+            status: globalStatus,
             posterImageData: nil,
-            posterURL: nil, // Multiple unrelated items: NO POSTER!
-            statusIcon: globalStatusIcon,
-            statusText: globalStatusText,
-            isQueued: isAllQueued,
-            isConverting: isConverting,
+            posterURL: nil,
             isSingleElement: false
         )
     }
@@ -435,3 +408,4 @@ extension DownloadItem {
         }
     }
 }
+
