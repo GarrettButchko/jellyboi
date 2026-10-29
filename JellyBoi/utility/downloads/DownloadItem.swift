@@ -39,11 +39,10 @@ public struct DownloadGroupInfo: Codable, Sendable, Equatable, Hashable {
 
     public func posterURL(client: JellyfinClient?) -> URL? {
         guard let client else { return nil }
-        return client.url(with: Paths.getItemImage(
+        return client.itemImageURL(
             itemID: id,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 400, quality: 80, tag: primaryImageTag)
-        ))
+            parameters: .poster(tag: primaryImageTag)
+        )
     }
 }
 

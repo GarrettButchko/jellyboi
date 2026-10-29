@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 import JellyfinAPI
 
 public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
@@ -43,7 +44,6 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
         DownloadStatus(items: activeDownloads)
     }
 
-
     public var isAllFailed: Bool {
         status == .failed
     }
@@ -79,11 +79,10 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
                 }
             }
         }
-        return client.url(with: Paths.getItemImage(
+        return client.itemImageURL(
             itemID: id,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 400, quality: 80)
-        ))
+            parameters: .poster()
+        )
     }
 
     public static func formattedTimeRemaining(for items: [DownloadItem]) -> String? {
@@ -137,6 +136,7 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
 
     public var statusIcon: String { status.icon }
     public var statusText: String { status.text }
+    public var tintColor: Color { status.tintColor }
     public var isQueued: Bool { status.isQueued }
     public var isConverting: Bool { status.isConverting }
     public var isCompleted: Bool { status.isCompleted }
@@ -163,6 +163,28 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
         self.posterImageData = posterImageData
         self.posterURL = posterURL
         self.isSingleElement = isSingleElement
+    }
+
+    public func contentState(fallbackPosterData: Data? = nil) -> DownloadActivityAttributes.ContentState {
+        DownloadActivityAttributes.ContentState(
+            title: title,
+            subtitle: subtitle,
+            detailText: detailText,
+            progress: progress,
+            itemsRemaining: itemsRemaining,
+            totalItems: totalItems,
+            status: status,
+            posterImageData: isSingleElement ? (posterImageData ?? fallbackPosterData) : nil,
+            isSingleElement: isSingleElement
+        )
+    }
+
+    public var statusDetail: String {
+        contentState().statusDetail
+    }
+
+    public var percentageText: String {
+        contentState().percentageText
     }
 
     public func with(posterImageData: Data?) -> DownloadSummaryPresentation {
@@ -377,18 +399,17 @@ extension DownloadItem {
             let hasPrimary = item.imageTags?.keys.contains("Primary") == true
             if (hasThumb || hasPrimary), let id = item.id {
                 let imageType = hasThumb ? "Thumb" : "Primary"
-                return client.url(with: Paths.getItemImage(
+                return client.itemImageURL(
                     itemID: id,
                     imageType: imageType,
-                    parameters: .init(maxWidth: 400, quality: 80)
-                ))
+                    parameters: .poster()
+                )
             }
             if let id = item.id {
-                return client.url(with: Paths.getItemImage(
+                return client.itemImageURL(
                     itemID: id,
-                    imageType: "Primary",
-                    parameters: .init(maxWidth: 400, quality: 80)
-                ))
+                    parameters: .poster()
+                )
             }
             if let libraryViewModel, let url = libraryViewModel.seriesPosterURL(for: item, client: client) {
                 return url
@@ -400,12 +421,10 @@ extension DownloadItem {
         } else {
             guard let id = item.id else { return nil }
             let primaryTag = item.imageTags?["Primary"]
-            return client.url(with: Paths.getItemImage(
+            return client.itemImageURL(
                 itemID: id,
-                imageType: "Primary",
-                parameters: .init(maxWidth: 400, quality: 80, tag: primaryTag)
-            ))
+                parameters: .poster(tag: primaryTag)
+            )
         }
     }
 }
-

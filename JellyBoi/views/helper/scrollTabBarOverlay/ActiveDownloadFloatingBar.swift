@@ -12,6 +12,7 @@ import MarqueeText
 import SDWebImageSwiftUI
 
 struct ActiveDownloadFloatingBar: View {
+    let presentation: DownloadSummaryPresentation
     let activeDownloads: [DownloadItem]
     let onTap: () -> Void
 
@@ -47,32 +48,16 @@ struct ActiveDownloadFloatingBar: View {
         )
     }
 
-    private var overallProgress: Double {
-        guard !activeDownloads.isEmpty else { return 0 }
-        let total = activeDownloads.reduce(0.0) { $0 + $1.progress }
-        return total / Double(activeDownloads.count)
-    }
-
     private var barTitle: String {
-        if let single = singleDownloadItem {
-            return single.title
-        } else if let group = commonGroupInfo {
-            return group.seriesName
-        } else {
-            return "\(activeDownloads.count) items"
-        }
+        presentation.title
     }
 
-    private var barSubtitle: String {
-        if !activeDownloads.isEmpty && activeDownloads.allSatisfy({ $0.status == .queued }) {
-            return "Queued"
-        } else {
-            return "\(percent)%"
-        }
+    private var overallProgress: Double {
+        presentation.progress
     }
 
     private var ringIcon: String {
-        DownloadGrouping.activeStatusIcon(for: activeDownloads)
+        presentation.status.icon
     }
 
     private var percent: Int {
@@ -198,38 +183,12 @@ struct ActiveDownloadFloatingBar: View {
                 .transition(.opacity)
             }
         } else if let group = commonGroupInfo {
-            let itemWord = group.groupInfo?.type == .collection ? (group.episodesLeft == 1 ? "item" : "items") : (group.episodesLeft == 1 ? "episode" : "episodes")
-
-            let subtitle: String = {
-                if group.isAllFailed {
-                    return "\(group.episodesLeft) \(itemWord) left (Failed)"
-                } else if let timeRemaining = group.formattedTimeRemaining {
-                    return "\(group.episodesLeft) left • \(timeRemaining)"
-                } else {
-                    return "\(group.episodesLeft) \(itemWord) left"
-                }
-            }()
-
-            let activeIcon: String? = {
-                if group.activeDownloads.contains(where: { $0.status == .converting || $0.status == .finalizing }) {
-                    return "arrow.triangle.2.circlepath"
-                } else if group.activeDownloads.contains(where: { $0.status == .downloading }) {
-                    return "arrow.down"
-                } else if group.isAllFailed {
-                    return "exclamationmark.triangle.fill"
-                } else if group.isAllQueued {
-                    return "clock"
-                }
-                return nil
-            }()
-
             HStack(spacing: 4) {
                 HStack(spacing: 4) {
-                    if let icon = activeIcon {
-                        Image(systemName: icon)
-                            .font(.system(size: 9.5, weight: .medium))
-                    }
-                    Text(subtitle)
+                    Image(systemName: presentation.status.icon)
+                        .font(.system(size: 9.5, weight: .medium))
+
+                    Text(presentation.detailText ?? "\(group.episodesLeft) left")
                 }
                 .font(.system(size: 10.5, design: .rounded))
                 .foregroundStyle(group.isAllFailed ? Color.red : Color.mainOpp.opacity(0.6))
@@ -243,12 +202,26 @@ struct ActiveDownloadFloatingBar: View {
             .id("sub-group-\(group.id)")
             .transition(.opacity)
         } else {
-            Text(barSubtitle)
-                .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.mainOpp.opacity(0.6))
-                .lineLimit(1)
-                .id("sub-multi")
-                .transition(.opacity)
+            HStack(spacing: 4) {
+                HStack(spacing: 4) {
+                    Image(systemName: presentation.status.icon)
+                        .font(.system(size: 9.5, weight: .medium))
+
+                    Text(presentation.status.isQueued ? "Queued" : "\(activeDownloads.count) items")
+                }
+                .font(.system(size: 10.5, design: .rounded))
+                .foregroundStyle(presentation.status == .failed ? Color.red : Color.mainOpp.opacity(0.6))
+
+                Spacer(minLength: 4)
+
+                if !presentation.status.isQueued {
+                    Text("\(percent)%")
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.mainOpp.opacity(0.8))
+                }
+            }
+            .id("sub-multi")
+            .transition(.opacity)
         }
     }
 }

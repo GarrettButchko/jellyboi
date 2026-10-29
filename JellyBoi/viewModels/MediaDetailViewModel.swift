@@ -695,17 +695,16 @@ class MediaDetailViewModel {
         guard let activeClient, let id = displayItem?.id else { return nil }
         if displayItem?.type == .episode {
             let imageType = displayItem?.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
-            return activeClient.url(with: Paths.getItemImage(
+            return activeClient.itemImageURL(
                 itemID: id,
                 imageType: imageType,
-                parameters: .init(maxWidth: 500, quality: 80)
-            ))
+                parameters: .thumbnail(maxWidth: 500, quality: 80)
+            )
         }
-        return activeClient.url(with: Paths.getItemImage(
+        return activeClient.itemImageURL(
             itemID: id,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 600, quality: 90)
-        ))
+            parameters: .detailPoster()
+        )
     }
 
     func markHeroReady() {
@@ -828,7 +827,7 @@ class MediaDetailViewModel {
         }
 
         async let detailResult: BaseItemDto? = {
-            try? await client.send(Paths.getItem(itemID: itemID, userID: userID)).value
+            await client.fetchItemOrNil(itemID: itemID, userID: userID)
         }()
         async let similarResult: [BaseItemDto] = libraryViewModel.similarItems(
             for: itemID, client: client, userID: userID
@@ -877,7 +876,7 @@ class MediaDetailViewModel {
             self.seriesItem = local
             return
         }
-        if let fetched = try? await client.send(Paths.getItem(itemID: seriesID, userID: userID)).value {
+        if let fetched = await client.fetchItemOrNil(itemID: seriesID, userID: userID) {
             self.seriesItem = fetched
         }
     }
@@ -892,17 +891,7 @@ class MediaDetailViewModel {
         isLoadingEpisodes = true
         defer { isLoadingEpisodes = false }
 
-        let seasonResult = (try? await client.send(
-            Paths.getSeasons(
-                seriesID: seriesID,
-                parameters: .init(
-                    userID: userID,
-                    fields: [.primaryImageAspectRatio],
-                    enableImages: true,
-                    enableUserData: false
-                )
-            )
-        ).value.items) ?? []
+        let seasonResult = await client.fetchSeasonsOrEmpty(seriesID: seriesID, userID: userID)
 
         // Filter out specials and missing-season placeholders
         let filtered = seasonResult.filter { season in
@@ -923,18 +912,11 @@ class MediaDetailViewModel {
             for (index, season) in seasons.enumerated() {
                 group.addTask {
                     let seasonNum = season.indexNumber ?? season.parentIndexNumber
-                    let eps = (try? await client.send(
-                        Paths.getEpisodes(
-                            seriesID: seriesID,
-                            parameters: .init(
-                                userID: userID,
-                                fields: [.primaryImageAspectRatio, .mediaSources, .mediaStreams],
-                                season: seasonNum,
-                                enableImages: true,
-                                enableUserData: true
-                            )
-                        )
-                    ).value.items) ?? []
+                    let eps = await client.fetchEpisodesOrEmpty(
+                        seriesID: seriesID,
+                        seasonNumber: seasonNum,
+                        userID: userID
+                    )
                     return (index, eps)
                 }
             }
@@ -1076,22 +1058,22 @@ class MediaDetailViewModel {
     func episodeThumbnailURL(for episode: BaseItemDto) -> URL? {
         guard let client, let id = episode.id else { return nil }
         let imageType = episode.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
-        return client.url(with: Paths.getItemImage(
+        return client.itemImageURL(
             itemID: id,
             imageType: imageType,
-            parameters: .init(maxWidth: 600, quality: 90)
-        ))
+            parameters: .thumbnail()
+        )
     }
 
     func specialFeatureThumbnailURL(for item: BaseItemDto, client fallbackClient: JellyfinClient? = nil) -> URL? {
         let activeClient = client ?? fallbackClient
         guard let activeClient, let id = item.id else { return nil }
         let imageType = item.imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
-        return activeClient.url(with: Paths.getItemImage(
+        return activeClient.itemImageURL(
             itemID: id,
             imageType: imageType,
-            parameters: .init(maxWidth: 600, quality: 90)
-        ))
+            parameters: .thumbnail()
+        )
     }
 
     func castImageURL(for person: BaseItemPerson, client fallbackClient: JellyfinClient? = nil) -> URL? {
@@ -1099,11 +1081,10 @@ class MediaDetailViewModel {
         guard let activeClient,
               let id = person.id,
               person.primaryImageTag != nil else { return nil }
-        return activeClient.url(with: Paths.getItemImage(
+        return activeClient.itemImageURL(
             itemID: id,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 200, quality: 80, tag: person.primaryImageTag)
-        ))
+            parameters: .avatar(tag: person.primaryImageTag)
+        )
     }
 
     func handleFavoriteNotification(itemID: String, isFavorite: Bool) {
@@ -1118,16 +1099,9 @@ class MediaDetailViewModel {
         isLoadingCollectionItems = true
         defer { isLoadingCollectionItems = false }
 
-        var params = Paths.GetItemsParameters()
-        params.userID = userID
-        params.parentID = collectionID
-        params.isRecursive = true
-        params.isCollapseBoxSetItems = false
-        params.fields = [.primaryImageAspectRatio, .genres, .tags, .overview, .mediaSources, .mediaStreams]
-        params.enableUserData = userID != nil
-        params.enableImages = true
-
-        let items = (try? await client.send(Paths.getItems(parameters: params)).value.items) ?? []
+        let items = await client.fetchItemsOrEmpty(
+            parameters: .collectionItems(collectionID: collectionID, userID: userID)
+        )
 
         let sorted = items.sorted { a, b in
             let dateA = a.premiereDate ?? (a.productionYear.flatMap { Calendar.current.date(from: DateComponents(year: $0)) } ?? .distantPast)
@@ -1404,7 +1378,7 @@ class MediaDetailViewModel {
         }
 
         do {
-            let response = try await client.send(Paths.getPlaybackInfo(itemID: itemID, userID: userID)).value
+            let response = try await client.fetchPlaybackInfo(itemID: itemID, userID: userID)
             if let sources = response.mediaSources, !sources.isEmpty {
                 self.mediaSources = sources
                 configureInitialStreamSelection()

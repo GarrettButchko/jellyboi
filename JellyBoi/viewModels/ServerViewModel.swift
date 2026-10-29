@@ -40,7 +40,7 @@ class ServerViewModel {
               let userID = currentUser?.id,
               currentUser?.primaryImageTag != nil
         else { return nil }
-        return client.url(with: Paths.getUserImage(parameters: .init(userID: userID)))
+        return client.userImageURL(userID: userID)
     }
 
     var hasStoredSession: Bool {
@@ -89,7 +89,7 @@ class ServerViewModel {
         self.client = restoredClient
 
         do {
-            let user = try await restoredClient.send(Paths.getCurrentUser).value
+            let user = try await restoredClient.fetchCurrentUser()
             currentUser = user
             return .success
         } catch let apiError as APIError {
@@ -115,13 +115,14 @@ class ServerViewModel {
     func resetProgress(forItemID itemID: String, onComplete: (@MainActor @Sendable () -> Void)? = nil) async {
         if let client {
             let userID = currentUser?.id
-            _ = try? await client.send(Paths.markUnplayedItem(itemID: itemID, userID: userID))
-            let resetUserData = UpdateUserItemDataDto(
+            _ = try? await client.markUnplayed(itemID: itemID, userID: userID)
+            try? await client.updatePlaybackProgress(
+                itemID: itemID,
+                userID: userID,
                 isPlayed: false,
-                playbackPositionTicks: 0,
+                positionTicks: 0,
                 playedPercentage: 0
             )
-            _ = try? await client.send(Paths.updateItemUserData(itemID: itemID, userID: userID, resetUserData))
         }
 
         NotificationCenter.default.post(name: .mediaProgressReset, object: itemID)
@@ -135,10 +136,7 @@ class ServerViewModel {
         guard let client else { return nil }
         let userID = currentUser?.id
         do {
-            let request = isFavorite
-                ? Paths.markFavoriteItem(itemID: itemID, userID: userID)
-                : Paths.unmarkFavoriteItem(itemID: itemID, userID: userID)
-            let userData = try await client.send(request).value
+            let userData = try await client.setFavorite(isFavorite, itemID: itemID, userID: userID)
             NotificationCenter.default.post(
                 name: .mediaFavoriteToggled,
                 object: itemID,

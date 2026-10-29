@@ -182,6 +182,10 @@ public final class DownloadManager: NSObject {
         !completedDownloads.isEmpty
     }
 
+    public var currentPresentation: DownloadSummaryPresentation {
+        DownloadGrouping.currentPresentation(active: activeDownloads, completed: completedDownloads, client: client)
+    }
+
     // MARK: - Categorized Completed Media
 
     public var downloadedMovies: [BaseItemDto] {
@@ -325,11 +329,10 @@ public final class DownloadManager: NSObject {
 
         // Cache poster artwork for offline browsing (both UI card size and high-res detail size)
         let primaryTag = item.imageTags?["Primary"]
-        if let cardPosterURL = client.url(with: Paths.getItemImage(
+        if let cardPosterURL = client.itemImageURL(
             itemID: itemID,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 400, quality: 80, tag: primaryTag)
-        )) {
+            parameters: .poster(tag: primaryTag)
+        ) {
             SDWebImageManager.shared.loadImage(
                 with: cardPosterURL,
                 options: [.continueInBackground, .highPriority],
@@ -337,11 +340,10 @@ public final class DownloadManager: NSObject {
             ) { _, _, _, _, _, _ in }
         }
 
-        if let detailPosterURL = client.url(with: Paths.getItemImage(
+        if let detailPosterURL = client.itemImageURL(
             itemID: itemID,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 600, quality: 90, tag: primaryTag)
-        )) {
+            parameters: .detailPoster(tag: primaryTag)
+        ) {
             SDWebImageManager.shared.loadImage(
                 with: detailPosterURL,
                 options: [.continueInBackground, .lowPriority],
@@ -831,7 +833,7 @@ public final class DownloadManager: NSObject {
     private func updateLiveActivity(force: Bool = false) {
         let active = activeDownloads
         guard !active.isEmpty else { return }
-        var presentation = DownloadGrouping.currentPresentation(active: active, completed: completedDownloads, client: client)
+        var presentation = currentPresentation
         if presentation.isSingleElement, let posterURL = presentation.posterURL {
             let cacheKey = SDWebImageManager.shared.cacheKey(for: posterURL) ?? posterURL.absoluteString
             if let image = SDImageCache.shared.imageFromMemoryCache(forKey: cacheKey) ?? SDImageCache.shared.imageFromDiskCache(forKey: cacheKey) {

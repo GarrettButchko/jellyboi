@@ -69,7 +69,10 @@ struct ScrollTabBarOverlay: View {
         ZStack(alignment: .bottom) {
             if !downloadManager.activeDownloads.isEmpty {
                 HStack(spacing: 8) {
-                    ActiveDownloadFloatingBar(activeDownloads: downloadManager.activeDownloads) {
+                    ActiveDownloadFloatingBar(
+                        presentation: downloadManager.currentPresentation,
+                        activeDownloads: downloadManager.activeDownloads
+                    ) {
                         if let single = singleGroup {
                             activeSheetTarget = .group(id: single.id, name: single.name)
                         } else {

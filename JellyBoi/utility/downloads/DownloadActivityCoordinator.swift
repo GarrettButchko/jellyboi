@@ -62,18 +62,7 @@ public final class DownloadActivityCoordinator {
             lastPosterData = nil
         }
 
-        let state = DownloadActivityAttributes.ContentState(
-            title: presentation.title,
-            subtitle: presentation.subtitle,
-            detailText: presentation.detailText,
-            progress: presentation.progress,
-            itemsRemaining: presentation.itemsRemaining,
-            totalItems: presentation.totalItems,
-            status: presentation.status,
-            posterImageData: presentation.isSingleElement ? (presentation.posterImageData ?? lastPosterData) : nil,
-            isSingleElement: presentation.isSingleElement
-        )
-
+        let state = presentation.contentState(fallbackPosterData: lastPosterData)
         let content = ActivityContent(state: state, staleDate: nil)
 
         if let activity = activeActivity {

@@ -78,16 +78,7 @@ class LibraryViewModel {
 
     func similarItems(for itemID: String, client: JellyfinClient, userID: String?) async -> [BaseItemDto] {
         if let cached = similarItemsCache[itemID] { return cached }
-        let result = (try? await client.send(
-            Paths.getSimilarItems(
-                itemID: itemID,
-                parameters: .init(
-                    userID: userID,
-                    limit: 12,
-                    fields: [.primaryImageAspectRatio]
-                )
-            )
-        ).value.items) ?? []
+        let result = await client.fetchSimilarItems(itemID: itemID, userID: userID, limit: 12)
         similarItemsCache[itemID] = result
         return result
     }
@@ -102,9 +93,7 @@ class LibraryViewModel {
 
     func specialFeatures(for itemID: String, client: JellyfinClient, userID: String?) async -> [BaseItemDto] {
         if let cached = specialFeaturesCache[itemID] { return cached }
-        let result = (try? await client.send(
-            Paths.getSpecialFeatures(itemID: itemID, userID: userID)
-        ).value) ?? []
+        let result = await client.fetchSpecialFeatures(itemID: itemID, userID: userID)
         specialFeaturesCache[itemID] = result
         return result
     }
@@ -196,78 +185,16 @@ class LibraryViewModel {
         defer { isLoading = false }
 
         do {
-            let moviesParams = Paths.GetItemsParameters(
-                userID: effectiveUserID,
-                isRecursive: true, sortOrder: [.ascending],
-                fields: [.genres, .tags, .overview, .primaryImageAspectRatio],
-                includeItemTypes: [.movie], sortBy: [.sortName],
-                enableUserData: true
-            )
-
-            let showsParams = Paths.GetItemsParameters(
-                userID: effectiveUserID,
-                isRecursive: true, sortOrder: [.ascending],
-                fields: [.genres, .tags, .overview, .childCount, .recursiveItemCount, .primaryImageAspectRatio],
-                includeItemTypes: [.series], sortBy: [.sortName],
-                enableUserData: true
-            )
-
-            let episodesParams = Paths.GetItemsParameters(
-                userID: effectiveUserID,
-                isRecursive: true, sortOrder: [.ascending],
-                fields: [.genres, .tags, .overview, .primaryImageAspectRatio],
-                includeItemTypes: [.episode], sortBy: [.seriesSortName, .sortName],
-                enableUserData: true
-            )
-
-            let episodesCountParams = Paths.GetItemsParameters(
-                userID: effectiveUserID,
-                limit: 0,
-                isRecursive: true,
-                includeItemTypes: [.episode]
-            )
-
-            let collectionsParams = Paths.GetItemsParameters(
-                userID: effectiveUserID,
-                isRecursive: true,
-                sortOrder: [.ascending],
-                fields: [.genres, .tags, .overview, .primaryImageAspectRatio],
-                includeItemTypes: [.boxSet],
-                sortBy: [.sortName],
-                enableUserData: true
-            )
-
-            let recommendedParams = Paths.GetItemsParameters(
-                userID: effectiveUserID,
-                limit: 20, isRecursive: true,
-                sortOrder: [.descending],
-                includeItemTypes: [.movie, .series],
-                sortBy: [.communityRating]
-            )
-
-            let recentMoviesParams = Paths.GetItemsParameters(
-                userID: effectiveUserID,
-                limit: 20, isRecursive: true,
-                sortOrder: [.descending],
-                includeItemTypes: [.movie],
-                sortBy: [.dateCreated],
-                enableUserData: true
-            )
-
-            let recentShowsParams = Paths.GetItemsParameters(
-                userID: effectiveUserID,
-                limit: 20, isRecursive: true,
-                sortOrder: [.descending],
-                includeItemTypes: [.series],
-                sortBy: [.dateCreated],
-                enableUserData: true
-            )
-
-            let nextUpParams = Paths.GetNextUpParameters(limit: 20, enableResumable: true)
-            let favoritesCountParams = Paths.GetItemsParameters(
-                userID: effectiveUserID,
-                limit: 0, isRecursive: true, filters: [.isFavorite]
-            )
+            let moviesParams = Paths.GetItemsParameters.movies(userID: effectiveUserID)
+            let showsParams = Paths.GetItemsParameters.tvShows(userID: effectiveUserID)
+            let episodesParams = Paths.GetItemsParameters.episodes(userID: effectiveUserID)
+            let episodesCountParams = Paths.GetItemsParameters.countOnly(userID: effectiveUserID, types: [.episode])
+            let collectionsParams = Paths.GetItemsParameters.collections(userID: effectiveUserID)
+            let recommendedParams = Paths.GetItemsParameters.recommended(userID: effectiveUserID)
+            let recentMoviesParams = Paths.GetItemsParameters.recentMovies(userID: effectiveUserID)
+            let recentShowsParams = Paths.GetItemsParameters.recentShows(userID: effectiveUserID)
+            let nextUpParams = Paths.GetNextUpParameters.standard(userID: effectiveUserID, limit: 20)
+            let favoritesCountParams = Paths.GetItemsParameters.countOnly(userID: effectiveUserID, filters: [.isFavorite])
 
             async let moviesResponse       = client.send(Paths.getItems(parameters: moviesParams))
             async let showsResponse        = client.send(Paths.getItems(parameters: showsParams))
@@ -424,21 +351,13 @@ class LibraryViewModel {
         if item.type == .episode && (item.imageTags?.keys.contains("Primary") != true) {
             return seriesPosterURL(for: item, client: client)
         }
-        return client.url(with: Paths.getItemImage(
-            itemID: id,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 400, quality: 80)
-        ))
+        return client.itemImageURL(itemID: id, parameters: .poster())
     }
 
     func seriesPosterURL(for episode: BaseItemDto, client: JellyfinClient) -> URL? {
         let itemID = episode.seriesID ?? episode.id
         guard let itemID else { return nil }
-        return client.url(with: Paths.getItemImage(
-            itemID: itemID,
-            imageType: "Primary",
-            parameters: .init(maxWidth: 400, quality: 80)
-        ))
+        return client.itemImageURL(itemID: itemID, parameters: .poster())
     }
 
     func backdropURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
@@ -465,11 +384,11 @@ class LibraryViewModel {
             targetID = id
         }
 
-        return client.url(with: Paths.getItemImage(
+        return client.itemImageURL(
             itemID: targetID,
             imageType: imageType,
-            parameters: .init(maxWidth: 1920, quality: 96)
-        ))
+            parameters: .backdrop(maxWidth: 1920, quality: 96)
+        )
     }
 
     // MARK: - Prefetching

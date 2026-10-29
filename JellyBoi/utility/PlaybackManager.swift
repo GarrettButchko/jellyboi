@@ -388,16 +388,9 @@ final class PlaybackManager {
         libraryViewModel: LibraryViewModel?
     ) async -> (playable: BaseItemDto, queue: [BaseItemDto])? {
         guard let collectionID = collection.id, let client else { return nil }
-        var params = Paths.GetItemsParameters()
-        params.userID = userID
-        params.parentID = collectionID
-        params.isRecursive = true
-        params.isCollapseBoxSetItems = false
-        params.fields = [.primaryImageAspectRatio, .genres, .tags, .overview, .mediaSources, .mediaStreams]
-        params.enableUserData = userID != nil
-        params.enableImages = true
-
-        let items = (try? await client.send(Paths.getItems(parameters: params)).value.items) ?? []
+        let items = await client.fetchItemsOrEmpty(
+            parameters: .collectionItems(collectionID: collectionID, userID: userID)
+        )
         let sorted = items.sorted { a, b in
             let dateA = a.premiereDate ?? (a.productionYear.flatMap { Calendar.current.date(from: DateComponents(year: $0)) } ?? .distantPast)
             let dateB = b.premiereDate ?? (b.productionYear.flatMap { Calendar.current.date(from: DateComponents(year: $0)) } ?? .distantPast)
@@ -451,16 +444,7 @@ final class PlaybackManager {
         }
 
         guard let client else { return nil }
-        let result = (try? await client.send(
-            Paths.getEpisodes(
-                seriesID: seriesID,
-                parameters: .init(
-                    userID: userID,
-                    fields: [.primaryImageAspectRatio, .mediaSources, .mediaStreams],
-                    enableUserData: true
-                )
-            )
-        ).value.items) ?? []
+        let result = await client.fetchEpisodesOrEmpty(seriesID: seriesID, userID: userID)
 
         let sorted = result.sorted { a, b in
             let sA = a.parentIndexNumber ?? 1

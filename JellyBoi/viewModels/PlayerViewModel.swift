@@ -286,16 +286,8 @@ final class PlayerViewModel: Identifiable {
                 return
             }
 
-            if let result = try? await client.send(
-                Paths.getEpisodes(
-                    seriesID: seriesID,
-                    parameters: .init(
-                        userID: userID,
-                        fields: [.primaryImageAspectRatio, .mediaSources, .mediaStreams],
-                        enableUserData: true
-                    )
-                )
-            ).value.items {
+            let result = await client.fetchEpisodesOrEmpty(seriesID: seriesID, userID: userID)
+            if !result.isEmpty {
                 let sorted = result.sorted { a, b in
                     let sA = a.parentIndexNumber ?? 1
                     let sB = b.parentIndexNumber ?? 1
@@ -565,16 +557,10 @@ final class PlayerViewModel: Identifiable {
                 if canDirectPlay {
                     resolvedPlayMethod = .directPlay
                     AppLogger.info("Media container is '\(container)'; using direct static stream", tag: "Player")
-                    streamURL = client.url(
-                        with: Paths.getVideoStream(
-                            itemID: itemID,
-                            parameters: .init(
-                                isStatic: true,
-                                playSessionID: sessionID,
-                                mediaSourceID: selectedSource?.id
-                            )
-                        ),
-                        queryAPIKey: true
+                    streamURL = client.directVideoStreamURL(
+                        itemID: itemID,
+                        sessionID: sessionID,
+                        mediaSourceID: selectedSource?.id
                     )
                 } else {
                     resolvedPlayMethod = (req.maxBitrate != nil) ? .transcode : .directStream
@@ -1104,7 +1090,7 @@ final class PlayerViewModel: Identifiable {
             positionTicks: currentPositionTicks
         )
         do {
-            _ = try await client.send(Paths.reportPlaybackStart(state))
+            try await client.reportPlaybackStart(state)
             AppLogger.debug("Successfully reported playback start", tag: "Player")
         } catch {
             AppLogger.warning("Failed to report playback start: \(error.localizedDescription)", tag: "Player")
@@ -1129,7 +1115,7 @@ final class PlayerViewModel: Identifiable {
             positionTicks: currentPositionTicks
         )
         do {
-            _ = try await client.send(Paths.reportPlaybackProgress(state))
+            try await client.reportPlaybackProgress(state)
         } catch {
             AppLogger.warning("Failed to report playback progress: \(error.localizedDescription)", tag: "Player")
         }
@@ -1146,7 +1132,7 @@ final class PlayerViewModel: Identifiable {
             positionTicks: currentPositionTicks
         )
         do {
-            _ = try await client.send(Paths.reportPlaybackStopped(stopInfo))
+            try await client.reportPlaybackStopped(stopInfo)
             AppLogger.debug("Successfully reported playback stop to server", tag: "Player")
         } catch {
             AppLogger.warning("Failed to report playback stop: \(error.localizedDescription)", tag: "Player")
@@ -1168,7 +1154,7 @@ final class PlayerViewModel: Identifiable {
                     playSessionID: sessionID,
                     positionTicks: finalTicks
                 )
-                _ = try? await client.send(Paths.reportPlaybackStopped(stopInfo))
+                _ = try? await client.reportPlaybackStopped(stopInfo)
             }
         }
 
@@ -1218,11 +1204,10 @@ final class PlayerViewModel: Identifiable {
 
         // 2. Primary image
         if let id = currentItem.id {
-            if let primaryURL = client.url(with: Paths.getItemImage(
+            if let primaryURL = client.itemImageURL(
                 itemID: id,
-                imageType: "Primary",
-                parameters: .init(maxWidth: 600, quality: 90)
-            )) {
+                parameters: .detailPoster()
+            ) {
                 if !urls.contains(primaryURL) {
                     urls.append(primaryURL)
                 }
@@ -1232,22 +1217,20 @@ final class PlayerViewModel: Identifiable {
         // 3. For episodes, fallback to series or season poster
         if currentItem.type == .episode {
             if let seriesID = currentItem.seriesID {
-                if let seriesURL = client.url(with: Paths.getItemImage(
+                if let seriesURL = client.itemImageURL(
                     itemID: seriesID,
-                    imageType: "Primary",
-                    parameters: .init(maxWidth: 600, quality: 90)
-                )) {
+                    parameters: .detailPoster()
+                ) {
                     if !urls.contains(seriesURL) {
                         urls.append(seriesURL)
                     }
                 }
             }
             if let seasonID = currentItem.seasonID {
-                if let seasonURL = client.url(with: Paths.getItemImage(
+                if let seasonURL = client.itemImageURL(
                     itemID: seasonID,
-                    imageType: "Primary",
-                    parameters: .init(maxWidth: 600, quality: 90)
-                )) {
+                    parameters: .detailPoster()
+                ) {
                     if !urls.contains(seasonURL) {
                         urls.append(seasonURL)
                     }
@@ -1258,22 +1241,22 @@ final class PlayerViewModel: Identifiable {
         // 4. Thumb / Backdrop fallback
         if let id = currentItem.id {
             if currentItem.imageTags?.keys.contains("Thumb") == true {
-                if let thumbURL = client.url(with: Paths.getItemImage(
+                if let thumbURL = client.itemImageURL(
                     itemID: id,
                     imageType: "Thumb",
-                    parameters: .init(maxWidth: 600, quality: 90)
-                )) {
+                    parameters: .thumbnail()
+                ) {
                     if !urls.contains(thumbURL) {
                         urls.append(thumbURL)
                     }
                 }
             }
             if currentItem.backdropImageTags?.isEmpty == false || currentItem.imageTags?.keys.contains("Backdrop") == true {
-                if let backdropURL = client.url(with: Paths.getItemImage(
+                if let backdropURL = client.itemImageURL(
                     itemID: id,
                     imageType: "Backdrop",
-                    parameters: .init(maxWidth: 800, quality: 90)
-                )) {
+                    parameters: .backdrop(maxWidth: 800, quality: 90)
+                ) {
                     if !urls.contains(backdropURL) {
                         urls.append(backdropURL)
                     }
@@ -1483,7 +1466,7 @@ final class PlayerViewModel: Identifiable {
                     playSessionID: sessionID,
                     positionTicks: finalTicks
                 )
-                _ = try? await client.send(Paths.reportPlaybackStopped(stopInfo))
+                _ = try? await client.reportPlaybackStopped(stopInfo)
             }
         }
     }

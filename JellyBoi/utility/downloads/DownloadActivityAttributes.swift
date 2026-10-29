@@ -129,6 +129,87 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
         public var isConverting: Bool { status.isConverting }
         public var isCompleted: Bool { status.isCompleted }
 
+        public var progressPercent: Int {
+            Int(progress * 100)
+        }
+
+        public var percentageText: String {
+            switch status {
+            case .completed:
+                return "Done"
+            case .queued:
+                return "Queued"
+            default:
+                return "\(progressPercent)%"
+            }
+        }
+
+        public var compactPercentageText: String {
+            switch status {
+            case .completed:
+                return "100%"
+            case .queued:
+                return "Queued"
+            default:
+                return "\(progressPercent)%"
+            }
+        }
+
+        public var compactPercentageColor: Color {
+            switch status {
+            case .completed:
+                return .green
+            case .queued:
+                return .orange
+            default:
+                return Color.white.opacity(0.9)
+            }
+        }
+
+        public var statusDetail: String {
+            switch status {
+            case .completed:
+                return "Ready offline"
+            case .queued:
+                if itemsRemaining > 1 {
+                    return "\(itemsRemaining) items queued"
+                }
+                return "Queued"
+            case .converting, .finalizing:
+                if itemsRemaining > 1 {
+                    return "\(itemsRemaining) left • Converting"
+                }
+                return "Converting"
+            case .failed:
+                return "Failed"
+            case .downloading:
+                if let extra = Self.cleanExtraInfo(detailText, itemsRemaining: itemsRemaining) {
+                    return extra
+                }
+                if let subtitle, !subtitle.isEmpty {
+                    return subtitle
+                }
+                if itemsRemaining > 1 {
+                    return "\(itemsRemaining) items left"
+                }
+                return "Downloading"
+            }
+        }
+
+        public static func cleanExtraInfo(_ detailText: String?, itemsRemaining: Int) -> String? {
+            guard let detailText, !detailText.isEmpty else { return nil }
+            let components = detailText.components(separatedBy: "•").map { $0.trimmingCharacters(in: .whitespaces) }
+            let nonPercent = components.filter { !$0.contains("%") }
+
+            for item in nonPercent {
+                if itemsRemaining > 1 && (item.contains("item") || item.contains("episode")) {
+                    continue
+                }
+                return item
+            }
+            return nonPercent.first
+        }
+
         public init(
             title: String,
             subtitle: String? = nil,

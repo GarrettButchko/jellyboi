@@ -90,17 +90,15 @@ class CastCrewViewModel {
         guard let client else { return nil }
         if let id = detailedPerson?.id ?? person.id {
             let tag = detailedPerson?.imageTags?["Primary"] ?? person.primaryImageTag
-            return client.url(with: Paths.getItemImage(
+            return client.itemImageURL(
                 itemID: id,
-                imageType: "Primary",
-                parameters: .init(maxWidth: 400, quality: 85, tag: tag)
-            ))
+                parameters: .poster(maxWidth: 400, quality: 85, tag: tag)
+            )
         } else if let name = detailedPerson?.name ?? person.name {
-            return client.url(with: Paths.getPersonImage(
+            return client.personImageURL(
                 name: name,
-                imageType: "Primary",
-                parameters: .init(maxWidth: 400, quality: 85)
-            ))
+                parameters: .standard(maxWidth: 400, quality: 85)
+            )
         }
         return nil
     }
@@ -114,13 +112,13 @@ class CastCrewViewModel {
         // 1. Fetch detailed person info
         do {
             if let id = person.id, !id.isEmpty {
-                detailedPerson = try await client.send(Paths.getItem(itemID: id, userID: userID)).value
+                detailedPerson = try await client.fetchItem(itemID: id, userID: userID)
             } else if let name = person.name, !name.isEmpty {
-                detailedPerson = try await client.send(Paths.getPerson(name: name, userID: userID)).value
+                detailedPerson = try await client.fetchPerson(name: name, userID: userID)
             }
         } catch {
             if detailedPerson == nil, let name = person.name, !name.isEmpty {
-                detailedPerson = try? await client.send(Paths.getPerson(name: name, userID: userID)).value
+                detailedPerson = await client.fetchPersonOrNil(name: name, userID: userID)
             }
         }
 
@@ -155,32 +153,24 @@ class CastCrewViewModel {
         client: JellyfinClient,
         userID: String?
     ) async -> [BaseItemDto] {
-        var params = Paths.GetItemsParameters(
+        var params = Paths.GetItemsParameters.personItems(
+            personID: personID,
+            personName: personName,
             userID: userID,
-            isRecursive: true,
-            sortOrder: [.descending],
-            fields: [.primaryImageAspectRatio, .genres, .tags, .overview],
-            includeItemTypes: itemTypes,
-            sortBy: [.premiereDate, .productionYear, .sortName]
+            itemTypes: itemTypes
         )
 
-        if let id = personID, !id.isEmpty {
-            params.personIDs = [id]
-        } else if let name = personName, !name.isEmpty {
-            params.person = name
-        }
-
         do {
-            let response = try await client.send(Paths.getItems(parameters: params)).value
-            var items = response.items ?? []
+            var items = try await client.fetchItems(parameters: params)
 
             // Fallback: If personIDs returned empty, try querying by person name
             if items.isEmpty, let name = personName, !name.isEmpty, params.personIDs != nil {
                 var nameParams = params
                 nameParams.personIDs = nil
                 nameParams.person = name
-                if let nameResponse = try? await client.send(Paths.getItems(parameters: nameParams)).value {
-                    items = nameResponse.items ?? []
+                let nameItems = await client.fetchItemsOrEmpty(parameters: nameParams)
+                if !nameItems.isEmpty {
+                    items = nameItems
                 }
             }
 
@@ -192,21 +182,16 @@ class CastCrewViewModel {
         } catch {
             // Fallback by name if error
             if let name = personName, !name.isEmpty {
-                let fallbackParams = Paths.GetItemsParameters(
+                let fallbackParams = Paths.GetItemsParameters.personItems(
+                    personName: name,
                     userID: userID,
-                    isRecursive: true,
-                    sortOrder: [.descending],
-                    fields: [.primaryImageAspectRatio, .genres, .tags],
-                    includeItemTypes: itemTypes,
-                    sortBy: [.premiereDate, .sortName],
-                    person: name
+                    itemTypes: itemTypes
                 )
-                if let fallbackRes = try? await client.send(Paths.getItems(parameters: fallbackParams)).value {
-                    var seen = Set<String>()
-                    return (fallbackRes.items ?? []).filter { item in
-                        guard let id = item.id else { return false }
-                        return seen.insert(id).inserted
-                    }
+                let fallbackItems = await client.fetchItemsOrEmpty(parameters: fallbackParams)
+                var seen = Set<String>()
+                return fallbackItems.filter { item in
+                    guard let id = item.id else { return false }
+                    return seen.insert(id).inserted
                 }
             }
             return []

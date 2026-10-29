@@ -51,24 +51,20 @@ struct DownloadActivityWidget: Widget {
                 .padding(.vertical, 2)
             } compactTrailing: {
                 // Percentage instead of progress ring with padding
-                Text(compactPercentageText(for: context.state))
+                Text(context.state.compactPercentageText)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(compactPercentageColor(for: context.state))
+                    .foregroundStyle(context.state.compactPercentageColor)
                     .padding(.trailing, 6)
                     .padding(.vertical, 2)
             } minimal: {
                 Group {
-                    if context.state.status == .queued {
-                        Image(systemName: "clock")
+                    if context.state.status == .queued || context.state.status == .completed {
+                        Image(systemName: context.state.status.icon)
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.orange)
-                    } else if context.state.status == .completed {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.green)
+                            .foregroundStyle(context.state.status.tintColor)
                     } else {
-                        Text("\(Int(context.state.progress * 100))%")
+                        Text("\(context.state.progressPercent)%")
                             .font(.system(size: 10, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(Color.white)
@@ -80,28 +76,6 @@ struct DownloadActivityWidget: Widget {
             .keylineTint(Color.indigo.opacity(0.4))
         }
     }
-
-    private func compactPercentageText(for state: DownloadActivityAttributes.ContentState) -> String {
-        switch state.status {
-        case .completed:
-            return "100%"
-        case .queued:
-            return "Queued"
-        default:
-            return "\(Int(state.progress * 100))%"
-        }
-    }
-
-    private func compactPercentageColor(for state: DownloadActivityAttributes.ContentState) -> Color {
-        switch state.status {
-        case .completed:
-            return Color.green
-        case .queued:
-            return Color.orange
-        default:
-            return Color.white.opacity(0.9)
-        }
-    }
 }
 
 // MARK: - Lock Screen & Expanded Dynamic Island Banner View
@@ -109,17 +83,6 @@ struct DownloadActivityWidget: Widget {
 private struct LockScreenDownloadView: View {
     let state: DownloadActivityAttributes.ContentState
     var isDynamicIsland: Bool = false
-
-    private var percentageText: String {
-        switch state.status {
-        case .completed:
-            return "Done"
-        case .queued:
-            return "Queued"
-        default:
-            return "\(Int(state.progress * 100))%"
-        }
-    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -173,7 +136,7 @@ private struct LockScreenDownloadView: View {
                 Image(systemName: state.status.icon)
                     .font(.system(size: 10, weight: .medium))
 
-                Text(percentageText)
+                Text(state.percentageText)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .monospacedDigit()
 
@@ -187,7 +150,7 @@ private struct LockScreenDownloadView: View {
                     Image(systemName: state.status.icon)
                         .font(.system(size: 10, weight: .medium))
 
-                    Text(statusDetail(for: state))
+                    Text(state.statusDetail)
                         .font(.system(size: 12, weight: .regular, design: .rounded))
                 }
                 .foregroundStyle(Color.white.opacity(0.65))
@@ -195,7 +158,7 @@ private struct LockScreenDownloadView: View {
 
                 Spacer(minLength: 8)
 
-                Text(percentageText)
+                Text(state.percentageText)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(Color.white.opacity(0.75))
@@ -276,50 +239,4 @@ private struct ProgressRingIndicator: View {
         }
         .frame(width: size, height: size)
     }
-}
-
-// MARK: - Helpers
-
-private func statusDetail(for state: DownloadActivityAttributes.ContentState) -> String {
-    switch state.status {
-    case .completed:
-        return "Ready offline"
-    case .queued:
-        if state.itemsRemaining > 1 {
-            return "\(state.itemsRemaining) items queued"
-        }
-        return "Queued"
-    case .converting, .finalizing:
-        if state.itemsRemaining > 1 {
-            return "\(state.itemsRemaining) left • Converting"
-        }
-        return "Converting"
-    case .failed:
-        return "Failed"
-    case .downloading:
-        if let extra = cleanExtraInfo(state.detailText, itemsRemaining: state.itemsRemaining) {
-            return extra
-        }
-        if let subtitle = state.subtitle, !subtitle.isEmpty {
-            return subtitle
-        }
-        if state.itemsRemaining > 1 {
-            return "\(state.itemsRemaining) items left"
-        }
-        return "Downloading"
-    }
-}
-
-private func cleanExtraInfo(_ detailText: String?, itemsRemaining: Int) -> String? {
-    guard let detailText = detailText, !detailText.isEmpty else { return nil }
-    let components = detailText.components(separatedBy: "•").map { $0.trimmingCharacters(in: .whitespaces) }
-    let nonPercent = components.filter { !$0.contains("%") }
-
-    for item in nonPercent {
-        if itemsRemaining > 1 && (item.contains("item") || item.contains("episode")) {
-            continue
-        }
-        return item
-    }
-    return nonPercent.first
 }
