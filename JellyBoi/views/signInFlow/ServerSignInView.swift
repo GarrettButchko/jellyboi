@@ -17,7 +17,7 @@ struct ServerSignInView: View {
         case password
     }
 
-    @EnvironmentObject var viewManager: ViewManager
+    @Environment(ViewManager.self) private var viewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel = ServerSignInViewModel()
@@ -349,5 +349,5 @@ struct ServerSignInView: View {
 
 #Preview {
     ServerSignInView()
-        .environmentObject(ViewManager())
+        .environment(ViewManager())
 }

@@ -254,7 +254,6 @@ public enum DownloadGrouping {
         let totalItemsCount = active.count + completed.count
 
         let totalElements = computedGroups.count + standalones.count
-        let isSingleElement = totalElements == 1
 
         let isAllQueued = !active.isEmpty && active.allSatisfy { $0.status == .queued }
         let isConverting = active.contains { $0.status == .converting || $0.status == .finalizing }

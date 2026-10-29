@@ -10,7 +10,7 @@ import BaseColors
 import JellyfinAPI
 
 struct LetsConnectView: View {
-    @EnvironmentObject var viewManager: ViewManager
+    @Environment(ViewManager.self) private var viewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @State private var viewModel = LetsConnectViewModel()
     @State private var serverURL = ""

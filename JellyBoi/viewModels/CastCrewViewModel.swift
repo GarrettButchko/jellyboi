@@ -144,8 +144,8 @@ class CastCrewViewModel {
         )
 
         let (items, episodes) = await (fetchedMedia, fetchedEpisodes)
-        _mediaItems = items
-        _episodeItems = episodes
+        mediaItems = items
+        episodeItems = episodes
     }
 
     private func fetchItems(

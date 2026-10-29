@@ -95,18 +95,12 @@ class MediaDetailViewModel {
         return currentItem
     }
 
-    func shouldShowOptionsButton(libraryViewModel: LibraryViewModel?) -> Bool {
+    var shouldShowOptionsButton: Bool {
         guard let currentItem = displayItem else { return true }
-        if currentItem.type == .boxSet {
-            return false
-        }
-        if currentItem.type == .series {
-            return false
-        }
-        return true
+        return currentItem.type != .boxSet && currentItem.type != .series
     }
 
-    func isOptionsDisabled(libraryViewModel: LibraryViewModel?) -> Bool {
+    var isOptionsDisabled: Bool {
         guard let currentItem = displayItem else { return false }
         if currentItem.type == .boxSet {
             return isLoadingCollectionItems || collectionItems.isEmpty
@@ -114,7 +108,7 @@ class MediaDetailViewModel {
         return false
     }
 
-    func isPlayDisabled(libraryViewModel: LibraryViewModel?) -> Bool {
+    var isPlayDisabled: Bool {
         guard let currentItem = displayItem else { return false }
         if currentItem.type == .boxSet {
             return isLoadingCollectionItems || collectionItems.isEmpty
@@ -186,19 +180,12 @@ class MediaDetailViewModel {
 
     // MARK: - Server-derived Playback State
 
-    var currentPlaybackTargetItem: BaseItemDto? {
-        if displayItem?.type == .series || displayItem?.type == .boxSet {
-            return nextPlayableEpisode(libraryViewModel: libraryViewModel)
-        }
-        return displayItem
-    }
-
-    var isCollectionWatched: Bool {
+    private var isCollectionWatched: Bool {
         guard displayItem?.type == .boxSet, !collectionItems.isEmpty else { return false }
         return collectionItems.allSatisfy { $0.isWatched }
     }
 
-    var isSeriesWatched: Bool {
+    private var isSeriesWatched: Bool {
         guard displayItem?.type == .series else { return false }
         if let unplayed = displayItem?.userData?.unplayedItemCount, unplayed == 0 { return true }
         if displayItem?.userData?.isPlayed == true { return true }
@@ -284,38 +271,10 @@ class MediaDetailViewModel {
         return displayItem?.percentText ?? ""
     }
 
-    func targetPlayableTitle(libraryViewModel: LibraryViewModel?) -> String {
+    func targetPlayableTitle(libraryViewModel: LibraryViewModel? = nil) -> String {
         let target = playableItem(libraryViewModel: libraryViewModel)
-        if target.type == .episode {
-            var epTitle: String? = nil
-            if let season = target.parentIndexNumber, let episode = target.indexNumber {
-                epTitle = "S\(season) E\(episode)"
-            } else if let episode = target.indexNumber {
-                epTitle = "Ep \(episode)"
-            }
-
-            let name = target.name
-
-            switch (epTitle, name) {
-            case let (.some(e), .some(n)) where !e.isEmpty && !n.isEmpty:
-                return "\(e): \(n)"
-            case let (.some(e), _):
-                return e
-            case let (_, .some(n)) where !n.isEmpty:
-                return n
-            default:
-                return target.name ?? "Episode"
-            }
-        }
-
-        if let targetName = target.name, !targetName.isEmpty {
-            return targetName
-        }
-        return displayItem?.name ?? ""
-    }
-
-    var contextMenuTitle: String {
-        targetPlayableTitle(libraryViewModel: nil)
+        let title = target.contextMenuTitle(includeSeriesName: false)
+        return title.isEmpty ? (displayItem?.name ?? "") : title
     }
 
     func handlePlayTap(
@@ -323,7 +282,7 @@ class MediaDetailViewModel {
         serverViewModel: ServerViewModel,
         libraryViewModel: LibraryViewModel
     ) {
-        if isPlayDisabled(libraryViewModel: libraryViewModel) {
+        if isPlayDisabled {
             return
         }
         if isWatched {
@@ -477,17 +436,11 @@ class MediaDetailViewModel {
         return totalProgress / Double(totalCount)
     }
 
-    func showEpisodesLeft(downloadManager: DownloadManager) -> Int {
-        guard let item = displayItem, item.type == .series, let showID = item.id else { return 0 }
-
-        return downloadManager.activeDownloads.filter {
+    func episodesLeft(downloadManager: DownloadManager) -> Int? {
+        guard let item = displayItem, item.type == .series, let showID = item.id else { return nil }
+        let count = downloadManager.activeDownloads.filter {
             $0.group?.id == showID
         }.count
-    }
-
-    func episodesLeft(downloadManager: DownloadManager) -> Int? {
-        guard displayItem?.type == .series else { return nil }
-        let count = showEpisodesLeft(downloadManager: downloadManager)
         return count > 0 ? count : nil
     }
 

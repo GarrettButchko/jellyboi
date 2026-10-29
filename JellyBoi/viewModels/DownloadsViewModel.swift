@@ -280,38 +280,4 @@ final class DownloadsViewModel {
         }
     }
 
-    // MARK: - Presentation Formatters
-
-    func itemTitle(for item: BaseItemDto) -> String {
-        if item.type == .episode {
-            var label = ""
-            if let season = item.parentIndexNumber, let episode = item.indexNumber {
-                label = "S\(season):E\(episode)"
-            }
-            if let name = item.name, !name.isEmpty {
-                return label.isEmpty ? name : "\(label) • \(name)"
-            }
-            return label.isEmpty ? (item.name ?? "Episode") : label
-        } else {
-            return item.name ?? "Movie"
-        }
-    }
-
-    func groupSubtitle(for group: ShowDownloadGroup) -> String {
-        if group.isAllFailed {
-            return "Failed"
-        } else if group.isAllQueued {
-            return "Queued"
-        } else {
-            let isColl = group.representativeItem?.type == .movie || group.representativeItem?.type == .boxSet
-            let count = group.episodesLeft
-            let unit = isColl ? (count == 1 ? "movie" : "movies") : (count == 1 ? "episode" : "episodes")
-            let percentStr = "\(Int(group.overallProgress * 100))%"
-            return "\(percentStr) • \(count) \(unit) left"
-        }
-    }
-
-    func groupActiveIcon(for group: ShowDownloadGroup) -> String? {
-        group.activeStatusIcon
-    }
 }

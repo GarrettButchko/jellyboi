@@ -332,10 +332,7 @@ struct DownloadsSheet: View {
             .toolbarVisibility(.hidden, for: .navigationBar)
             .alert(
                 itemToCancel?.status == .failed ? "Download Failed" : "Cancel Download?",
-                isPresented: Binding(
-                    get: { itemToCancel != nil },
-                    set: { if !$0 { itemToCancel = nil } }
-                ),
+                isPresented: Binding($itemToCancel),
                 presenting: itemToCancel
             ) { item in
                 if item.status == .failed {
@@ -377,10 +374,7 @@ struct DownloadsSheet: View {
             }
             .alert(
                 "Delete Download?",
-                isPresented: Binding(
-                    get: { itemToDelete != nil },
-                    set: { if !$0 { itemToDelete = nil } }
-                ),
+                isPresented: Binding($itemToDelete),
                 presenting: itemToDelete
             ) { item in
                 Button("Delete", role: .destructive) {
@@ -397,10 +391,7 @@ struct DownloadsSheet: View {
             }
             .alert(
                 "Cancel All Downloads?",
-                isPresented: Binding(
-                    get: { groupToCancel != nil },
-                    set: { if !$0 { groupToCancel = nil } }
-                ),
+                isPresented: Binding($groupToCancel),
                 presenting: groupToCancel
             ) { group in
                 Button("Cancel All", role: .destructive) {

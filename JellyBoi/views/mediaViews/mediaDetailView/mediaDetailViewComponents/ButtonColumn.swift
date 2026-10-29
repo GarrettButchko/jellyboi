@@ -13,8 +13,8 @@ extension MediaDetailView {
 
     var buttonColumn: some View {
         VStack(spacing: 12) {
-            if detailVM.shouldShowOptionsButton(libraryViewModel: libraryViewModel) {
-                let isOptionsDisabled = detailVM.isOptionsDisabled(libraryViewModel: libraryViewModel)
+            if detailVM.shouldShowOptionsButton {
+                let isOptionsDisabled = detailVM.isOptionsDisabled
                 Button {
                     showOptionsSheet = true
                 } label: {
@@ -38,7 +38,7 @@ extension MediaDetailView {
                             .glassEffectUnion(id: "colBut", namespace: glassNamespace)
                             .transition(.scale(scale: 0.8).combined(with: .opacity))
                     }
-                    let isPlayDisabled = detailVM.isPlayDisabled(libraryViewModel: libraryViewModel)
+                    let isPlayDisabled = detailVM.isPlayDisabled
                     Button {
                         detailVM.handlePlayTap(
                             playbackManager: playbackManager,
@@ -181,8 +181,9 @@ extension MediaDetailView {
                 }
             }
         } header: {
-            if !isSeriesContainer && !detailVM.contextMenuTitle.isEmpty {
-                Text(detailVM.contextMenuTitle)
+            let title = detailVM.targetPlayableTitle()
+            if !isSeriesContainer && !title.isEmpty {
+                Text(title)
             }
         }
     }

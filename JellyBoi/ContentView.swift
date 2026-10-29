@@ -13,7 +13,7 @@ import LoggingKit
 
 struct ContentView: View {
 
-    @EnvironmentObject var viewManager: ViewManager
+    @Environment(ViewManager.self) private var viewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(PlaybackManager.self) private var playbackManager
@@ -25,6 +25,7 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var bindablePlayback = playbackManager
+        @Bindable var bindableViewManager = viewManager
 
         ZStack {
             Color.bg
@@ -53,7 +54,7 @@ struct ContentView: View {
             if viewManager.showSignInFlow {
                 NavigationStack {
                     LetsConnectView()
-                        .navigationDestination(isPresented: $viewManager.showServerSignIn) {
+                        .navigationDestination(isPresented: $bindableViewManager.showServerSignIn) {
                             ServerSignInView()
                         }
                 }
@@ -247,6 +248,6 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .environmentObject(ViewManager())
+        .environment(ViewManager())
         .environment(NetworkMonitor.shared)
 }

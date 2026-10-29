@@ -9,11 +9,10 @@ import Foundation
 import Observation
 import Get
 import JellyfinAPI
-internal import Combine
 
 @Observable
 @MainActor
-class HomeViewModel: ObservableObject {
+class HomeViewModel {
     var library = LibraryViewModel()
 
     init(library: LibraryViewModel? = nil) {

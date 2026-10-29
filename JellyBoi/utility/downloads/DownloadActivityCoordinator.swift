@@ -30,10 +30,6 @@ public final class DownloadActivityCoordinator {
         return Activity<DownloadActivityAttributes>.activities.first(where: { $0.activityState == .active })
     }
 
-    public func update(with presentation: DownloadSummaryPresentation, force: Bool = false) {
-        update(presentation: presentation, force: force)
-    }
-
     public func update(presentation: DownloadSummaryPresentation, force: Bool = false) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 

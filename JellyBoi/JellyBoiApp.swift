@@ -64,7 +64,7 @@ struct JellyBoiApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     #endif
 
-    @StateObject private var viewManager = ViewManager()
+    @State private var viewManager = ViewManager()
     @State private var serverViewModel = ServerViewModel()
     @State private var libraryViewModel = LibraryViewModel()
     @State private var playbackManager = PlaybackManager.shared
@@ -74,7 +74,7 @@ struct JellyBoiApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(viewManager)
+                .environment(viewManager)
                 .environment(serverViewModel)
                 .environment(libraryViewModel)
                 .environment(playbackManager)

@@ -11,7 +11,7 @@ import StatusOverlayKit
 
 struct GetStartedView: View {
 
-    @EnvironmentObject var viewManager: ViewManager
+    @Environment(ViewManager.self) private var viewManager
 
     var body: some View {
         ZStack {

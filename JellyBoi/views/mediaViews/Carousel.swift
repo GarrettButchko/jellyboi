@@ -24,7 +24,7 @@ struct Carousel: View {
     let backdropURL: (BaseItemDto) -> URL?
     let onSelect: (BaseItemDto) -> Void
     var onSnap: ((Int, BaseItemDto) -> Void)? = nil
-    @EnvironmentObject var viewModel: HomeViewModel
+    @Environment(HomeViewModel.self) private var viewModel
 
     private var indexAnimation: Animation {
         .smooth(duration: 0.3)

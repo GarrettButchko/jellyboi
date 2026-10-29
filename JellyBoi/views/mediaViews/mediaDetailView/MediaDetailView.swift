@@ -52,6 +52,7 @@ struct MediaDetailView: View {
     }
 
     var body: some View {
+        @Bindable var detailVM = detailVM
         ScrollToTopScrollView(
             topInset: backButtonHeight + 8,
             continuousScrollOffset: $scrollOffset
@@ -98,10 +99,7 @@ struct MediaDetailView: View {
         }
         .alert(
             detailVM.downloadAlertAction == .cancel ? "Cancel Download?" : "Remove Download?",
-            isPresented: Binding(
-                get: { detailVM.downloadAlertAction != nil },
-                set: { if !$0 { detailVM.downloadAlertAction = nil } }
-            )
+            isPresented: Binding($detailVM.downloadAlertAction)
         ) {
             if detailVM.downloadAlertAction == .cancel {
                 Button("Cancel Download", role: .destructive) {
@@ -128,10 +126,7 @@ struct MediaDetailView: View {
         }
         .alert(
             detailVM.seriesAlertAction == .startFromBeginning ? "Start from Beginning?" : "Reset Progress?",
-            isPresented: Binding(
-                get: { detailVM.seriesAlertAction != nil },
-                set: { if !$0 { detailVM.seriesAlertAction = nil } }
-            )
+            isPresented: Binding($detailVM.seriesAlertAction)
         ) {
             if detailVM.seriesAlertAction == .startFromBeginning {
                 Button("Start from Beginning", role: .destructive) {

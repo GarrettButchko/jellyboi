@@ -18,8 +18,8 @@ extension MediaDetailView {
                 Text(episodeName)
                     .font(.system(.title3, design: .rounded, weight: .semibold))
                     .foregroundStyle(Color.mainOpp)
-                if let season = displayItem.parentIndexNumber, let episode = displayItem.indexNumber {
-                    Text("S\(season) E\(episode)")
+                if let epNumber = displayItem.formattedEpisodeNumber {
+                    Text(epNumber)
                         .font(.system(size: 9, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.mainOpp)
                         .padding(.horizontal, 10)

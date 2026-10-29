@@ -30,6 +30,47 @@ extension BaseItemDto {
         return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
 
+    // MARK: - Title & Presentation Helpers
+
+    /// Formatted season and episode designation (e.g. "S1 E2" or "Ep 2") for episodes.
+    var formattedEpisodeNumber: String? {
+        guard type == .episode else { return nil }
+        if let season = parentIndexNumber, let episode = indexNumber {
+            return "S\(season) E\(episode)"
+        } else if let episode = indexNumber {
+            return "Ep \(episode)"
+        }
+        return nil
+    }
+
+    /// Formatted title suitable for context menus, action headers, and display labels.
+    /// For episodes, formats with series name (optional), season/episode numbers, and episode title.
+    /// - Parameter includeSeriesName: When true, prefixes with the series name if available (e.g. "Series • S1 E1: Pilot").
+    ///   When false, excludes the series name (e.g. "S1 E1: Pilot").
+    func contextMenuTitle(includeSeriesName: Bool = true) -> String {
+        if type == .episode {
+            let epNumber = formattedEpisodeNumber
+            let epName = name
+            let series = includeSeriesName ? seriesName : nil
+
+            switch (series, epNumber, epName) {
+            case let (.some(s), .some(e), .some(n)) where !s.isEmpty && !e.isEmpty && !n.isEmpty:
+                return "\(s) • \(e): \(n)"
+            case let (_, .some(e), .some(n)) where !e.isEmpty && !n.isEmpty:
+                return includeSeriesName ? "\(e) • \(n)" : "\(e): \(n)"
+            case let (.some(s), _, .some(n)) where !s.isEmpty && !n.isEmpty:
+                return "\(s) • \(n)"
+            case let (_, .some(e), _):
+                return e
+            case let (_, _, .some(n)) where !n.isEmpty:
+                return n
+            default:
+                return "Episode"
+            }
+        }
+        return name ?? ""
+    }
+
     /// Resets playback progress and watch state to unplayed.
     mutating func clearProgress() {
         userData?.playedPercentage = 0

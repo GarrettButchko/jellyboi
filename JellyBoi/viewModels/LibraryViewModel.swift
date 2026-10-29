@@ -431,10 +431,6 @@ class LibraryViewModel {
         ))
     }
 
-    func backgroundURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
-        backdropURL(for: item, client: client)
-    }
-
     func seriesPosterURL(for episode: BaseItemDto, client: JellyfinClient) -> URL? {
         let itemID = episode.seriesID ?? episode.id
         guard let itemID else { return nil }

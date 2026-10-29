@@ -12,7 +12,7 @@ import BaseColors
 
 struct TabsView: View {
 
-    @EnvironmentObject var viewManager: ViewManager
+    @Environment(ViewManager.self) private var viewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(PlaybackManager.self) private var playbackManager
@@ -41,7 +41,8 @@ struct TabsView: View {
     }
 
     var body: some View {
-        TabView(selection: $viewManager.selectedTab) {
+        @Bindable var bindableViewManager = viewManager
+        TabView(selection: $bindableViewManager.selectedTab) {
             HomeView()
                 .tabItem {
                     Label("Home", systemImage: "house")

@@ -11,7 +11,7 @@ import LoggingKit
 import SDWebImageSwiftUI
 
 struct ProfileAvatarButton: View {
-    @EnvironmentObject private var viewManager: ViewManager
+    @Environment(ViewManager.self) private var viewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @State private var showProfile = false
     @State private var pendingSignOut = false

@@ -37,20 +37,7 @@ class MediaCardViewModel {
         overrideRatio ?? item.imageAspectRatio
     }
 
-    var watchProgress: Double? {
-        if isProgressReset { return nil }
-        return item.watchProgress
-    }
-
-    var isWatched: Bool {
-        if isProgressReset { return false }
-        return item.isWatched
-    }
-
-    var isWatching: Bool {
-        if isProgressReset { return false }
-        return item.isInProgress
-    }
+    // MARK: - Playback State Resolution
 
     func watchProgress(in libraryViewModel: LibraryViewModel?) -> Double? {
         if isProgressReset { return nil }
@@ -81,55 +68,7 @@ class MediaCardViewModel {
         return item.isInProgress
     }
 
-    func hasProgress(in libraryViewModel: LibraryViewModel?) -> Bool {
-        if isProgressReset { return false }
-        if item.hasProgress { return true }
-        if item.type == .series, let libraryViewModel {
-            return libraryViewModel.resumeShows.contains { $0.seriesID == item.id || $0.id == item.id }
-        }
-        return false
-    }
-
-    func isInProgress(in libraryViewModel: LibraryViewModel?) -> Bool {
-        if isProgressReset { return false }
-        if isWatched(in: libraryViewModel) { return false }
-        return isWatching(in: libraryViewModel)
-    }
-
-    var episodeTitle: String? {
-        guard item.type == .episode else { return nil }
-        if let season = item.parentIndexNumber, let episode = item.indexNumber {
-            return "S\(season) E\(episode)"
-        }
-        if let episode = item.indexNumber {
-            return "Ep \(episode)"
-        }
-        return nil
-    }
-
-    var contextMenuTitle: String {
-        if item.type == .episode {
-            let epNumber = episodeTitle
-            let name = item.name
-            let series = item.seriesName
-
-            switch (series, epNumber, name) {
-            case let (.some(s), .some(e), .some(n)) where !s.isEmpty && !e.isEmpty && !n.isEmpty:
-                return "\(s) • \(e): \(n)"
-            case let (_, .some(e), .some(n)) where !e.isEmpty && !n.isEmpty:
-                return "\(e) • \(n)"
-            case let (.some(s), _, .some(n)) where !s.isEmpty && !n.isEmpty:
-                return "\(s) • \(n)"
-            case let (_, .some(e), _):
-                return e
-            case let (_, _, .some(n)) where !n.isEmpty:
-                return n
-            default:
-                return "Episode"
-            }
-        }
-        return item.name ?? ""
-    }
+    // MARK: - Actions
 
     func handleResetProgress(
         serverViewModel: ServerViewModel?,

@@ -9,31 +9,6 @@ import SwiftUI
 import BaseColors
 import Observation
 
-/// Single shared animation driver preserved for compatibility.
-/// Pulsing is driven universally via `TimelineView` with `skeletonPulse`
-/// so all blocks, icons, and bubble backgrounds remain in absolute lockstep.
-@Observable
-@MainActor
-final class SkeletonPulse {
-    static let shared = SkeletonPulse()
-    var isAnimating = true
-
-    func start() {
-        isAnimating = true
-    }
-}
-
-private struct SkeletonPulseKey: EnvironmentKey {
-    static let defaultValue = SkeletonPulse.shared
-}
-
-extension EnvironmentValues {
-    /// The shared pulse driver for skeleton blocks.
-    var skeletonPulse: SkeletonPulse {
-        get { self[SkeletonPulseKey.self] }
-        set { self[SkeletonPulseKey.self] = newValue }
-    }
-}
 
 // MARK: - Universal Pulse Modifier
 

@@ -79,7 +79,7 @@ struct MediaCard: View {
                             GlassProgressBar(progress: progress, barWidth: 40)
                                 .transition(.scale(scale: 0.8).combined(with: .opacity))
                         }
-                        if let episodeTitle = viewModel.episodeTitle {
+                        if let episodeTitle = item.formattedEpisodeNumber {
                             episodeBadge(text: episodeTitle)
                         }
                     }
@@ -171,8 +171,9 @@ struct MediaCard: View {
                     )
                 }
             } header: {
-                if !viewModel.contextMenuTitle.isEmpty {
-                    Text(viewModel.contextMenuTitle)
+                let title = item.contextMenuTitle()
+                if !title.isEmpty {
+                    Text(title)
                 }
             }
         }
