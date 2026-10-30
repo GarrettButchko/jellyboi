@@ -32,13 +32,15 @@ struct DownloadActivityWidget: Widget {
                 }
             } compactLeading: {
                 Group {
+                    let isEp = isEpisodeThumbnail(for: context.state)
                     if context.state.isSingleElement, let imageData = context.state.posterImageData {
                         PosterView(
                             imageData: imageData,
                             status: context.state.status,
-                            width: 14,
-                            height: 21,
-                            cornerRadius: 3.5
+                            isEpisode: isEp,
+                            width: isEp ? 26 : 14,
+                            height: isEp ? 17 : 21,
+                            cornerRadius: isEp ? 4 : 3.5
                         )
                     } else {
                         // Default: Jellyboi SVG mascot
@@ -113,31 +115,37 @@ private struct LockScreenDownloadView: View {
 
     @ViewBuilder
     private var leadingArtworkOrIcon: some View {
+        let isEp = isEpisodeThumbnail(for: state)
+        let thumbWidth: CGFloat = isEp ? 64 : 32
+        let thumbHeight: CGFloat = isEp ? 40 : 48
+        let radius: CGFloat = 6.5
+
         if state.isSingleElement, let imageData = state.posterImageData {
-            // Single element with artwork: SHOW POSTER
+            // Single element with artwork: SHOW POSTER OR EPISODE THUMBNAIL
             PosterView(
                 imageData: imageData,
                 status: state.status,
-                width: 32,
-                height: 48,
-                cornerRadius: 6.5
+                isEpisode: isEp,
+                width: thumbWidth,
+                height: thumbHeight,
+                cornerRadius: radius
             )
         } else {
             // Default: Jellyboi SVG in card container
             ZStack {
-                RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .fill(Color.white.opacity(0.08))
 
                 Image("Jellyboi")
                     .renderingMode(.template)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 20, height: 20)
+                    .frame(width: isEp ? 24 : 20, height: isEp ? 24 : 20)
                     .foregroundStyle(Color.accentColor)
             }
-            .frame(width: 32, height: 48)
+            .frame(width: thumbWidth, height: thumbHeight)
             .overlay(
-                RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
             )
         }
@@ -182,11 +190,12 @@ private struct LockScreenDownloadView: View {
     }
 }
 
-// MARK: - Poster View (Full 2:3 Aspect Ratio)
+// MARK: - Poster / Thumbnail View
 
 private struct PosterView: View {
     let imageData: Data?
     let status: DownloadStatus
+    var isEpisode: Bool = false
     var width: CGFloat = 32
     var height: CGFloat = 48
     var cornerRadius: CGFloat = 6.5
@@ -197,7 +206,7 @@ private struct PosterView: View {
             if let imageData, let uiImage = UIImage(data: imageData) {
                 Image(uiImage: uiImage)
                     .resizable()
-                    .scaledToFill()
+                    .aspectRatio(contentMode: isEpisode ? .fit : .fill)
                     .frame(width: width, height: height)
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                     .overlay(
@@ -222,7 +231,7 @@ private struct PosterView: View {
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .frame(width: max(8, width * 0.60), height: max(8, height * 0.60))
+                .frame(width: max(8, width * 0.45), height: max(8, height * 0.45))
                 .foregroundStyle(Color.accentColor)
         }
         .frame(width: width, height: height)
@@ -257,4 +266,16 @@ private struct ProgressRingIndicator: View {
         }
         .frame(width: size, height: size)
     }
+}
+
+// MARK: - Aspect Ratio Helper
+
+private func isEpisodeThumbnail(for state: DownloadActivityAttributes.ContentState) -> Bool {
+    if state.isEpisode { return true }
+    #if canImport(UIKit)
+    if let data = state.posterImageData, let image = UIImage(data: data) {
+        return image.size.width > image.size.height
+    }
+    #endif
+    return false
 }

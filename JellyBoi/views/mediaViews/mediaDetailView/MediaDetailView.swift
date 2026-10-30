@@ -59,7 +59,7 @@ struct MediaDetailView: View {
         ) { _ in
             VStack(alignment: .leading, spacing: 0) {
                 heroSection
-                
+
                 SkeletonZone(showsContent: detailVM.detailedItem != nil) {
                     SkeletonDetailContent(
                         isSeries: displayItem.type == .series,
@@ -69,7 +69,7 @@ struct MediaDetailView: View {
                 } content: {
                     VStack(alignment: .leading, spacing: 24) {
                         overviewSection
-                        
+
                         if displayItem.type == .series {
                             episodesSection
                         }
@@ -183,6 +183,9 @@ struct MediaDetailView: View {
         }
         .task(id: item.id) {
             guard let client = serverViewModel.client, item.id != nil else { return }
+            // Allow the 350ms navigation zoom transition to finish smoothly before loading remote data
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
             await detailVM.load(
                 item: item,
                 client: client,

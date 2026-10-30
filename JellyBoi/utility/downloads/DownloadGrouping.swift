@@ -134,6 +134,7 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
     public let posterImageData: Data?
     public let posterURL: URL?
     public let isSingleElement: Bool
+    public let isEpisode: Bool
 
     public init(
         title: String,
@@ -145,7 +146,8 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
         status: DownloadStatus = .downloading,
         posterImageData: Data? = nil,
         posterURL: URL? = nil,
-        isSingleElement: Bool = true
+        isSingleElement: Bool = true,
+        isEpisode: Bool = false
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -157,6 +159,7 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
         self.posterImageData = posterImageData
         self.posterURL = posterURL
         self.isSingleElement = isSingleElement
+        self.isEpisode = isEpisode
     }
 
     public func contentState(fallbackPosterData: Data? = nil) -> DownloadActivityAttributes.ContentState {
@@ -169,7 +172,8 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
             totalItems: totalItems,
             status: status,
             posterImageData: isSingleElement ? (posterImageData ?? fallbackPosterData) : nil,
-            isSingleElement: isSingleElement
+            isSingleElement: isSingleElement,
+            isEpisode: isEpisode
         )
     }
 
@@ -192,7 +196,8 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
             status: status,
             posterImageData: posterImageData,
             posterURL: posterURL,
-            isSingleElement: isSingleElement
+            isSingleElement: isSingleElement,
+            isEpisode: isEpisode
         )
     }
 }
@@ -203,27 +208,33 @@ public enum DownloadGrouping {
         for item in active {
             guard let group = item.group else { continue }
             let groupID = group.id
-            let groupName = group.title
-            if groupMap[groupID] == nil {
-                groupMap[groupID] = (name: groupName, groupInfo: group, active: [item])
+            if var entry = groupMap[groupID] {
+                entry.active.append(item)
+                groupMap[groupID] = entry
             } else {
-                groupMap[groupID]?.active.append(item)
+                groupMap[groupID] = (name: group.title, groupInfo: group, active: [item])
             }
         }
 
+        var completedGroupMap: [String: [DownloadItem]] = [:]
+        for item in completed {
+            guard let group = item.group else { continue }
+            completedGroupMap[group.id, default: []].append(item)
+        }
+
         var result: [ShowDownloadGroup] = []
-        for (id, data) in groupMap {
-            let matchingCompleted = completed.filter { $0.group?.id == id }
+        for (groupID, (name, groupInfo, activeItems)) in groupMap {
+            let completedItems = completedGroupMap[groupID] ?? []
             result.append(ShowDownloadGroup(
-                id: id,
-                seriesName: data.name,
-                groupInfo: data.groupInfo,
-                activeDownloads: data.active,
-                completedDownloads: matchingCompleted
+                id: groupID,
+                seriesName: name,
+                groupInfo: groupInfo,
+                activeDownloads: activeItems,
+                completedDownloads: completedItems
             ))
         }
 
-        return result.sorted { $0.seriesName.localizedCaseInsensitiveCompare($1.seriesName) == .orderedAscending }
+        return result.sorted { $0.seriesName.localizedStandardCompare($1.seriesName) == .orderedAscending }
     }
 
     public static func standaloneDownloads(from active: [DownloadItem], groupedIDs: Set<String>) -> [DownloadItem] {
@@ -253,7 +264,8 @@ public enum DownloadGrouping {
                 status: .completed,
                 posterImageData: nil,
                 posterURL: nil,
-                isSingleElement: false
+                isSingleElement: false,
+                isEpisode: false
             )
         }
 
@@ -298,11 +310,12 @@ public enum DownloadGrouping {
                 status: singleGroup.status,
                 posterImageData: nil,
                 posterURL: posterURL,
-                isSingleElement: true
+                isSingleElement: true,
+                isEpisode: false
             )
         }
 
-        // Case 2: Exactly 1 standalone item (Movie or standalone Episode) and no groups -> 1 element (shows poster)
+        // Case 2: Exactly 1 standalone item (Movie or standalone Episode) and no groups -> 1 element (shows poster or episode thumbnail)
         if computedGroups.isEmpty && standalones.count == 1, let singleItem = standalones.first {
             let status = singleItem.statusDetail ?? (singleItem.status == .downloading ? "Downloading" : (singleItem.status == .converting || singleItem.status == .finalizing) ? "Converting" : singleItem.status.rawValue.capitalized)
             var detail: String?
@@ -324,6 +337,7 @@ public enum DownloadGrouping {
             }
 
             let posterURL = singleItem.artworkURL(client: client)
+            let isEpisode = singleItem.item.type == .episode
 
             return DownloadSummaryPresentation(
                 title: singleItem.title,
@@ -335,7 +349,8 @@ public enum DownloadGrouping {
                 status: singleItem.status,
                 posterImageData: nil,
                 posterURL: posterURL,
-                isSingleElement: true
+                isSingleElement: true,
+                isEpisode: isEpisode
             )
         }
 
@@ -379,7 +394,8 @@ public enum DownloadGrouping {
             status: globalStatus,
             posterImageData: nil,
             posterURL: nil,
-            isSingleElement: false
+            isSingleElement: false,
+            isEpisode: false
         )
     }
 }

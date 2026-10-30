@@ -64,6 +64,12 @@ extension MediaDetailViewModel {
 
     // MARK: - Server-derived Playback State
 
+    private var seriesEpisodes: [BaseItemDto] {
+        if !episodes.isEmpty { return episodes }
+        guard let id = displayItem?.id else { return [] }
+        return libraryViewModel?.episodes(forSeriesID: id) ?? []
+    }
+
     var isCollectionWatched: Bool {
         guard displayItem?.type == .boxSet, !collectionItems.isEmpty else { return false }
         return collectionItems.allSatisfy { $0.isWatched }
@@ -73,10 +79,11 @@ extension MediaDetailViewModel {
         guard displayItem?.type == .series else { return false }
         if let unplayed = displayItem?.userData?.unplayedItemCount, unplayed == 0 { return true }
         if displayItem?.userData?.isPlayed == true { return true }
-        if !episodes.isEmpty {
-            return episodes.allSatisfy { $0.isWatched }
+        let eps = seriesEpisodes
+        if !eps.isEmpty {
+            return eps.allSatisfy { $0.isWatched }
         }
-        return displayItem?.isSeriesWatched(allEpisodes: libraryViewModel?.episodes ?? []) ?? false
+        return displayItem?.isSeriesWatched(allEpisodes: eps) ?? false
     }
 
     var isWatched: Bool {
@@ -104,11 +111,12 @@ extension MediaDetailViewModel {
             return collectionItems.contains { $0.isWatched || $0.isInProgress }
         }
         if displayItem?.type == .series {
-            if !episodes.isEmpty {
-                return episodes.contains { $0.isWatched || $0.isInProgress }
+            let eps = seriesEpisodes
+            if !eps.isEmpty {
+                return eps.contains { $0.isWatched || $0.isInProgress }
             }
             return displayItem?.isSeriesInProgress(
-                allEpisodes: libraryViewModel?.episodes ?? [],
+                allEpisodes: eps,
                 resumeShows: libraryViewModel?.resumeShows ?? []
             ) ?? false
         }
@@ -124,10 +132,11 @@ extension MediaDetailViewModel {
             return 0.0
         }
         if displayItem?.type == .series {
-            if !episodes.isEmpty {
-                return cumulativeProgress(for: episodes)
+            let eps = seriesEpisodes
+            if !eps.isEmpty {
+                return cumulativeProgress(for: eps)
             }
-            return displayItem?.seriesWatchProgress(allEpisodes: libraryViewModel?.episodes ?? []) ?? 0.0
+            return displayItem?.seriesWatchProgress(allEpisodes: eps) ?? 0.0
         }
         return displayItem?.watchProgress
     }

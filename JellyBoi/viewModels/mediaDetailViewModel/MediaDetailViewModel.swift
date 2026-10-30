@@ -198,10 +198,8 @@ class MediaDetailViewModel {
         guard size.height > 0 else { return }
         let ratio = size.width / size.height
         hasDetectedBitmapRatio = true
-        if abs(heroAspectRatio - ratio) > 0.005 {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                heroAspectRatio = ratio
-            }
+        if abs(heroAspectRatio - ratio) > 0.02 {
+            heroAspectRatio = ratio
         }
     }
 
@@ -231,7 +229,7 @@ class MediaDetailViewModel {
         if item.type == .series {
             self.isLoadingEpisodes = true
             if let seriesID = item.id, let lvm = libraryViewModel {
-                let cached = lvm.episodes.filter { $0.seriesID == seriesID }
+                let cached = lvm.episodes(forSeriesID: seriesID)
                 if !cached.isEmpty && self.episodes.isEmpty {
                     self.episodes = cached
                 }
@@ -291,17 +289,24 @@ class MediaDetailViewModel {
             return
         }
 
-        async let detailResult: BaseItemDto? = {
-            await client.fetchItemOrNil(itemID: itemID, userID: userID)
-        }()
-        async let similarResult: [BaseItemDto] = libraryViewModel.similarItems(
-            for: itemID, client: client, userID: userID
-        )
-        async let specialFeaturesResult: [BaseItemDto] = libraryViewModel.specialFeatures(
-            for: itemID, client: client, userID: userID
-        )
+        // STAGE 1: Essential item details and primary playback streams
+        let detailResult = await client.fetchItemOrNil(itemID: itemID, userID: userID)
+        guard !Task.isCancelled else { return }
+        self.detailedItem = detailResult
 
-        // Load collection items / episodes concurrently so cumulative progress resolves immediately without waiting for details/similar
+        if let sources = detailedItem?.mediaSources ?? sourceItem?.mediaSources, !sources.isEmpty {
+            self.mediaSources = sources
+            configureInitialStreamSelection()
+        }
+
+        if !hasDetectedBitmapRatio, let ratio = detailedItem?.primaryImageAspectRatio, ratio > 0 {
+            let newRatio = CGFloat(ratio)
+            if abs(heroAspectRatio - newRatio) > 0.02 {
+                heroAspectRatio = newRatio
+            }
+        }
+
+        // STAGE 2: Episodes / Collections / Series relationship
         if item.type == .series || resolvedItem.type == .series {
             await loadSeasonsAndEpisodes(client: client, userID: userID)
         } else {
@@ -313,24 +318,12 @@ class MediaDetailViewModel {
             }
         }
 
-        detailedItem = await detailResult
-        similarItems = await similarResult
-        specialFeatures = await specialFeaturesResult
+        // STAGE 3: Secondary below-the-fold content (Similar items & Special features)
+        guard !Task.isCancelled else { return }
+        similarItems = await libraryViewModel.similarItems(for: itemID, client: client, userID: userID)
+        guard !Task.isCancelled else { return }
+        specialFeatures = await libraryViewModel.specialFeatures(for: itemID, client: client, userID: userID)
         isLoadingSpecialFeatures = false
-
-        if let sources = detailedItem?.mediaSources ?? sourceItem?.mediaSources, !sources.isEmpty {
-            self.mediaSources = sources
-            configureInitialStreamSelection()
-        }
-
-        if !hasDetectedBitmapRatio, let ratio = detailedItem?.primaryImageAspectRatio, ratio > 0 {
-            let newRatio = CGFloat(ratio)
-            if abs(heroAspectRatio - newRatio) > 0.005 {
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                    heroAspectRatio = newRatio
-                }
-            }
-        }
     }
 
     // MARK: - Parent Series

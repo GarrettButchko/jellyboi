@@ -955,9 +955,25 @@ extension DownloadManager: URLSessionDownloadDelegate {
 // MARK: - UIImage Live Activity Thumbnail
 
 private extension UIImage {
-    func liveActivityThumbnailData(targetSize: CGSize = CGSize(width: 48, height: 72)) -> Data? {
+    func liveActivityThumbnailData(maxDimension: CGFloat = 72) -> Data? {
+        guard size.width > 0 && size.height > 0 else { return nil }
+
+        let aspect = size.width / size.height
+        let targetSize: CGSize
+        if aspect > 1.0 {
+            // Landscape (e.g. 16:9 episode thumbnail): preserve aspect ratio
+            let targetWidth = min(maxDimension, size.width)
+            let targetHeight = max(1, round(targetWidth / aspect))
+            targetSize = CGSize(width: targetWidth, height: targetHeight)
+        } else {
+            // Portrait (e.g. 2:3 poster): preserve aspect ratio
+            let targetHeight = min(maxDimension, size.height)
+            let targetWidth = max(1, round(targetHeight * aspect))
+            targetSize = CGSize(width: targetWidth, height: targetHeight)
+        }
+
         let format = UIGraphicsImageRendererFormat()
-        format.scale = 1.0 // 1x scale produces exactly 48x72 pixels
+        format.scale = 1.0
         format.opaque = true
         let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
         let resized = renderer.image { _ in

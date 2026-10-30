@@ -2,14 +2,16 @@
 //  DownloadActivityAttributes.swift
 //  JellyBoi
 //
-//  Created by Garrett Butchko on 10/20/26.
+//  Created by Garrett Butchko on 10/24/26.
 //
 
-import Foundation
 import ActivityKit
+import Foundation
 import SwiftUI
 
-public nonisolated enum DownloadStatus: String, Codable, Hashable, Sendable {
+// MARK: - Unified Download Status
+
+public enum DownloadStatus: String, Codable, Sendable {
     case queued
     case downloading
     case converting
@@ -17,17 +19,24 @@ public nonisolated enum DownloadStatus: String, Codable, Hashable, Sendable {
     case completed
     case failed
 
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let raw = try container.decode(String.self)
-        switch raw {
-        case "downloading": self = .downloading
-        case "converting": self = .converting
-        case "finalizing": self = .finalizing
-        case "completed": self = .completed
-        case "failed": self = .failed
-        default: self = .queued
-        }
+    public var isQueued: Bool {
+        self == .queued
+    }
+
+    public var isCompleted: Bool {
+        self == .completed
+    }
+
+    public var isFailed: Bool {
+        self == .failed
+    }
+
+    public var isConverting: Bool {
+        self == .converting || self == .finalizing
+    }
+
+    public var isDownloading: Bool {
+        self == .downloading
     }
 
     public var icon: String {
@@ -45,32 +54,19 @@ public nonisolated enum DownloadStatus: String, Codable, Hashable, Sendable {
         }
     }
 
-    public var text: String {
+    public var accentColor: Color {
         switch self {
-        case .queued:
-            return "Queued"
-        case .downloading:
-            return "Downloading"
-        case .converting:
-            return "Converting"
-        case .finalizing:
-            return "Finalizing"
         case .completed:
-            return "Ready offline"
+            return .green
+        case .queued:
+            return .orange
+        case .converting, .finalizing:
+            return .purple
         case .failed:
-            return "Failed"
+            return .red
+        case .downloading:
+            return .accentColor
         }
-    }
-
-    public var isQueued: Bool { self == .queued }
-    public var isConverting: Bool { self == .converting || self == .finalizing }
-    public var isCompleted: Bool { self == .completed }
-    public var isFailed: Bool { self == .failed }
-    public var isDownloading: Bool { self == .downloading }
-    public var isActive: Bool { self == .downloading || self == .converting || self == .finalizing }
-
-    public init(status: DownloadStatus) {
-        self = status
     }
 
     public init<S: Sequence>(_ statuses: S) where S.Element == DownloadStatus {
@@ -106,6 +102,7 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
         public var status: DownloadStatus
         public var posterImageData: Data?
         public var isSingleElement: Bool
+        public var isEpisode: Bool
 
         public var progressPercent: Int {
             Int(progress * 100)
@@ -205,7 +202,8 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
             totalItems: Int,
             status: DownloadStatus = .downloading,
             posterImageData: Data? = nil,
-            isSingleElement: Bool = true
+            isSingleElement: Bool = true,
+            isEpisode: Bool = false
         ) {
             self.title = title
             self.subtitle = subtitle
@@ -216,6 +214,25 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
             self.status = status
             self.posterImageData = posterImageData
             self.isSingleElement = isSingleElement
+            self.isEpisode = isEpisode
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case title, subtitle, detailText, progress, itemsRemaining, totalItems, status, posterImageData, isSingleElement, isEpisode
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.title = try container.decode(String.self, forKey: .title)
+            self.subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle)
+            self.detailText = try container.decodeIfPresent(String.self, forKey: .detailText)
+            self.progress = try container.decode(Double.self, forKey: .progress)
+            self.itemsRemaining = try container.decode(Int.self, forKey: .itemsRemaining)
+            self.totalItems = try container.decode(Int.self, forKey: .totalItems)
+            self.status = try container.decode(DownloadStatus.self, forKey: .status)
+            self.posterImageData = try container.decodeIfPresent(Data.self, forKey: .posterImageData)
+            self.isSingleElement = try container.decodeIfPresent(Bool.self, forKey: .isSingleElement) ?? true
+            self.isEpisode = try container.decodeIfPresent(Bool.self, forKey: .isEpisode) ?? false
         }
     }
 

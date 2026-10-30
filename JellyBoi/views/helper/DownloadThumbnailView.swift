@@ -103,7 +103,6 @@ struct DownloadThumbnailView: View, Equatable {
                     .foregroundStyle(Color.mainOpp.opacity(0.10))
                     .rotationEffect(.degrees(45))
             }
-            .skeletonPulse(minOpacity: 0.60, maxOpacity: 1.0)
     }
 
     var body: some View {

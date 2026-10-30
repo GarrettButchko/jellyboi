@@ -7,38 +7,24 @@
 
 import SwiftUI
 import BaseColors
-import Observation
 
+// MARK: - Skeleton Primitives
 
-// MARK: - Universal Pulse Modifier
+/// The foundational static placeholder shape used across all skeleton components.
+struct SkeletonBlock: View {
+    let cornerRadius: CGFloat
 
-/// Applies a smooth, lockstep pulsing opacity animation across all skeleton elements
-/// driven by a universal timeline clock.
-struct SkeletonPulseModifier: ViewModifier {
-    var minOpacity: Double = 0.06
-    var maxOpacity: Double = 0.13
+    init(cornerRadius: CGFloat = 8) {
+        self.cornerRadius = cornerRadius
+    }
 
-    func body(content: Content) -> some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            // Universal sine wave period: 1.8 seconds (0.9s ease out, 0.9s ease in)
-            let progress = (sin(time * (.pi / 0.9)) + 1.0) / 2.0
-            let opacity = minOpacity + progress * (maxOpacity - minOpacity)
-
-            content.opacity(opacity)
-        }
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color.mainOpp.opacity(0.08))
     }
 }
 
-extension View {
-    /// Pulses the view in lockstep with all other skeleton elements.
-    func skeletonPulse(minOpacity: Double = 0.06, maxOpacity: Double = 0.13) -> some View {
-        modifier(SkeletonPulseModifier(minOpacity: minOpacity, maxOpacity: maxOpacity))
-    }
-}
-
-/// Wraps a piece of content and a skeleton placeholder, cross-fading from the
-/// skeleton to the real content once `showsContent` flips true.
+/// Swaps between a static placeholder block and actual content with a smooth fade animation.
 struct SkeletonZone<Content: View, Placeholder: View>: View {
     let showsContent: Bool
     let placeholder: () -> Placeholder
@@ -66,7 +52,6 @@ struct SkeletonZone<Content: View, Placeholder: View>: View {
         }
         .animation(.easeInOut(duration: 0.3), value: showsContent)
         .transaction { transaction in
-            // Prevent initial layout/geometry resolution from animating size changes while skeleton is showing
             if !showsContent {
                 transaction.animation = nil
             }
@@ -74,8 +59,9 @@ struct SkeletonZone<Content: View, Placeholder: View>: View {
     }
 }
 
-// MARK: - Carousel skeleton
+// MARK: - Home View Skeletons
 
+/// Static placeholder that mirrors the hero carousel on `HomeView`.
 struct SkeletonCarousel: View {
     var body: some View {
         VStack(spacing: 12) {
@@ -109,8 +95,7 @@ struct SkeletonCarousel: View {
     }
 }
 
-// MARK: - Stats skeleton
-
+/// Static placeholder that mirrors the statistics bubble row on `HomeView`.
 struct SkeletonStatsRow: View {
     var body: some View {
         ScrollView(.horizontal) {
@@ -132,27 +117,10 @@ struct SkeletonStatsRow: View {
     }
 
     private func statBubble(icon: String, valueWidth: CGFloat, labelWidth: CGFloat) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.mainOpp)
-                .frame(width: 24)
-                .skeletonPulse(minOpacity: 0.18, maxOpacity: 0.45)
-
-            VStack(alignment: .leading, spacing: 6) {
-                SkeletonBlock(cornerRadius: 4)
-                    .frame(width: valueWidth, height: 16)
-                SkeletonBlock(cornerRadius: 4)
-                    .frame(width: labelWidth, height: 10)
-            }
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 56)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.mainOpp)
-                .skeletonPulse(minOpacity: 0.04, maxOpacity: 0.09)
-        )
+        statBubbleHalf(icon: icon, valueWidth: valueWidth, labelWidth: labelWidth)
+            .padding(.horizontal, 14)
+            .frame(height: 56)
+            .background(Color.mainOpp.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func doubleStatBubble(
@@ -161,44 +129,38 @@ struct SkeletonStatsRow: View {
     ) -> some View {
         HStack(spacing: 0) {
             statBubbleHalf(icon: leftIcon, valueWidth: leftValueWidth, labelWidth: leftLabelWidth)
+                .padding(.horizontal, 14)
 
             Rectangle()
                 .fill(Color.subTwo)
                 .frame(width: 0.5)
                 .padding(.vertical, 14)
-                .skeletonPulse(minOpacity: 0.20, maxOpacity: 0.50)
 
             statBubbleHalf(icon: rightIcon, valueWidth: rightValueWidth, labelWidth: rightLabelWidth)
+                .padding(.horizontal, 14)
         }
         .frame(height: 56)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.mainOpp)
-                .skeletonPulse(minOpacity: 0.04, maxOpacity: 0.09)
-        )
+        .background(Color.mainOpp.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func statBubbleHalf(icon: String, valueWidth: CGFloat, labelWidth: CGFloat) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.mainOpp)
+                .foregroundStyle(Color.mainOpp.opacity(0.45))
                 .frame(width: 24)
-                .skeletonPulse(minOpacity: 0.18, maxOpacity: 0.45)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 3) {
                 SkeletonBlock(cornerRadius: 4)
                     .frame(width: valueWidth, height: 16)
                 SkeletonBlock(cornerRadius: 4)
                     .frame(width: labelWidth, height: 10)
             }
         }
-        .padding(.horizontal, 14)
     }
 }
 
-// MARK: - Section row skeleton
-
+/// Static placeholder that mirrors a horizontal media shelf (`SectionRow`).
 struct SkeletonSectionRow: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -226,9 +188,9 @@ struct SkeletonSectionRow: View {
     }
 }
 
-// MARK: - Media grid skeleton
+// MARK: - Media & Grid Skeletons
 
-/// Loading placeholder that mirrors `MediaView`'s adaptive grid of poster cards.
+/// Static placeholder that mirrors `MediaView`'s adaptive grid of poster cards.
 struct SkeletonMediaGrid: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -249,9 +211,9 @@ struct SkeletonMediaGrid: View {
     }
 }
 
-// MARK: - Episodes row skeleton
+// MARK: - Detail View Skeletons
 
-/// Loading placeholder for the horizontal scrolling episodes row.
+/// Static placeholder for the horizontal scrolling episodes row.
 struct SkeletonEpisodesRow: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -274,9 +236,7 @@ struct SkeletonEpisodesRow: View {
     }
 }
 
-// MARK: - Episodes section skeleton
-
-/// Loading placeholder that mirrors the episodes section of a series detail view.
+/// Static placeholder that mirrors the episodes section of a series detail view.
 struct SkeletonEpisodesSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -289,9 +249,7 @@ struct SkeletonEpisodesSection: View {
     }
 }
 
-// MARK: - Special features section skeleton
-
-/// Loading placeholder that mirrors the special features section of a detail view.
+/// Static placeholder that mirrors the special features section of a detail view.
 struct SkeletonSpecialFeaturesSection: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -328,9 +286,7 @@ struct SkeletonSpecialFeaturesSection: View {
     }
 }
 
-// MARK: - Detail content skeleton
-
-/// Loading placeholder that mirrors the content area of `MediaDetailView`
+/// Static placeholder that mirrors the content area of `MediaDetailView`
 /// (overview, info chips, episodes row if series, cast row, and similar-items row).
 struct SkeletonDetailContent: View {
     var isSeries: Bool = false
@@ -410,17 +366,7 @@ struct SkeletonDetailContent: View {
     }
 }
 
-// MARK: - Animated block
-
-struct SkeletonBlock: View {
-    let cornerRadius: CGFloat
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Color.mainOpp)
-            .skeletonPulse(minOpacity: 0.06, maxOpacity: 0.13)
-    }
-}
+// MARK: - Preview
 
 #Preview {
     ZStack {

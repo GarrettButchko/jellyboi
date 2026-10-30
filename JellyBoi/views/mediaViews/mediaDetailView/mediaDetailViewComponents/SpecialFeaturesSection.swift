@@ -22,79 +22,82 @@ extension MediaDetailView {
     @ViewBuilder
     var specialFeaturesSection: some View {
         if !detailVM.isSpecialFeaturesHidden {
-            if detailVM.specialFeatures.isEmpty {
-                if detailVM.isLoadingSpecialFeatures && (displayItem.specialFeatureCount ?? 0) > 0 {
-                    SkeletonSpecialFeaturesSection()
-                        .transition(.opacity)
-                }
-            } else {
-                SectionRow(title: "Special Features") {
-                    ScrollView(.horizontal) {
-                        LazyHStack(alignment: .top, spacing: 14) {
-                            ForEach(detailVM.specialFeatures, id: \.id) { feature in
-                                if let featureID = feature.id {
-                                    let ratio = feature.imageAspectRatio
-                                    let cardWidth = specialFeatureCardHeight * ratio
-                                    let zoomID: AnyHashable = AnyHashable("specialFeature-\(featureID)")
+            Group {
+                if detailVM.specialFeatures.isEmpty {
+                    if detailVM.isLoadingSpecialFeatures && (displayItem.specialFeatureCount ?? 0) > 0 {
+                        SkeletonSpecialFeaturesSection()
+                            .transition(.opacity)
+                    }
+                } else {
+                    SectionRow(title: "Special Features") {
+                        ScrollView(.horizontal) {
+                            LazyHStack(alignment: .top, spacing: 14) {
+                                ForEach(detailVM.specialFeatures, id: \.id) { feature in
+                                    if let featureID = feature.id {
+                                        let ratio = feature.imageAspectRatio
+                                        let cardWidth = specialFeatureCardHeight * ratio
+                                        let zoomID: AnyHashable = AnyHashable("specialFeature-\(featureID)")
 
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        MediaCard(
-                                            item: feature,
-                                            posterURL: feature.thumbnailURL(client: serverViewModel.client),
-                                            namespace: specialFeatureTransition,
-                                            onSelect: {
-                                                playbackManager.play(
-                                                    item: feature,
-                                                    fromBeginning: false,
-                                                    client: serverViewModel.client,
-                                                    userID: serverViewModel.currentUser?.id,
-                                                    libraryViewModel: libraryViewModel
-                                                )
-                                            },
-                                            zoomID: zoomID,
-                                            imageAspectRatio: ratio,
-                                            onContinueWatching: {
-                                                playbackManager.play(
-                                                    item: feature,
-                                                    fromBeginning: false,
-                                                    client: serverViewModel.client,
-                                                    userID: serverViewModel.currentUser?.id,
-                                                    libraryViewModel: libraryViewModel
-                                                )
-                                            },
-                                            onStartFromBeginning: {
-                                                playbackManager.play(
-                                                    item: feature,
-                                                    fromBeginning: true,
-                                                    client: serverViewModel.client,
-                                                    userID: serverViewModel.currentUser?.id,
-                                                    libraryViewModel: libraryViewModel
-                                                )
-                                            }
-                                        )
-                                        .frame(width: cardWidth, height: specialFeatureCardHeight)
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            MediaCard(
+                                                item: feature,
+                                                posterURL: feature.thumbnailURL(client: serverViewModel.client),
+                                                namespace: specialFeatureTransition,
+                                                onSelect: {
+                                                    playbackManager.play(
+                                                        item: feature,
+                                                        fromBeginning: false,
+                                                        client: serverViewModel.client,
+                                                        userID: serverViewModel.currentUser?.id,
+                                                        libraryViewModel: libraryViewModel
+                                                    )
+                                                },
+                                                zoomID: zoomID,
+                                                imageAspectRatio: ratio,
+                                                onContinueWatching: {
+                                                    playbackManager.play(
+                                                        item: feature,
+                                                        fromBeginning: false,
+                                                        client: serverViewModel.client,
+                                                        userID: serverViewModel.currentUser?.id,
+                                                        libraryViewModel: libraryViewModel
+                                                    )
+                                                },
+                                                onStartFromBeginning: {
+                                                    playbackManager.play(
+                                                        item: feature,
+                                                        fromBeginning: true,
+                                                        client: serverViewModel.client,
+                                                        userID: serverViewModel.currentUser?.id,
+                                                        libraryViewModel: libraryViewModel
+                                                    )
+                                                }
+                                            )
+                                            .frame(width: cardWidth, height: specialFeatureCardHeight)
 
-                                        Text(feature.name ?? "Special Feature")
-                                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                            .foregroundStyle(Color.mainOpp)
-                                            .lineLimit(2)
-                                            .fixedSize(horizontal: false, vertical: true)
+                                            Text(feature.name ?? "Special Feature")
+                                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                                .foregroundStyle(Color.mainOpp)
+                                                .lineLimit(2)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+                                        .frame(width: cardWidth, height: specialFeatureItemHeight, alignment: .top)
+                                        .id(featureID)
                                     }
-                                    .frame(width: cardWidth, height: specialFeatureItemHeight, alignment: .top)
-                                    .id(featureID)
                                 }
                             }
+                            .padding(.horizontal, 16)
+                            .scrollTargetLayout()
                         }
-                        .padding(.horizontal, 16)
-                        .scrollTargetLayout()
+                        .frame(height: specialFeatureItemHeight)
+                        .scrollClipDisabled()
+                        .scrollIndicators(.hidden)
+                        .scrollTargetBehavior(.viewAligned)
                     }
-                    .frame(height: specialFeatureItemHeight)
-                    .scrollClipDisabled()
-                    .scrollIndicators(.hidden)
-                    .scrollTargetBehavior(.viewAligned)
+                    .transition(.opacity)
                 }
-                .transition(.opacity)
             }
+            .animation(.easeInOut(duration: 0.3), value: detailVM.specialFeatures.isEmpty)
         }
     }
 }
