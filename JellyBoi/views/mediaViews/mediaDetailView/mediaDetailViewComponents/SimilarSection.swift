@@ -26,10 +26,10 @@ extension MediaDetailView {
             ) { relatedItem in
                 guard let client = serverViewModel.client else { return nil }
                 if relatedItem.type == .episode {
-                    return libraryViewModel.seriesPosterURL(for: relatedItem, client: client)
-                        ?? libraryViewModel.posterURL(for: relatedItem, client: client)
+                    return relatedItem.seriesPosterURL(client: client)
+                        ?? relatedItem.posterURL(client: client)
                 }
-                return libraryViewModel.posterURL(for: relatedItem, client: client)
+                return relatedItem.posterURL(client: client)
             }
         }
     }

@@ -40,7 +40,7 @@ extension MediaDetailView {
                                     VStack(alignment: .leading, spacing: 6) {
                                         MediaCard(
                                             item: feature,
-                                            posterURL: detailVM.specialFeatureThumbnailURL(for: feature, client: serverViewModel.client),
+                                            posterURL: feature.thumbnailURL(client: serverViewModel.client),
                                             namespace: specialFeatureTransition,
                                             onSelect: {
                                                 playbackManager.play(

@@ -261,6 +261,102 @@ extension BaseItemDto {
         }
         return isInProgress
     }
+
+    // MARK: - Image URLs
+
+    /// Whether this item has a backdrop or thumb image available.
+    public var hasBackdrop: Bool {
+        !(backdropImageTags ?? []).isEmpty
+            || imageTags?.keys.contains("Backdrop") == true
+            || imageTags?.keys.contains("Thumb") == true
+    }
+
+    /// Computes the poster URL for the item using the given client.
+    /// For episodes without a primary image tag, falls back to the series poster URL.
+    public func posterURL(
+        client: JellyfinClient?,
+        parameters: Paths.GetItemImageParameters = .poster()
+    ) -> URL? {
+        guard let client, let id else { return nil }
+        if type == .episode && (imageTags?.keys.contains("Primary") != true) {
+            return seriesPosterURL(client: client, parameters: parameters)
+        }
+        return client.itemImageURL(itemID: id, parameters: parameters)
+    }
+
+    /// Computes the series poster URL for an episode or series using the given client.
+    public func seriesPosterURL(
+        client: JellyfinClient?,
+        parameters: Paths.GetItemImageParameters = .poster()
+    ) -> URL? {
+        guard let client else { return nil }
+        let targetID = seriesID ?? id
+        guard let targetID else { return nil }
+        return client.itemImageURL(itemID: targetID, parameters: parameters)
+    }
+
+    /// Computes the wide thumbnail URL for an episode, video, or special feature.
+    public func thumbnailURL(
+        client: JellyfinClient?,
+        parameters: Paths.GetItemImageParameters = .thumbnail()
+    ) -> URL? {
+        guard let client, let id else { return nil }
+        let imageType = imageTags?.keys.contains("Thumb") == true ? "Thumb" : "Primary"
+        return client.itemImageURL(
+            itemID: id,
+            imageType: imageType,
+            parameters: parameters
+        )
+    }
+
+    /// Computes the hero/detail artwork URL for display on detail views (wide thumbnail for episodes, detail poster for others).
+    public func detailPosterURL(client: JellyfinClient?) -> URL? {
+        if type == .episode {
+            return thumbnailURL(client: client, parameters: .thumbnail(maxWidth: 500, quality: 80))
+        }
+        return posterURL(client: client, parameters: .detailPoster())
+    }
+
+    /// Computes the backdrop URL for the item using the given client.
+    /// Prefers Thumb, then Backdrop, then episode Primary, then series Thumb, then Backdrop.
+    public func backdropURL(client: JellyfinClient?) -> URL? {
+        guard let client, let id else { return nil }
+        let hasThumb = imageTags?.keys.contains("Thumb") == true
+        let hasBackdrop = !(backdropImageTags ?? []).isEmpty || imageTags?.keys.contains("Backdrop") == true
+        let imageType: String
+        let targetID: String
+
+        if hasThumb {
+            imageType = "Thumb"
+            targetID = id
+        } else if hasBackdrop {
+            imageType = "Backdrop"
+            targetID = id
+        } else if type == .episode, imageTags?.keys.contains("Primary") == true {
+            imageType = "Primary"
+            targetID = id
+        } else if let seriesID {
+            imageType = "Thumb"
+            targetID = seriesID
+        } else {
+            imageType = "Backdrop"
+            targetID = id
+        }
+
+        return client.itemImageURL(
+            itemID: targetID,
+            imageType: imageType,
+            parameters: .backdrop(maxWidth: 1920, quality: 96)
+        )
+    }
+}
+
+extension BaseItemPerson {
+    /// Computes the avatar image URL for a person.
+    public func avatarURL(client: JellyfinClient?) -> URL? {
+        guard let client, let id, primaryImageTag != nil else { return nil }
+        return client.itemImageURL(itemID: id, parameters: .avatar(tag: primaryImageTag))
+    }
 }
 
 extension Array where Element == BaseItemDto {

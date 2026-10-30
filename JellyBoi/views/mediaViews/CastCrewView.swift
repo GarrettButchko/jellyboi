@@ -20,7 +20,6 @@ struct CastCrewView: View {
     @State private var viewModel: CastCrewViewModel
 
     @Environment(ServerViewModel.self) private var serverViewModel
-    @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.openURL) private var openURL
 
@@ -108,7 +107,7 @@ struct CastCrewView: View {
                                 ForEach(viewModel.mediaItems, id: \.id) { item in
                                     MediaCard(
                                         item: item,
-                                        posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
+                                        posterURL: item.posterURL(client: serverViewModel.client),
                                         namespace: mediaZoomTransition
                                     ) {
                                         selectedMediaItem = item
@@ -130,7 +129,7 @@ struct CastCrewView: View {
                                 ForEach(viewModel.episodeItems, id: \.id) { episode in
                                     MediaCard(
                                         item: episode,
-                                        posterURL: serverViewModel.client.flatMap { libraryViewModel.seriesPosterURL(for: episode, client: $0) },
+                                        posterURL: episode.seriesPosterURL(client: serverViewModel.client),
                                         namespace: mediaZoomTransition,
                                         onSelect: {
                                             selectedMediaItem = episode

@@ -70,7 +70,7 @@ struct HomeView: View {
                                             namespace: zoomTransition
                                         ) { item in
                                             guard let client = serverViewModel.client else { return nil }
-                                            return libraryViewModel.backdropURL(for: item, client: client)
+                                            return item.backdropURL(client: client)
                                         } onSelect: { item in
                                             zoomSourceID = AnyHashable(item)
                                             selectedItem = item
@@ -124,8 +124,8 @@ struct HomeView: View {
                                             ) { item in
                                                 guard let client = serverViewModel.client else { return nil }
                                                 switch config.posterStyle {
-                                                case .poster:       return libraryViewModel.posterURL(for: item, client: client)
-                                                case .seriesPoster: return libraryViewModel.seriesPosterURL(for: item, client: client)
+                                                case .poster:       return item.posterURL(client: client)
+                                                case .seriesPoster: return item.seriesPosterURL(client: client)
                                                 }
                                             }
                                             .transition(.opacity)
@@ -139,7 +139,7 @@ struct HomeView: View {
                             if let item = heroItem ?? viewModel.currentCarouselItem,
                                let client = serverViewModel.client {
                                 HeroBackdropView(
-                                    url: libraryViewModel.backdropURL(for: item, client: client),
+                                    url: item.backdropURL(client: client),
                                     itemID: item.id,
                                     blurRadius: 30
                                 )

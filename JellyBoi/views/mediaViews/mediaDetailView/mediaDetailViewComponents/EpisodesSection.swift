@@ -68,7 +68,7 @@ extension MediaDetailView {
 
                                         MediaCard(
                                             item: episode,
-                                            posterURL: detailVM.episodeThumbnailURL(for: episode),
+                                            posterURL: episode.thumbnailURL(client: serverViewModel.client),
                                             namespace: episodeTransition,
                                             onSelect: {
                                                 episodeZoomID = zoomID

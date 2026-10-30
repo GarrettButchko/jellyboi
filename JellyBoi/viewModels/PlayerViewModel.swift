@@ -1197,9 +1197,9 @@ final class PlayerViewModel: Identifiable {
         var urls: [URL] = []
         let currentItem = targetItem ?? request.item
 
-        // 1. LibraryViewModel posterURL (matches the card / detail cache key)
-        if let libURL = libraryViewModel?.posterURL(for: currentItem, client: client) {
-            urls.append(libURL)
+        // 1. Poster URL (matches the card / detail cache key)
+        if let posterURL = currentItem.posterURL(client: client) {
+            urls.append(posterURL)
         }
 
         // 2. Primary image

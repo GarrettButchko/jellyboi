@@ -68,20 +68,21 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
         if let libraryViewModel {
             if groupInfo?.type == .collection {
                 if let collection = libraryViewModel.collections.first(where: { $0.id == id }) {
-                    return libraryViewModel.posterURL(for: collection, client: client)
+                    return collection.posterURL(client: client)
                 }
             } else {
                 if let show = libraryViewModel.tvShows.first(where: { $0.id == id }) {
-                    return libraryViewModel.posterURL(for: show, client: client)
+                    return show.posterURL(client: client)
                 }
-                if let first = representativeItem, let url = libraryViewModel.seriesPosterURL(for: first, client: client) {
+                if let first = representativeItem, let url = first.seriesPosterURL(client: client) {
                     return url
                 }
             }
         }
+        let tag = representativeItem?.seriesPrimaryImageTag ?? representativeItem?.imageTags?["Primary"]
         return client.itemImageURL(
             itemID: id,
-            parameters: .poster()
+            parameters: .poster(tag: tag)
         )
     }
 
@@ -170,7 +171,7 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
             title: title,
             subtitle: subtitle,
             detailText: detailText,
-            progress: progress,
+            progress: min(max(progress, 0.0), 1.0),
             itemsRemaining: itemsRemaining,
             totalItems: totalItems,
             status: status,
@@ -397,12 +398,26 @@ extension DownloadItem {
         if item.type == .episode {
             let hasThumb = item.imageTags?.keys.contains("Thumb") == true
             let hasPrimary = item.imageTags?.keys.contains("Primary") == true
-            if (hasThumb || hasPrimary), let id = item.id {
-                let imageType = hasThumb ? "Thumb" : "Primary"
+            if hasPrimary, let id = item.id {
+                let primaryTag = item.imageTags?["Primary"]
                 return client.itemImageURL(
                     itemID: id,
-                    imageType: imageType,
-                    parameters: .poster()
+                    imageType: "Primary",
+                    parameters: .poster(tag: primaryTag)
+                )
+            }
+            if let directURL = group?.posterURL(client: client) {
+                return directURL
+            }
+            if let url = item.seriesPosterURL(client: client) {
+                return url
+            }
+            if hasThumb, let id = item.id {
+                let thumbTag = item.imageTags?["Thumb"]
+                return client.itemImageURL(
+                    itemID: id,
+                    imageType: "Thumb",
+                    parameters: .poster(tag: thumbTag)
                 )
             }
             if let id = item.id {
@@ -410,12 +425,6 @@ extension DownloadItem {
                     itemID: id,
                     parameters: .poster()
                 )
-            }
-            if let libraryViewModel, let url = libraryViewModel.seriesPosterURL(for: item, client: client) {
-                return url
-            }
-            if let directURL = group?.posterURL(client: client) {
-                return directURL
             }
             return nil
         } else {

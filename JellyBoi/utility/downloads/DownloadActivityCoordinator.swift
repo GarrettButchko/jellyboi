@@ -18,6 +18,7 @@ public final class DownloadActivityCoordinator {
     private var lastProgress: Double = -1.0
     private var lastTitle: String? = nil
     private var lastPosterData: Data? = nil
+    private var finishDismissalTask: Task<Void, Never>?
 
     private init() {
         self.currentActivity = Activity<DownloadActivityAttributes>.activities.first(where: { $0.activityState == .active })
@@ -32,6 +33,10 @@ public final class DownloadActivityCoordinator {
 
     public func update(presentation: DownloadSummaryPresentation, force: Bool = false) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+
+        // Cancel any pending dismissal so that a subsequent download continues seamlessly
+        finishDismissalTask?.cancel()
+        finishDismissalTask = nil
 
         let now = Date()
         let timeSinceLast = now.timeIntervalSince(lastUpdateTime)
@@ -62,7 +67,15 @@ public final class DownloadActivityCoordinator {
             lastPosterData = nil
         }
 
-        let state = presentation.contentState(fallbackPosterData: lastPosterData)
+        var state = presentation.contentState(fallbackPosterData: lastPosterData)
+
+        // Hard payload size guard: verify encoded ContentState is well below the 4096-byte ActivityKit limit
+        if let encoded = try? JSONEncoder().encode(state), encoded.count > 3800 {
+            print("[DownloadActivityCoordinator] Warning: ContentState payload (\(encoded.count) bytes) is too large. Stripping poster data.")
+            state.posterImageData = nil
+            lastPosterData = nil
+        }
+
         let content = ActivityContent(state: state, staleDate: nil)
 
         if let activity = activeActivity {
@@ -125,9 +138,11 @@ public final class DownloadActivityCoordinator {
 
         let content = ActivityContent(state: finalState, staleDate: nil)
 
-        Task {
+        finishDismissalTask?.cancel()
+        finishDismissalTask = Task {
             await activity.update(content)
             try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
             await activity.end(content, dismissalPolicy: .default)
             if self.currentActivity?.id == activity.id {
                 self.currentActivity = nil
@@ -140,6 +155,8 @@ public final class DownloadActivityCoordinator {
     }
 
     public func cancelAll() {
+        finishDismissalTask?.cancel()
+        finishDismissalTask = nil
         let activitiesToEnd = Activity<DownloadActivityAttributes>.activities
         currentActivity = nil
         lastProgress = -1.0

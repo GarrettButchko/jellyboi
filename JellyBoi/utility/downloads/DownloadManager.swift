@@ -12,6 +12,8 @@ import JellyfinAPI
 import LoggingKit
 import SDWebImage
 import AVFoundation
+import UIKit
+import ImageIO
 
 @Observable
 @MainActor
@@ -45,6 +47,8 @@ public final class DownloadManager: NSObject {
     private var retryAttempts: [String: Int] = [:]
     @ObservationIgnored
     private var session: URLSession!
+    @ObservationIgnored
+    private var cachedPosterThumbnails: [String: Data] = [:]
 
     public var downloadsDirectory: URL {
         storage.downloadsDirectory
@@ -337,7 +341,15 @@ public final class DownloadManager: NSObject {
                 with: cardPosterURL,
                 options: [.continueInBackground, .highPriority],
                 progress: nil
-            ) { _, _, _, _, _, _ in }
+            ) { [weak self] downloadedImage, _, _, _, _, _ in
+                guard let self, let downloadedImage else { return }
+                Task { @MainActor in
+                    if let thumbData = downloadedImage.liveActivityThumbnailData() {
+                        self.cachedPosterThumbnails[cardPosterURL.absoluteString] = thumbData
+                        self.updateLiveActivity(force: true)
+                    }
+                }
+            }
         }
 
         if let detailPosterURL = client.itemImageURL(
@@ -835,19 +847,29 @@ public final class DownloadManager: NSObject {
         guard !active.isEmpty else { return }
         var presentation = currentPresentation
         if presentation.isSingleElement, let posterURL = presentation.posterURL {
-            let cacheKey = SDWebImageManager.shared.cacheKey(for: posterURL) ?? posterURL.absoluteString
-            if let image = SDImageCache.shared.imageFromMemoryCache(forKey: cacheKey) ?? SDImageCache.shared.imageFromDiskCache(forKey: cacheKey) {
-                let thumbData = image.liveActivityThumbnailData()
-                presentation = presentation.with(posterImageData: thumbData)
+            let urlString = posterURL.absoluteString
+            if let cached = cachedPosterThumbnails[urlString] {
+                presentation = presentation.with(posterImageData: cached)
             } else {
-                SDWebImageManager.shared.loadImage(
-                    with: posterURL,
-                    options: [.continueInBackground, .highPriority],
-                    progress: nil
-                ) { [weak self] downloadedImage, _, _, _, _, _ in
-                    guard let self, downloadedImage != nil else { return }
-                    Task { @MainActor in
-                        self.updateLiveActivity(force: true)
+                let cacheKey = SDWebImageManager.shared.cacheKey(for: posterURL) ?? urlString
+                if let image = SDImageCache.shared.imageFromMemoryCache(forKey: cacheKey) ?? SDImageCache.shared.imageFromDiskCache(forKey: cacheKey),
+                   let thumbData = image.liveActivityThumbnailData() {
+                    cachedPosterThumbnails[urlString] = thumbData
+                    presentation = presentation.with(posterImageData: thumbData)
+                } else {
+                    SDWebImageManager.shared.loadImage(
+                        with: posterURL,
+                        options: [.continueInBackground, .highPriority],
+                        progress: nil
+                    ) { [weak self] downloadedImage, _, _, _, _, _ in
+                        guard let self, let downloadedImage else { return }
+                        Task { @MainActor in
+                            guard let thumbData = downloadedImage.liveActivityThumbnailData() else { return }
+                            self.cachedPosterThumbnails[urlString] = thumbData
+                            var updated = self.currentPresentation
+                            updated = updated.with(posterImageData: thumbData)
+                            DownloadActivityCoordinator.shared.update(presentation: updated, force: true)
+                        }
                     }
                 }
             }
@@ -933,17 +955,25 @@ extension DownloadManager: URLSessionDownloadDelegate {
 // MARK: - UIImage Live Activity Thumbnail
 
 private extension UIImage {
-    func liveActivityThumbnailData(targetSize: CGSize = CGSize(width: 36, height: 54)) -> Data? {
-        let renderer = UIGraphicsImageRenderer(size: targetSize)
+    func liveActivityThumbnailData(targetSize: CGSize = CGSize(width: 48, height: 72)) -> Data? {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0 // 1x scale produces exactly 48x72 pixels
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
         let resized = renderer.image { _ in
             self.draw(in: CGRect(origin: .zero, size: targetSize))
         }
-        var compression: CGFloat = 0.55
-        var data = resized.jpegData(compressionQuality: compression)
-        while let current = data, current.count > 1200, compression > 0.15 {
-            compression -= 0.1
-            data = resized.jpegData(compressionQuality: compression)
+
+        var quality: CGFloat = 0.70
+        var data = resized.jpegData(compressionQuality: quality)
+        while let current = data, current.count > 2000, quality > 0.25 {
+            quality -= 0.10
+            data = resized.jpegData(compressionQuality: quality)
         }
-        return data
+
+        if let data, data.count <= 2400 {
+            return data
+        }
+        return nil
     }
 }

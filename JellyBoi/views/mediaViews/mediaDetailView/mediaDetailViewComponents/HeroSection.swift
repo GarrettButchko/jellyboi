@@ -14,12 +14,19 @@ extension MediaDetailView {
 
     // MARK: - Hero Section
 
+    private var heroPosterURL: URL? {
+        #if DEBUG
+        if DebugSettings.shared.hidePoster { return nil }
+        #endif
+        return displayItem.detailPosterURL(client: serverViewModel.client)
+    }
+
     var heroSection: some View {
         HStack(alignment: .bottom, spacing: 8) {
             heroImage
                 .background(alignment: .top) {
                     HeroBackdropView(
-                        url: detailVM.posterURL(client: serverViewModel.client),
+                        url: heroPosterURL,
                         itemID: displayItem.id,
                         blurRadius: 40,
                         isFlipped: true
@@ -38,7 +45,7 @@ extension MediaDetailView {
     var heroImage: some View {
         let currentRatio = detailVM.heroAspectRatio
 
-        if let url = detailVM.posterURL(client: serverViewModel.client) {
+        if let url = heroPosterURL {
             ZStack {
                 heroPlaceholder
 

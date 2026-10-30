@@ -35,7 +35,7 @@ extension MediaDetailView {
                         ForEach(detailVM.collectionItems, id: \.id) { item in
                             MediaCard(
                                 item: item,
-                                posterURL: serverViewModel.client.flatMap { libraryViewModel.posterURL(for: item, client: $0) },
+                                posterURL: item.posterURL(client: serverViewModel.client),
                                 namespace: collectionTransition
                             ) {
                                 selectedCollectionItem = item

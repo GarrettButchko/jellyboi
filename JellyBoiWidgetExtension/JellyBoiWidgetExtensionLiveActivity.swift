@@ -32,18 +32,21 @@ struct DownloadActivityWidget: Widget {
                 }
             } compactLeading: {
                 Group {
-                    if context.state.isSingleElement {
+                    if context.state.isSingleElement, let imageData = context.state.posterImageData {
                         PosterView(
-                            imageData: context.state.posterImageData,
+                            imageData: imageData,
                             status: context.state.status,
                             width: 14,
                             height: 21,
                             cornerRadius: 3.5
                         )
                     } else {
-                        // Multiple unrelated elements: SHOW ONLY THE ICON!
-                        Image(systemName: context.state.status.icon)
-                            .font(.system(size: 12, weight: .bold))
+                        // Default: Jellyboi SVG mascot
+                        Image("Jellyboi")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 14, height: 14)
                             .foregroundStyle(context.state.status.tintColor)
                     }
                 }
@@ -60,8 +63,11 @@ struct DownloadActivityWidget: Widget {
             } minimal: {
                 Group {
                     if context.state.status == .queued || context.state.status == .completed {
-                        Image(systemName: context.state.status.icon)
-                            .font(.system(size: 11, weight: .bold))
+                        Image("Jellyboi")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 12, height: 12)
                             .foregroundStyle(context.state.status.tintColor)
                     } else {
                         Text("\(context.state.progressPercent)%")
@@ -94,7 +100,7 @@ private struct LockScreenDownloadView: View {
                     .foregroundStyle(Color.white)
                     .lineLimit(1)
 
-                ProgressView(value: state.status == .queued ? 0.0 : state.progress)
+                ProgressView(value: state.status == .queued ? 0.0 : min(max(state.progress, 0.0), 1.0))
                     .tint(state.status.tintColor)
 
                 bottomStatusRow
@@ -107,24 +113,33 @@ private struct LockScreenDownloadView: View {
 
     @ViewBuilder
     private var leadingArtworkOrIcon: some View {
-        if state.isSingleElement {
-            // Exactly 1 element (movie, episode, series, collection): SHOW POSTER
+        if state.isSingleElement, let imageData = state.posterImageData {
+            // Single element with artwork: SHOW POSTER
             PosterView(
-                imageData: state.posterImageData,
+                imageData: imageData,
                 status: state.status,
                 width: 32,
                 height: 48,
                 cornerRadius: 6.5
             )
         } else {
-            // Multiple unrelated elements: SHOW ONLY THE ICON!
-            ProgressRingIndicator(
-                progress: state.progress,
-                status: state.status,
-                size: 32,
-                lineWidth: 3
-            )
+            // Default: Jellyboi SVG in card container
+            ZStack {
+                RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+
+                Image("Jellyboi")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+                    .foregroundStyle(state.status.tintColor)
+            }
             .frame(width: 32, height: 48)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+            )
         }
     }
 
@@ -203,8 +218,11 @@ private struct PosterView: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.08))
 
-            Image(systemName: status.icon)
-                .font(.system(size: max(8, width * 0.4), weight: .bold))
+            Image("Jellyboi")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: max(8, width * 0.60), height: max(8, height * 0.60))
                 .foregroundStyle(status.tintColor)
         }
         .frame(width: width, height: height)
@@ -234,7 +252,7 @@ private struct ProgressRingIndicator: View {
                 .rotationEffect(.degrees(-90))
 
             Image(systemName: status.icon)
-                .font(.system(size: max(6, size * 0.42), weight: .bold))
+                .font(.system(size: size * 0.45, weight: .bold))
                 .foregroundStyle(status.tintColor)
         }
         .frame(width: size, height: size)

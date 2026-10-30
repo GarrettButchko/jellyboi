@@ -15,7 +15,6 @@ struct OfflineMediaView: View {
 
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(DownloadManager.self) private var downloadManager
-    @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -188,10 +187,10 @@ struct OfflineMediaView: View {
     private func posterURL(for item: BaseItemDto) -> URL? {
         guard let client = serverViewModel.client else { return nil }
         if item.type == .episode {
-            return libraryViewModel.seriesPosterURL(for: item, client: client)
-                ?? libraryViewModel.posterURL(for: item, client: client)
+            return item.seriesPosterURL(client: client)
+                ?? item.posterURL(client: client)
         }
-        return libraryViewModel.posterURL(for: item, client: client)
+        return item.posterURL(client: client)
     }
 
     // MARK: - Retry Button & Offline Indicator

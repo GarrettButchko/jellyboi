@@ -10,7 +10,6 @@ import JellyfinAPI
 
 struct MediaGrid: View {
     @Environment(ServerViewModel.self) private var serverViewModel
-    @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     let items: [BaseItemDto]
@@ -26,9 +25,7 @@ struct MediaGrid: View {
             ForEach(items, id: \.id) { item in
                 MediaCard(
                     item: item,
-                    posterURL: serverViewModel.client.flatMap { client in
-                        posterURL(for: item, client: client)
-                    },
+                    posterURL: posterURL(for: item, client: serverViewModel.client),
                     namespace: namespace,
                     onSelect: {
                         onSelect(item)
@@ -40,11 +37,11 @@ struct MediaGrid: View {
         .padding(.horizontal, 16)
     }
 
-    private func posterURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
+    private func posterURL(for item: BaseItemDto, client: JellyfinClient?) -> URL? {
         if item.type == .episode {
-            return libraryViewModel.seriesPosterURL(for: item, client: client)
-                ?? libraryViewModel.posterURL(for: item, client: client)
+            return item.seriesPosterURL(client: client)
+                ?? item.posterURL(client: client)
         }
-        return libraryViewModel.posterURL(for: item, client: client)
+        return item.posterURL(client: client)
     }
 }

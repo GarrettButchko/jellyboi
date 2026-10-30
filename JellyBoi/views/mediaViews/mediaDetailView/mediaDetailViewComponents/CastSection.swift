@@ -37,7 +37,7 @@ extension MediaDetailView {
                         } label: {
                             CastCircle(
                                 person: person,
-                                imageURL: detailVM.castImageURL(for: person, client: serverViewModel.client)
+                                imageURL: person.avatarURL(client: serverViewModel.client)
                             )
                             .frame(width: 74, alignment: .top)
                         }

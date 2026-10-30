@@ -344,67 +344,20 @@ class LibraryViewModel {
         )
     }
 
-    // MARK: - Image URLs
-
-    func posterURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
-        guard let id = item.id else { return nil }
-        if item.type == .episode && (item.imageTags?.keys.contains("Primary") != true) {
-            return seriesPosterURL(for: item, client: client)
-        }
-        return client.itemImageURL(itemID: id, parameters: .poster())
-    }
-
-    func seriesPosterURL(for episode: BaseItemDto, client: JellyfinClient) -> URL? {
-        let itemID = episode.seriesID ?? episode.id
-        guard let itemID else { return nil }
-        return client.itemImageURL(itemID: itemID, parameters: .poster())
-    }
-
-    func backdropURL(for item: BaseItemDto, client: JellyfinClient) -> URL? {
-        guard let id = item.id else { return nil }
-        let hasThumb = item.imageTags?.keys.contains("Thumb") == true
-        let hasBackdrop = !(item.backdropImageTags ?? []).isEmpty || item.imageTags?.keys.contains("Backdrop") == true
-        let imageType: String
-        let targetID: String
-
-        if hasThumb {
-            imageType = "Thumb"
-            targetID = id
-        } else if hasBackdrop {
-            imageType = "Backdrop"
-            targetID = id
-        } else if item.type == .episode, item.imageTags?.keys.contains("Primary") == true {
-            imageType = "Primary"
-            targetID = id
-        } else if let seriesID = item.seriesID {
-            imageType = "Thumb"
-            targetID = seriesID
-        } else {
-            imageType = "Backdrop"
-            targetID = id
-        }
-
-        return client.itemImageURL(
-            itemID: targetID,
-            imageType: imageType,
-            parameters: .backdrop(maxWidth: 1920, quality: 96)
-        )
-    }
-
     // MARK: - Prefetching
 
     func prefetchBackdrops(around index: Int, items: [BaseItemDto]? = nil, client: JellyfinClient) {
         let targetItems = items ?? movies
         let neighbors = [index - 1, index, index + 1]
             .filter { $0 >= 0 && $0 < targetItems.count }
-        let urls = neighbors.compactMap { backdropURL(for: targetItems[$0], client: client) }
+        let urls = neighbors.compactMap { targetItems[$0].backdropURL(client: client) }
         SDWebImagePrefetcher.shared.prefetchURLs(urls)
     }
 
     func prefetchPosters(around index: Int, client: JellyfinClient) {
         let neighbors = [index - 1, index, index + 1]
             .filter { $0 >= 0 && $0 < movies.count }
-        let urls = neighbors.compactMap { posterURL(for: movies[$0], client: client) }
+        let urls = neighbors.compactMap { movies[$0].posterURL(client: client) }
         SDWebImagePrefetcher.shared.prefetchURLs(urls)
     }
 }
