@@ -8,8 +8,7 @@ struct MediaView: View {
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(MediaViewModel.self) private var viewModel
-    @State private var scrollOffset: CGFloat = 0
-    @State private var headerHeight: CGFloat = 120
+    @State private var headerHeight: CGFloat = 132
     @State private var selectedItem: BaseItemDto?
     @Namespace private var zoomTransition
 
@@ -24,11 +23,11 @@ struct MediaView: View {
     }
 
     @ViewBuilder
-    private var topHeaderOverlay: some View {
+    private func topHeaderOverlay(isCollapsed: Bool) -> some View {
         @Bindable var viewModel = viewModel
         TabPageHeader(
             title: pageTitle,
-            scrollOffset: scrollOffset,
+            isCollapsed: isCollapsed,
             headerHeight: $headerHeight
         ) {
             HStack(spacing: 10) {
@@ -80,7 +79,12 @@ struct MediaView: View {
                 Color.bg
                     .ignoresSafeArea()
 
-                ScrollToTopScrollView(topInset: headerHeight, scrollOffset: $scrollOffset) { proxy in
+                ScrollToTopScrollView(
+                    topInset: headerHeight,
+                    header: { isCollapsed in
+                        topHeaderOverlay(isCollapsed: isCollapsed)
+                    }
+                ) { proxy in
                     Group {
                         if viewModel.showDownloadsOnly {
                             downloadsContent
@@ -91,19 +95,13 @@ struct MediaView: View {
                         }
                     }
                     .onChange(of: viewModel.filter) { _, _ in
-                        if scrollOffset > 10 {
-                            withAnimation { proxy.scrollToTop() }
-                        }
+                        withAnimation { proxy.scrollToTop() }
                     }
                     .onChange(of: viewModel.showFavoritesOnly) { _, _ in
-                        if scrollOffset > 10 {
-                            withAnimation { proxy.scrollToTop() }
-                        }
+                        withAnimation { proxy.scrollToTop() }
                     }
                     .onChange(of: viewModel.showDownloadsOnly) { _, _ in
-                        if scrollOffset > 10 {
-                            withAnimation { proxy.scrollToTop() }
-                        }
+                        withAnimation { proxy.scrollToTop() }
                     }
                 }
                 .animation(.easeInOut(duration: 0.2), value: viewModel.filter)
@@ -114,8 +112,6 @@ struct MediaView: View {
                         await viewModel.refresh(using: client)
                     }
                 }
-
-                topHeaderOverlay
             }
             .navigationDestination(item: $selectedItem) { item in
                 MediaDetailView(item: item)

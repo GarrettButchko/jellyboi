@@ -45,7 +45,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
     private let continuousScrollOffsetBinding: Binding<CGFloat>?
     @Binding private var scrollOffset: CGFloat
     private let onScrollStateChange: ((ScrollToTopScrollState) -> Void)?
-    private let header: Header
+    private let header: (Bool) -> Header
     private let content: (ScrollViewProxy) -> Content
 
     @State private var scrollState = ScrollToTopScrollState()
@@ -65,7 +65,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
         continuousScrollOffset: Binding<CGFloat>? = nil,
         scrollToTop: Binding<Bool>? = nil,
         onScrollStateChange: ((ScrollToTopScrollState) -> Void)? = nil,
-        @ViewBuilder header: () -> Header,
+        @ViewBuilder header: @escaping (_ isHeaderCollapsed: Bool) -> Header,
         @ViewBuilder content: @escaping (ScrollViewProxy) -> Content
     ) {
         self.axes = axes
@@ -81,7 +81,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
         self._scrollOffset = scrollOffset ?? .constant(0)
         self.scrollToTopTrigger = scrollToTop
         self.onScrollStateChange = onScrollStateChange
-        self.header = header()
+        self.header = header
         self.content = content
     }
 
@@ -99,7 +99,78 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
         continuousScrollOffset: Binding<CGFloat>? = nil,
         scrollToTop: Binding<Bool>? = nil,
         onScrollStateChange: ((ScrollToTopScrollState) -> Void)? = nil,
-        @ViewBuilder header: () -> Header,
+        @ViewBuilder header: @escaping () -> Header,
+        @ViewBuilder content: @escaping (ScrollViewProxy) -> Content
+    ) {
+        self.init(
+            axes,
+            showsIndicators: showsIndicators,
+            threshold: threshold,
+            headerCollapseThreshold: headerCollapseThreshold,
+            topInset: topInset,
+            bottomInset: bottomInset,
+            showsScrollToTop: showsScrollToTop,
+            isHeaderCollapsed: isHeaderCollapsed,
+            scrollState: scrollState,
+            scrollOffset: scrollOffset,
+            continuousScrollOffset: continuousScrollOffset,
+            scrollToTop: scrollToTop,
+            onScrollStateChange: onScrollStateChange,
+            header: { _ in header() },
+            content: content
+        )
+    }
+
+    public init(
+        _ axes: Axis.Set = .vertical,
+        showsIndicators: Bool = true,
+        threshold: CGFloat = 300,
+        headerCollapseThreshold: CGFloat = 40,
+        topInset: CGFloat = 0,
+        bottomInset: CGFloat = 16,
+        showsScrollToTop: Bool = true,
+        isHeaderCollapsed: Binding<Bool>? = nil,
+        scrollState: Binding<ScrollToTopScrollState>? = nil,
+        scrollOffset: Binding<CGFloat>? = nil,
+        continuousScrollOffset: Binding<CGFloat>? = nil,
+        scrollToTop: Binding<Bool>? = nil,
+        onScrollStateChange: ((ScrollToTopScrollState) -> Void)? = nil,
+        @ViewBuilder header: @escaping (_ isHeaderCollapsed: Bool) -> Header,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.init(
+            axes,
+            showsIndicators: showsIndicators,
+            threshold: threshold,
+            headerCollapseThreshold: headerCollapseThreshold,
+            topInset: topInset,
+            bottomInset: bottomInset,
+            showsScrollToTop: showsScrollToTop,
+            isHeaderCollapsed: isHeaderCollapsed,
+            scrollState: scrollState,
+            scrollOffset: scrollOffset,
+            continuousScrollOffset: continuousScrollOffset,
+            scrollToTop: scrollToTop,
+            onScrollStateChange: onScrollStateChange,
+            header: header
+        ) { _ in content() }
+    }
+
+    public init(
+        _ axes: Axis.Set = .vertical,
+        showsIndicators: Bool = true,
+        threshold: CGFloat = 300,
+        headerCollapseThreshold: CGFloat = 40,
+        topInset: CGFloat = 0,
+        bottomInset: CGFloat = 16,
+        showsScrollToTop: Bool = true,
+        isHeaderCollapsed: Binding<Bool>? = nil,
+        scrollState: Binding<ScrollToTopScrollState>? = nil,
+        scrollOffset: Binding<CGFloat>? = nil,
+        continuousScrollOffset: Binding<CGFloat>? = nil,
+        scrollToTop: Binding<Bool>? = nil,
+        onScrollStateChange: ((ScrollToTopScrollState) -> Void)? = nil,
+        @ViewBuilder header: @escaping () -> Header,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
@@ -131,7 +202,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
                     content(proxy)
                 }
                 .contentMargins(.top, topInset, for: .scrollContent)
-                .contentMargins(.bottom, (showsScrollToTop ? sttButtonHeight : 0) + bottomInset, for: .scrollContent)
+                .contentMargins(.bottom, (showsScrollToTop ? 48 : 0) + bottomInset, for: .scrollContent)
                 .scrollEdgeEffectHidden(!scrollState.isPastTop, for: .top)
                 // Discrete Equatable geometry change: SwiftUI only calls action when Equatable newState != oldState!
                 .onScrollGeometryChange(for: ScrollToTopScrollState.self) { geometry in
@@ -151,7 +222,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
                 }
                 .modifier(ContinuousScrollOffsetModifier(binding: continuousScrollOffsetBinding))
 
-                header
+                header(scrollState.isHeaderCollapsed)
 
                 if showsScrollToTop {
                     ScrollTabBarOverlay(isVisible: scrollState.showScrollToTop, threshold: threshold, STTButtonHeight: $sttButtonHeight) {

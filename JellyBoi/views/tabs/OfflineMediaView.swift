@@ -19,8 +19,7 @@ struct OfflineMediaView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var filter: MediaFilter = .movies
-    @State private var scrollOffset: CGFloat = 0
-    @State private var headerHeight: CGFloat = 120
+    @State private var headerHeight: CGFloat = 132
     @State private var selectedItem: BaseItemDto?
     @State private var isCheckingConnection: Bool = false
     @State private var checkStatus: CheckStatus = .idle
@@ -40,7 +39,12 @@ struct OfflineMediaView: View {
             ZStack(alignment: .top) {
                 Color.bg.ignoresSafeArea()
 
-                ScrollToTopScrollView(topInset: headerHeight, scrollOffset: $scrollOffset) { _ in
+                ScrollToTopScrollView(
+                    topInset: headerHeight,
+                    header: { isCollapsed in
+                        topHeaderOverlay(isCollapsed: isCollapsed)
+                    }
+                ) { _ in
                     VStack(alignment: .leading, spacing: 0) {
                         switch filter {
                         case .movies:
@@ -52,8 +56,6 @@ struct OfflineMediaView: View {
                     .padding(.horizontal, 16)
                 }
                 .animation(.easeInOut(duration: 0.2), value: filter)
-
-                topHeaderOverlay
             }
             .overlay(alignment: .bottom) {
                 bottomRetryButton
@@ -81,10 +83,10 @@ struct OfflineMediaView: View {
 
     // MARK: - Header
 
-    private var topHeaderOverlay: some View {
+    private func topHeaderOverlay(isCollapsed: Bool) -> some View {
         TabPageHeader(
             title: "Downloads",
-            scrollOffset: scrollOffset,
+            isCollapsed: isCollapsed,
             headerHeight: $headerHeight
         ) {
             Picker("Filter", selection: $filter) {

@@ -81,7 +81,7 @@ struct MediaResultsView: View {
     @Namespace private var zoomTransition
     @State private var selectedItem: BaseItemDto?
     @State private var scrollOffset: CGFloat = 0
-    @State private var headerHeight: CGFloat = 120
+    @State private var headerHeight: CGFloat = 74
 
     var body: some View {
         ZStack(alignment: .top) {

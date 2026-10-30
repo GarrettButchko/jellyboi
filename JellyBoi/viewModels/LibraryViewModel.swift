@@ -35,17 +35,22 @@ class LibraryViewModel {
     private(set) var recentlyAddedIDs: [String] = []
     private(set) var resumeShowIDs: [String] = []
 
-    // MARK: - Derived library data
+    // MARK: - Derived library data (Cached for instant O(1) access during scrolling)
 
-    var movies: [BaseItemDto] { movieIDs.compactMap { itemsByID[$0] } }
-    var tvShows: [BaseItemDto] { tvShowIDs.compactMap { itemsByID[$0] } }
-    var episodes: [BaseItemDto] { episodeIDs.compactMap { itemsByID[$0] } }
-    var collections: [BaseItemDto] { collectionIDs.compactMap { itemsByID[$0] } }
-    var recommended: [BaseItemDto] { recommendedIDs.compactMap { itemsByID[$0] } }
-    var recentlyAddedMovies: [BaseItemDto] { recentlyAddedMovieIDs.compactMap { itemsByID[$0] } }
-    var recentlyAddedShows: [BaseItemDto] { recentlyAddedShowIDs.compactMap { itemsByID[$0] } }
-    var recentlyAdded: [BaseItemDto] { recentlyAddedIDs.compactMap { itemsByID[$0] } }
-    var resumeShows: [BaseItemDto] { resumeShowIDs.compactMap { itemsByID[$0] } }
+    private(set) var movies: [BaseItemDto] = []
+    private(set) var tvShows: [BaseItemDto] = []
+    private(set) var episodes: [BaseItemDto] = []
+    private(set) var collections: [BaseItemDto] = []
+    private(set) var recommended: [BaseItemDto] = []
+    private(set) var recentlyAddedMovies: [BaseItemDto] = []
+    private(set) var recentlyAddedShows: [BaseItemDto] = []
+    private(set) var recentlyAdded: [BaseItemDto] = []
+    private(set) var resumeShows: [BaseItemDto] = []
+    private(set) var episodesBySeriesID: [String: [BaseItemDto]] = [:]
+
+    func episodes(forSeriesID seriesID: String) -> [BaseItemDto] {
+        episodesBySeriesID[seriesID] ?? []
+    }
 
     // MARK: - Lookup & Store Helpers
 
@@ -56,6 +61,7 @@ class LibraryViewModel {
     func updateItem(_ item: BaseItemDto) {
         guard let id = item.id else { return }
         itemsByID[id] = item
+        updateAggregates()
     }
 
     // MARK: - Home aggregates
@@ -314,11 +320,30 @@ class LibraryViewModel {
         if wasFavorite != isFavorite {
             favoritesCount = max(0, favoritesCount + (isFavorite ? 1 : -1))
         }
+        updateAggregates()
     }
 
     // MARK: - Aggregates
 
     private func updateAggregates() {
+        movies = movieIDs.compactMap { itemsByID[$0] }
+        tvShows = tvShowIDs.compactMap { itemsByID[$0] }
+        episodes = episodeIDs.compactMap { itemsByID[$0] }
+        collections = collectionIDs.compactMap { itemsByID[$0] }
+        recommended = recommendedIDs.compactMap { itemsByID[$0] }
+        recentlyAddedMovies = recentlyAddedMovieIDs.compactMap { itemsByID[$0] }
+        recentlyAddedShows = recentlyAddedShowIDs.compactMap { itemsByID[$0] }
+        recentlyAdded = recentlyAddedIDs.compactMap { itemsByID[$0] }
+        resumeShows = resumeShowIDs.compactMap { itemsByID[$0] }
+
+        var grouped: [String: [BaseItemDto]] = [:]
+        for ep in episodes {
+            if let seriesID = ep.seriesID {
+                grouped[seriesID, default: []].append(ep)
+            }
+        }
+        episodesBySeriesID = grouped
+
         inProgressMovies = movies
             .filter {
                 guard let percent = $0.userData?.playedPercentage else { return false }

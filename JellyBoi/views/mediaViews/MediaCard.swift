@@ -185,24 +185,6 @@ struct MediaCard: View {
         .onChange(of: item) { _, newItem in
             viewModel.updateItem(newItem)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .mediaProgressReset)) { notification in
-            if let resetID = notification.object as? String {
-                viewModel.handleProgressResetNotification(resetID: resetID)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .mediaProgressUpdated)) { notification in
-            if let updatedID = notification.object as? String,
-               let ticks = notification.userInfo?["positionTicks"] as? Int {
-                let total = notification.userInfo?["durationTicks"] as? Int
-                viewModel.handleProgressUpdatedNotification(itemID: updatedID, positionTicks: ticks, totalTicks: total)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .mediaFavoriteToggled)) { notification in
-            if let itemID = notification.object as? String,
-               let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
-                viewModel.handleFavoriteNotification(itemID: itemID, isFavorite: isFavorite)
-            }
-        }
     }
 
     private func episodeBadge(text: String) -> some View {
@@ -214,25 +196,18 @@ struct MediaCard: View {
             .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
     }
 
-    private var isImageCached: Bool {
-        guard let url = posterURL else { return false }
-        let key = SDWebImageManager.shared.cacheKey(for: url)
-        return SDImageCache.shared.imageFromMemoryCache(forKey: key) != nil
-    }
-
     @ViewBuilder
     private var posterImage: some View {
         if let url = posterURL {
-            let isCached = isImageCached
             WebImage(
                 url: url,
-                transaction: isCached ? Transaction() : Transaction(animation: .easeInOut(duration: 0.25))
+                transaction: Transaction(animation: .easeInOut(duration: 0.25))
             ) { phase in
                 if let image = phase.image {
                     image
                         .resizable()
                         .scaledToFill()
-                        .transition(isCached ? .identity : .fade(duration: 0.25))
+                        .transition(.fade(duration: 0.25))
                 } else {
                     placeholder
                 }

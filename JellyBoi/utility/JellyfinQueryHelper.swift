@@ -332,8 +332,8 @@ extension Paths.GetEpisodesParameters {
 extension Paths.GetItemImageParameters {
     /// Standard card poster artwork (e.g., library grids, download cards).
     public static func poster(
-        maxWidth: Int = 400,
-        quality: Int = 80,
+        maxWidth: Int = 280,
+        quality: Int = 65,
         tag: String? = nil
     ) -> Paths.GetItemImageParameters {
         Paths.GetItemImageParameters(maxWidth: maxWidth, quality: quality, tag: tag)
@@ -341,8 +341,8 @@ extension Paths.GetItemImageParameters {
 
     /// High-resolution detail page poster.
     public static func detailPoster(
-        maxWidth: Int = 600,
-        quality: Int = 90,
+        maxWidth: Int = 500,
+        quality: Int = 80,
         tag: String? = nil
     ) -> Paths.GetItemImageParameters {
         Paths.GetItemImageParameters(maxWidth: maxWidth, quality: quality, tag: tag)
@@ -350,8 +350,8 @@ extension Paths.GetItemImageParameters {
 
     /// Episode or video wide thumbnail (16:9).
     public static func thumbnail(
-        maxWidth: Int = 600,
-        quality: Int = 90,
+        maxWidth: Int = 360,
+        quality: Int = 65,
         tag: String? = nil
     ) -> Paths.GetItemImageParameters {
         Paths.GetItemImageParameters(maxWidth: maxWidth, quality: quality, tag: tag)
@@ -359,8 +359,8 @@ extension Paths.GetItemImageParameters {
 
     /// Backdrop / fanart image.
     public static func backdrop(
-        maxWidth: Int = 1200,
-        quality: Int = 85,
+        maxWidth: Int = 800,
+        quality: Int = 70,
         tag: String? = nil
     ) -> Paths.GetItemImageParameters {
         Paths.GetItemImageParameters(maxWidth: maxWidth, quality: quality, tag: tag)
@@ -368,8 +368,8 @@ extension Paths.GetItemImageParameters {
 
     /// Cast & crew / avatar circular image.
     public static func avatar(
-        maxWidth: Int = 200,
-        quality: Int = 80,
+        maxWidth: Int = 160,
+        quality: Int = 70,
         tag: String? = nil
     ) -> Paths.GetItemImageParameters {
         Paths.GetItemImageParameters(maxWidth: maxWidth, quality: quality, tag: tag)
@@ -380,8 +380,8 @@ extension Paths.GetItemImageParameters {
 
 extension Paths.GetPersonImageParameters {
     public static func standard(
-        maxWidth: Int = 400,
-        quality: Int = 85,
+        maxWidth: Int = 280,
+        quality: Int = 70,
         tag: String? = nil
     ) -> Paths.GetPersonImageParameters {
         Paths.GetPersonImageParameters(tag: tag, maxWidth: maxWidth, quality: quality)

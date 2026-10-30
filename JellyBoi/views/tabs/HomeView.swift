@@ -18,8 +18,7 @@ struct HomeView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
-    @State private var scrollOffset: CGFloat = 0
-    @State private var headerHeight: CGFloat = 120
+    @State private var headerHeight: CGFloat = 74
     @State private var heroItem: BaseItemDto?
     @State private var safeAreaTop: CGFloat = 0
     @State private var selectedItem: BaseItemDto?
@@ -32,7 +31,17 @@ struct HomeView: View {
                 Color.bg
                     .ignoresSafeArea()
 
-                ScrollToTopScrollView(topInset: headerHeight, scrollOffset: $scrollOffset) { proxy in
+                ScrollToTopScrollView(
+                    topInset: headerHeight,
+                    header: { isCollapsed in
+                        TabPageHeader(
+                            title: "Home",
+                            isCollapsed: isCollapsed,
+                            headerHeight: $headerHeight,
+                            showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact
+                        )
+                    }
+                ) { proxy in
                     VStack(alignment: .leading, spacing: 24) {
                             if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
                                 EmptyStateView(
@@ -166,8 +175,6 @@ struct HomeView: View {
                     isShowingCollections = false
                 }
                 .toolbarVisibility(.hidden, for: .navigationBar)
-
-                TabPageHeader(title: "Home", scrollOffset: scrollOffset, headerHeight: $headerHeight, showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact)
             }
             .toolbarVisibility(.hidden, for: .navigationBar)
             .background(Color.bg.ignoresSafeArea())

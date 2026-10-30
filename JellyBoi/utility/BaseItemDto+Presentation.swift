@@ -312,7 +312,7 @@ extension BaseItemDto {
     /// Computes the hero/detail artwork URL for display on detail views (wide thumbnail for episodes, detail poster for others).
     public func detailPosterURL(client: JellyfinClient?) -> URL? {
         if type == .episode {
-            return thumbnailURL(client: client, parameters: .thumbnail(maxWidth: 500, quality: 80))
+            return thumbnailURL(client: client, parameters: .thumbnail(maxWidth: 360, quality: 65))
         }
         return posterURL(client: client, parameters: .detailPoster())
     }
@@ -346,7 +346,7 @@ extension BaseItemDto {
         return client.itemImageURL(
             itemID: targetID,
             imageType: imageType,
-            parameters: .backdrop(maxWidth: 1920, quality: 96)
+            parameters: .backdrop(maxWidth: 800, quality: 70)
         )
     }
 }

@@ -45,8 +45,6 @@ public nonisolated enum DownloadStatus: String, Codable, Hashable, Sendable {
         }
     }
 
-    public var iconName: String { icon }
-
     public var text: String {
         switch self {
         case .queued:
@@ -61,19 +59,6 @@ public nonisolated enum DownloadStatus: String, Codable, Hashable, Sendable {
             return "Ready offline"
         case .failed:
             return "Failed"
-        }
-    }
-
-    public var tintColor: Color {
-        switch self {
-        case .completed:
-            return .green
-        case .queued:
-            return .orange
-        case .converting, .finalizing:
-            return .purple
-        case .downloading, .failed:
-            return .indigo
         }
     }
 
@@ -122,13 +107,6 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
         public var posterImageData: Data?
         public var isSingleElement: Bool
 
-        public var statusIcon: String { status.icon }
-        public var statusText: String { status.text }
-        public var tintColor: Color { status.tintColor }
-        public var isQueued: Bool { status.isQueued }
-        public var isConverting: Bool { status.isConverting }
-        public var isCompleted: Bool { status.isCompleted }
-
         public var progressPercent: Int {
             Int(progress * 100)
         }
@@ -157,10 +135,8 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
 
         public var compactPercentageColor: Color {
             switch status {
-            case .completed:
-                return .green
-            case .queued:
-                return .orange
+            case .completed, .queued:
+                return Color.accentColor
             default:
                 return Color.white.opacity(0.9)
             }
@@ -176,6 +152,12 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
                 }
                 return "Queued"
             case .converting, .finalizing:
+                if let extra = Self.cleanExtraInfo(detailText, itemsRemaining: itemsRemaining) {
+                    return extra
+                }
+                if let subtitle, !subtitle.isEmpty {
+                    return subtitle
+                }
                 if itemsRemaining > 1 {
                     return "\(itemsRemaining) left • Converting"
                 }
@@ -200,6 +182,10 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
             guard let detailText, !detailText.isEmpty else { return nil }
             let components = detailText.components(separatedBy: "•").map { $0.trimmingCharacters(in: .whitespaces) }
             let nonPercent = components.filter { !$0.contains("%") }
+
+            if let timeItem = nonPercent.first(where: { $0.contains("min") || $0.contains("sec") || $0.contains("hr") }) {
+                return timeItem
+            }
 
             for item in nonPercent {
                 if itemsRemaining > 1 && (item.contains("item") || item.contains("episode")) {

@@ -64,6 +64,13 @@ struct ContentView: View {
                 .ignoresSafeArea()
                 .zIndex(2)
             }
+
+            #if DEBUG
+            if DebugSettings.shared.showFPSCounter {
+                FPSOverlayView()
+                    .zIndex(999)
+            }
+            #endif
         }
         .animation(.smooth, value: viewManager.showSignInFlow)
         .overlay {

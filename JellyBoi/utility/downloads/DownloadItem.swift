@@ -145,7 +145,7 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
         if isCompleted {
             return "checkmark.circle.fill"
         }
-        return status.iconName
+        return status.icon
     }
 
     public var statusIcon: String {
@@ -183,7 +183,11 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
             }
             return "Downloading"
         case .converting, .finalizing:
-            return "Optimizing"
+            let time = formattedTimeRemaining
+            if !time.isEmpty && time != "Estimating..." {
+                return "\(time)"
+            }
+            return "Converting"
         case .queued:
             return "Queued"
         case .completed:

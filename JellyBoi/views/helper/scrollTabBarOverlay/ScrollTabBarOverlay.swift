@@ -79,24 +79,22 @@ struct ScrollTabBarOverlay: View {
                             activeSheetTarget = .main
                         }
                     }
-                    .transition(.move(edge: .bottom).combined(with: .blurReplace))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
 
                     if isVisible {
                         CircleScrollToTopButton(action: action)
-                            .transition(.scale.combined(with: .blurReplace))
+                            .transition(.scale.combined(with: .opacity))
                     }
                 }
                 .padding(.bottom, 8)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { STTButtonHeight = $0 }
-                .transition(.move(edge: .bottom).combined(with: .blurReplace))
+                .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.spring(response: 0.38, dampingFraction: 0.78), value: isVisible)
                 .animation(.spring(response: 0.38, dampingFraction: 0.78), value: downloadManager.activeDownloads.count > 1)
                 .animation(.spring(response: 0.38, dampingFraction: 0.78), value: downloadManager.activeDownloads.count)
             } else if isVisible {
                 ScrollToTopButton(action: action)
                     .padding(.bottom, 8)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { STTButtonHeight = $0 }
-                    .transition(.move(edge: .bottom).combined(with: .blurReplace))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)

@@ -53,7 +53,7 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
     }
 
     public var isConverting: Bool {
-        status == .converting
+        status == .converting || status == .finalizing
     }
 
     public var representativeItem: BaseItemDto? {
@@ -91,10 +91,10 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
         guard !isAllFailed else { return nil }
 
         // Do not show time remaining for the group as a whole when multiple items are queued/active.
-        // Time remaining only shows when the single remaining item is the one downloading.
+        // Time remaining only shows when the single remaining item is the one downloading or converting.
         guard items.count == 1,
               let activeItem = items.first,
-              activeItem.status == .downloading,
+              (activeItem.status == .downloading || activeItem.status == .converting || activeItem.status == .finalizing),
               let time = activeItem.estimatedTimeRemaining, time > 0 else {
             return nil
         }
@@ -134,13 +134,6 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
     public let posterImageData: Data?
     public let posterURL: URL?
     public let isSingleElement: Bool
-
-    public var statusIcon: String { status.icon }
-    public var statusText: String { status.text }
-    public var tintColor: Color { status.tintColor }
-    public var isQueued: Bool { status.isQueued }
-    public var isConverting: Bool { status.isConverting }
-    public var isCompleted: Bool { status.isCompleted }
 
     public init(
         title: String,
@@ -274,7 +267,7 @@ public enum DownloadGrouping {
             let activeItem = singleGroup.activeDownloads.first(where: { $0.status == .downloading || $0.status == .converting || $0.status == .finalizing }) ?? singleGroup.activeDownloads.first
             var subtitleText: String?
             if let activeItem {
-                let status = activeItem.statusDetail ?? (activeItem.status == .downloading ? "Downloading" : activeItem.status.rawValue.capitalized)
+                let status = activeItem.statusDetail ?? (activeItem.status == .downloading ? "Downloading" : (activeItem.status == .converting || activeItem.status == .finalizing) ? "Converting" : activeItem.status.rawValue.capitalized)
                 subtitleText = "\(activeItem.title) • \(status)"
             }
 
@@ -286,7 +279,9 @@ public enum DownloadGrouping {
             } else if singleGroup.isAllQueued {
                 detail = "\(singleGroup.episodesLeft) \(itemWord) queued"
             } else if let timeRemaining = singleGroup.formattedTimeRemaining {
-                detail = "\(singleGroup.episodesLeft) left • \(timeRemaining)"
+                detail = "\(singleGroup.episodesLeft) \(itemWord) left • \(timeRemaining)"
+            } else if singleGroup.isConverting {
+                detail = "\(singleGroup.episodesLeft) \(itemWord) left • Converting"
             } else {
                 detail = "\(singleGroup.episodesLeft) \(itemWord) left"
             }
@@ -309,15 +304,14 @@ public enum DownloadGrouping {
 
         // Case 2: Exactly 1 standalone item (Movie or standalone Episode) and no groups -> 1 element (shows poster)
         if computedGroups.isEmpty && standalones.count == 1, let singleItem = standalones.first {
-            let status = singleItem.statusDetail ?? (singleItem.status == .downloading ? "Downloading" : singleItem.status.rawValue.capitalized)
+            let status = singleItem.statusDetail ?? (singleItem.status == .downloading ? "Downloading" : (singleItem.status == .converting || singleItem.status == .finalizing) ? "Converting" : singleItem.status.rawValue.capitalized)
             var detail: String?
             if singleItem.status == .queued {
                 detail = "Queued"
             } else if singleItem.status == .failed {
                 detail = "Failed"
             } else if let time = singleItem.estimatedTimeRemaining, time > 0 {
-                let cleanTime = singleItem.formattedTimeRemaining.replacingOccurrences(of: " left", with: "")
-                detail = "\(cleanTime) • \(Int(singleItem.progress * 100))%"
+                detail = "\(singleItem.formattedTimeRemaining) • \(Int(singleItem.progress * 100))%"
             } else {
                 detail = "\(status) • \(Int(singleItem.progress * 100))%"
             }
@@ -349,7 +343,7 @@ public enum DownloadGrouping {
         let overallProgress = active.reduce(0.0) { $0 + $1.progress } / Double(max(active.count, 1))
         let globalStatus = DownloadStatus(items: active)
         let isAllQueued = globalStatus == .queued
-        let isConverting = globalStatus == .converting
+        let isConverting = globalStatus == .converting || globalStatus == .finalizing
         let activeItem = active.first(where: { $0.status == .downloading || $0.status == .converting || $0.status == .finalizing }) ?? active.first
         let currentDownloadingTitle: String? = {
             if isAllQueued {

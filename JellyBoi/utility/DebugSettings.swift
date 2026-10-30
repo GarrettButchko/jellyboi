@@ -58,6 +58,9 @@ public final class DebugSettings {
     public var forceStreamFallback = false
     public var simulateRemuxFailure = false
 
+    // MARK: - Performance & Diagnostics
+    public var showFPSCounter = false
+
     public var activeOverrideCount: Int {
         var count = 0
         // Home
@@ -97,6 +100,8 @@ public final class DebugSettings {
         if showPlaybackDebugOverlay { count += 1 }
         if forceStreamFallback { count += 1 }
         if simulateRemuxFailure { count += 1 }
+        // Performance
+        if showFPSCounter { count += 1 }
         return count
     }
 
@@ -142,6 +147,8 @@ public final class DebugSettings {
         showPlaybackDebugOverlay = false
         forceStreamFallback = false
         simulateRemuxFailure = false
+
+        showFPSCounter = false
     }
 }
 
@@ -258,6 +265,15 @@ public struct DebugSettingsView: View {
                 Label("Downloads & Offline Playback", systemImage: "arrow.down.circle")
             } footer: {
                 Text("Displays video/audio track diagnostics on top of the player, forces server streaming even if a local file exists, or tests remuxing error handling.")
+            }
+
+            // MARK: - Performance & Diagnostics
+            Section {
+                Toggle("Show Framerate (FPS) Counter", isOn: $debugSettings.showFPSCounter)
+            } header: {
+                Label("Performance & Diagnostics", systemImage: "gauge.with.dots.needle.bottom.50percent")
+            } footer: {
+                Text("Displays a real-time floating FPS, min FPS, and frame time overlay across all screens for hitch and animation testing.")
             }
 
             // MARK: - Reset All

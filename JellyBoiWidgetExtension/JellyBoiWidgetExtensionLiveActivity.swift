@@ -47,7 +47,7 @@ struct DownloadActivityWidget: Widget {
                             .resizable()
                             .scaledToFit()
                             .frame(width: 14, height: 14)
-                            .foregroundStyle(context.state.status.tintColor)
+                            .foregroundStyle(Color.accentColor)
                     }
                 }
                 .padding(.leading, 6)
@@ -68,7 +68,7 @@ struct DownloadActivityWidget: Widget {
                             .resizable()
                             .scaledToFit()
                             .frame(width: 12, height: 12)
-                            .foregroundStyle(context.state.status.tintColor)
+                            .foregroundStyle(Color.accentColor)
                     } else {
                         Text("\(context.state.progressPercent)%")
                             .font(.system(size: 10, weight: .bold, design: .rounded))
@@ -79,7 +79,7 @@ struct DownloadActivityWidget: Widget {
                 .padding(4)
             }
             .widgetURL(URL(string: "jellyboi://downloads"))
-            .keylineTint(Color.indigo.opacity(0.4))
+            .keylineTint(Color.accentColor.opacity(0.4))
         }
     }
 }
@@ -101,7 +101,7 @@ private struct LockScreenDownloadView: View {
                     .lineLimit(1)
 
                 ProgressView(value: state.status == .queued ? 0.0 : min(max(state.progress, 0.0), 1.0))
-                    .tint(state.status.tintColor)
+                    .tint(Color.accentColor)
 
                 bottomStatusRow
             }
@@ -133,7 +133,7 @@ private struct LockScreenDownloadView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: 20, height: 20)
-                    .foregroundStyle(state.status.tintColor)
+                    .foregroundStyle(Color.accentColor)
             }
             .frame(width: 32, height: 48)
             .overlay(
@@ -223,7 +223,7 @@ private struct PosterView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: max(8, width * 0.60), height: max(8, height * 0.60))
-                .foregroundStyle(status.tintColor)
+                .foregroundStyle(Color.accentColor)
         }
         .frame(width: width, height: height)
         .overlay(
@@ -248,12 +248,12 @@ private struct ProgressRingIndicator: View {
 
             Circle()
                 .trim(from: 0, to: status.isCompleted ? 1.0 : (status.isQueued ? 0.05 : max(0.05, CGFloat(progress))))
-                .stroke(status.tintColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
 
             Image(systemName: status.icon)
                 .font(.system(size: size * 0.45, weight: .bold))
-                .foregroundStyle(status.tintColor)
+                .foregroundStyle(Color.accentColor)
         }
         .frame(width: size, height: size)
     }

@@ -169,10 +169,7 @@ public final class DownloadManager: NSObject {
     public var completedDownloads: [DownloadItem] {
         Array(downloads.values)
             .filter { item in
-                if item.status == .downloading || item.status == .converting || item.status == .finalizing || item.status == .queued || item.status == .failed {
-                    return false
-                }
-                if item.status == .completed { return true }
+                guard item.status == .completed else { return false }
                 return storage.fileExists(for: item.fileName)
             }
             .sorted { ($0.dateCompleted ?? $0.dateAdded) > ($1.dateCompleted ?? $1.dateAdded) }
@@ -237,8 +234,7 @@ public final class DownloadManager: NSObject {
     }
 
     public func isDownloaded(id: String) -> Bool {
-        guard let item = downloads[id] else { return false }
-        if item.status == .completed { return true }
+        guard let item = downloads[id], item.status == .completed else { return false }
         return storage.fileExists(for: item.fileName)
     }
 
@@ -262,7 +258,7 @@ public final class DownloadManager: NSObject {
     }
 
     public func isLocallyPlayable(id: String) -> Bool {
-        guard let record = downloads[id] else { return false }
+        guard let record = downloads[id], record.status == .completed else { return false }
         return storage.isLocallyPlayable(fileName: record.fileName)
     }
 
@@ -409,13 +405,8 @@ public final class DownloadManager: NSObject {
 
             guard item.status == .queued else { continue }
 
-            if storage.fileExists(for: item.fileName) {
-                item.status = .completed
-                item.progress = 1.0
-                downloads[nextID] = item
-                saveIndex()
-                continue
-            }
+            // Clean up any stale or incomplete file with this name before starting fresh
+            storage.deleteFile(fileName: item.fileName)
 
             if let resumeData = resumeDataMap[nextID] {
                 let task = session.downloadTask(withResumeData: resumeData)
@@ -502,6 +493,10 @@ public final class DownloadManager: NSObject {
             resumeDataMap.removeValue(forKey: id)
             retryAttempts.removeValue(forKey: id)
             progressTracker.clear(itemID: id)
+            if let item = downloads[id] {
+                storage.deleteFile(fileName: item.fileName)
+            }
+            storage.deleteAllFiles(for: id)
             downloads.removeValue(forKey: id)
         }
         downloadQueue.removeAll { idSet.contains($0) }
@@ -645,6 +640,7 @@ public final class DownloadManager: NSObject {
                 }
             } catch {
                 try? FileManager.default.removeItem(at: tempLocation)
+                try? FileManager.default.removeItem(at: destinationURL)
                 await MainActor.run {
                     DownloadManager.shared.finishItemFailed(itemID: itemID, error: error)
                 }
@@ -738,6 +734,8 @@ public final class DownloadManager: NSObject {
         if activeDownloadingID == itemID {
             activeDownloadingID = nil
         }
+        storage.deleteFile(fileName: item.fileName)
+        storage.deleteAllFiles(for: itemID)
         saveIndex()
 
         DownloadNotificationManager.shared.notifyItemFailed(
@@ -828,6 +826,8 @@ public final class DownloadManager: NSObject {
         item.estimatedTimeRemaining = nil
         item.statusDetail = nil
         downloads[itemID] = item
+        storage.deleteFile(fileName: item.fileName)
+        storage.deleteAllFiles(for: itemID)
         saveIndex()
 
         DownloadNotificationManager.shared.notifyItemFailed(
@@ -963,17 +963,6 @@ private extension UIImage {
         let resized = renderer.image { _ in
             self.draw(in: CGRect(origin: .zero, size: targetSize))
         }
-
-        var quality: CGFloat = 0.70
-        var data = resized.jpegData(compressionQuality: quality)
-        while let current = data, current.count > 2000, quality > 0.25 {
-            quality -= 0.10
-            data = resized.jpegData(compressionQuality: quality)
-        }
-
-        if let data, data.count <= 2400 {
-            return data
-        }
-        return nil
+        return resized.jpegData(compressionQuality: 0.8)
     }
 }

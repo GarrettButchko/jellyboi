@@ -43,7 +43,7 @@ public final class DownloadActivityCoordinator {
         let progressDiff = abs(presentation.progress - lastProgress)
 
         let isMajorStateChange = (lastProgress < 0) ||
-            presentation.isCompleted ||
+            (presentation.status == .completed) ||
             (presentation.title != lastTitle) ||
             (presentation.itemsRemaining == 0)
 
@@ -83,7 +83,7 @@ public final class DownloadActivityCoordinator {
             Task {
                 await activity.update(content)
             }
-        } else if !presentation.isCompleted && presentation.itemsRemaining > 0 {
+        } else if presentation.status != .completed && presentation.itemsRemaining > 0 {
             // End any stale or inactive activities before starting a new one
             for stale in Activity<DownloadActivityAttributes>.activities where stale.activityState != .active {
                 Task {

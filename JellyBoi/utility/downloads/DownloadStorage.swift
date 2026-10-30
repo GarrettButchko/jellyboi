@@ -98,25 +98,37 @@ public final class DownloadStorage: @unchecked Sendable {
                     }
                 }
 
-                if fileExists {
-                    if item.status != .completed {
-                        item.status = .completed
-                        item.progress = 1.0
-                        item.errorMessage = nil
-                        didHeal = true
+                if item.status == .failed {
+                    // A failed download must never be marked as completed or queued.
+                    // Clean up any stray or corrupt file that may have been left behind.
+                    if fileExists {
+                        try? fileManager.removeItem(at: fileURL)
                     }
                     loaded[item.id] = item
-                } else if item.status == .completed {
                     continue
-                } else {
-                    // Downloads interrupted by app termination or update automatically restart
-                    item.status = .queued
-                    item.errorMessage = nil
-                    item.estimatedTimeRemaining = nil
-                    item.statusDetail = nil
-                    loaded[item.id] = item
-                    didHeal = true
                 }
+
+                if item.status == .completed {
+                    if fileExists {
+                        loaded[item.id] = item
+                    } else {
+                        // Completed download whose file was removed from storage -> drop from index
+                        didHeal = true
+                    }
+                    continue
+                }
+
+                // If it was downloading, converting, finalizing, or queued when app was closed:
+                // Clean up any incomplete file on disk from the interrupted operation
+                if fileExists {
+                    try? fileManager.removeItem(at: fileURL)
+                }
+                item.status = .queued
+                item.errorMessage = nil
+                item.estimatedTimeRemaining = nil
+                item.statusDetail = nil
+                loaded[item.id] = item
+                didHeal = true
             }
 
             let uncompletedItems = loaded.values

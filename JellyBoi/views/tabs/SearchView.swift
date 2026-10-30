@@ -21,8 +21,7 @@ struct SearchView: View {
 
     @State private var selectedItem: BaseItemDto?
     @State private var selectedGenre: String?
-    @State private var scrollOffset: CGFloat = 0
-    @State private var headerHeight: CGFloat = 120
+    @State private var headerHeight: CGFloat = 132
 
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -30,7 +29,33 @@ struct SearchView: View {
         @Bindable var viewModel = viewModel
         NavigationStack {
             ZStack(alignment: .top) {
-                ScrollToTopScrollView(topInset: headerHeight, scrollOffset: $scrollOffset) { proxy in
+                ScrollToTopScrollView(
+                    topInset: headerHeight,
+                    header: { isCollapsed in
+                        TabPageHeader(title: "Search", isCollapsed: isCollapsed, headerHeight: $headerHeight) {
+                            GlassEffectContainer(spacing: 12) {
+                                HStack(spacing: 10) {
+                                    searchField
+
+                                    Button {
+                                        withAnimation(.smooth(duration: 0.25)) {
+                                            viewModel.showFavoritesOnly.toggle()
+                                        }
+                                    } label: {
+                                        Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
+                                            .frame(width: 44, height: 44)
+                                            .glassEffect(.regular.interactive(), in: Circle())
+                                            .contentShape(Circle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                ) { proxy in
                     Group {
                         if viewModel.searchText.isEmpty {
                             genreBrowse
@@ -42,37 +67,11 @@ struct SearchView: View {
                         withAnimation { proxy.scrollToTop() }
                     }
                     .onChange(of: viewModel.showFavoritesOnly) { _, _ in
-                        if scrollOffset > 10 {
-                            withAnimation { proxy.scrollToTop() }
-                        }
+                        withAnimation { proxy.scrollToTop() }
                     }
                 }
                 .animation(.smooth(duration: 0.25), value: viewModel.searchText.isEmpty)
                 .animation(.smooth(duration: 0.25), value: viewModel.showFavoritesOnly)
-
-                // Fixed collapsing header with search field + controls
-                TabPageHeader(title: "Search", scrollOffset: scrollOffset, headerHeight: $headerHeight) {
-                    GlassEffectContainer(spacing: 12) {
-                        HStack(spacing: 10) {
-                            searchField
-
-                            Button {
-                                withAnimation(.smooth(duration: 0.25)) {
-                                    viewModel.showFavoritesOnly.toggle()
-                                }
-                            } label: {
-                                Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
-                                    .frame(width: 44, height: 44)
-                                    .glassEffect(.regular.interactive(), in: Circle())
-                                    .contentShape(Circle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
             }
             // Detail destination — zoom into a media item
             .navigationDestination(item: $selectedItem) { item in

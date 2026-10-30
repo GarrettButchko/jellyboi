@@ -42,16 +42,16 @@ class MediaCardViewModel {
     func watchProgress(in libraryViewModel: LibraryViewModel?) -> Double? {
         if isProgressReset { return nil }
         if isWatched(in: libraryViewModel) { return 1.0 }
-        if item.type == .series {
-            return item.seriesWatchProgress(allEpisodes: libraryViewModel?.episodes ?? [])
+        if item.type == .series, let seriesID = item.id {
+            return item.seriesWatchProgress(allEpisodes: libraryViewModel?.episodes(forSeriesID: seriesID) ?? [])
         }
         return item.watchProgress
     }
 
     func isWatched(in libraryViewModel: LibraryViewModel?) -> Bool {
         if isProgressReset { return false }
-        if item.type == .series {
-            return item.isSeriesWatched(allEpisodes: libraryViewModel?.episodes ?? [])
+        if item.type == .series, let seriesID = item.id {
+            return item.isSeriesWatched(allEpisodes: libraryViewModel?.episodes(forSeriesID: seriesID) ?? [])
         }
         return item.isWatched
     }
@@ -59,9 +59,9 @@ class MediaCardViewModel {
     func isWatching(in libraryViewModel: LibraryViewModel?) -> Bool {
         if isProgressReset { return false }
         if isWatched(in: libraryViewModel) { return false }
-        if item.type == .series {
+        if item.type == .series, let seriesID = item.id {
             return item.isSeriesInProgress(
-                allEpisodes: libraryViewModel?.episodes ?? [],
+                allEpisodes: libraryViewModel?.episodes(forSeriesID: seriesID) ?? [],
                 resumeShows: libraryViewModel?.resumeShows ?? []
             )
         }
