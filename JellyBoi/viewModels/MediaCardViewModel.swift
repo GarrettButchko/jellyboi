@@ -39,9 +39,10 @@ class MediaCardViewModel {
 
     // MARK: - Playback State Resolution
 
-    func watchProgress(in libraryViewModel: LibraryViewModel?) -> Double? {
+    func watchProgress(in libraryViewModel: LibraryViewModel?, isWatched: Bool? = nil) -> Double? {
         if isProgressReset { return nil }
-        if isWatched(in: libraryViewModel) { return 1.0 }
+        let watched = isWatched ?? self.isWatched(in: libraryViewModel)
+        if watched { return 1.0 }
         if item.type == .series, let seriesID = item.id {
             return item.seriesWatchProgress(allEpisodes: libraryViewModel?.episodes(forSeriesID: seriesID) ?? [])
         }
@@ -56,9 +57,10 @@ class MediaCardViewModel {
         return item.isWatched
     }
 
-    func isWatching(in libraryViewModel: LibraryViewModel?) -> Bool {
+    func isWatching(in libraryViewModel: LibraryViewModel?, isWatched: Bool? = nil) -> Bool {
         if isProgressReset { return false }
-        if isWatched(in: libraryViewModel) { return false }
+        let watched = isWatched ?? self.isWatched(in: libraryViewModel)
+        if watched { return false }
         if item.type == .series, let seriesID = item.id {
             return item.isSeriesInProgress(
                 allEpisodes: libraryViewModel?.episodes(forSeriesID: seriesID) ?? [],

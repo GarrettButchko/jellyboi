@@ -153,7 +153,7 @@ class CastCrewViewModel {
         client: JellyfinClient,
         userID: String?
     ) async -> [BaseItemDto] {
-        var params = Paths.GetItemsParameters.personItems(
+        let params = Paths.GetItemsParameters.personItems(
             personID: personID,
             personName: personName,
             userID: userID,

@@ -61,7 +61,7 @@ struct MediaDetailView: View {
                 heroSection
 
                 SkeletonZone(showsContent: detailVM.detailedItem != nil) {
-                    SkeletonDetailContent(
+                    MediaDetailPlaceholderContent(
                         isSeries: displayItem.type == .series,
                         isCollection: displayItem.type == .boxSet,
                         hasSpecialFeatures: (displayItem.specialFeatureCount ?? 0) > 0
@@ -215,3 +215,4 @@ struct MediaDetailView: View {
         }
     }
 }
+

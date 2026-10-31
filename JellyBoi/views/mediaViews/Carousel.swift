@@ -15,8 +15,14 @@ private let carouselCardWidthRatio: CGFloat = 0.8
 private let carouselRestingGap: CGFloat = 0
 private let carouselNeighborScale: CGFloat = 0.90
 private let carouselAutoScrollInterval: TimeInterval = 9
-private let carouselBufferSize: Int = 5
 private let carouselMaxItems: Int = 6
+
+private struct CarouselLoopedItem: Identifiable {
+    let id: Int
+    let item: BaseItemDto
+    let url: URL?
+    let isRealSection: Bool
+}
 
 struct Carousel: View {
     let title: String
@@ -30,14 +36,33 @@ struct Carousel: View {
         .smooth(duration: 0.3)
     }
 
-    @State private var currentIndex: Int? = nil
-    @State private var snappedIndex: Int = 0
+    @State private var currentIndex: Int?
+    @State private var snappedIndex: Int
     @State private var hoveredID: Int? = nil
     @State private var timerResetTrigger: UUID = UUID()
     @State private var isAutoScrolling: Bool = false
+    @State private var isScrolling: Bool = false
     @State private var pendingTeleportTarget: Int? = nil
     @State private var slideStartDate: Date = .now
     @State private var isVisible: Bool = true
+
+    init(
+        title: String,
+        namespace: Namespace.ID,
+        initialIndex: Int? = nil,
+        backdropURL: @escaping (BaseItemDto) -> URL?,
+        onSelect: @escaping (BaseItemDto) -> Void,
+        onSnap: ((Int, BaseItemDto) -> Void)? = nil
+    ) {
+        self.title = title
+        self.namespace = namespace
+        self.backdropURL = backdropURL
+        self.onSelect = onSelect
+        self.onSnap = onSnap
+        let start = initialIndex ?? 0
+        _currentIndex = State(initialValue: initialIndex)
+        _snappedIndex = State(initialValue: start)
+    }
 
     // In-progress movies by most absolute time watched, falling back to Recently Added
     // when the user hasn't started anything yet.
@@ -45,34 +70,46 @@ struct Carousel: View {
         viewModel.carouselItems
     }
 
-    private var buf: Int { min(carouselBufferSize, items.count) }
-
-    private var loopedItems: [(id: Int, item: BaseItemDto)] {
+    private func makeLoopedItems(from items: [BaseItemDto]) -> [CarouselLoopedItem] {
         guard !items.isEmpty else { return [] }
         let count = items.count
-        let b = buf
-        var result: [(id: Int, item: BaseItemDto)] = []
-        for i in 0..<b      { result.append((id: i,             item: items[count - b + i])) }
-        for i in 0..<count  { result.append((id: b + i,          item: items[i])) }
-        for i in 0..<b      { result.append((id: b + count + i,  item: items[i])) }
+        let loopStart = count
+        var result: [CarouselLoopedItem] = []
+        result.reserveCapacity(count * 3)
+
+        // Precompute URLs once per distinct item to avoid repeated URL computation & linear searches
+        let itemURLs = items.map { backdropURL($0) }
+
+        // 3 sets: 0..<count (prefix buffer), count..<2*count (main set), 2*count..<3*count (suffix buffer)
+        for set in 0..<3 {
+            for i in 0..<count {
+                let loopedID = set * count + i
+                let isReal = loopedID >= loopStart && loopedID < loopStart + count
+                result.append(
+                    CarouselLoopedItem(
+                        id: loopedID,
+                        item: items[i],
+                        url: itemURLs[i],
+                        isRealSection: isReal
+                    )
+                )
+            }
+        }
         return result
     }
 
-    private var loopStart: Int { buf }
-
-    private func itemIndex(for loopedID: Int) -> Int {
-        let count = items.count
-        let b = buf
-        if loopedID < b            { return count - b + loopedID }
-        if loopedID >= b + count   { return loopedID - b - count }
-        return loopedID - b
-    }
-
-    private var displayedItemIndex: Int {
-        items.isEmpty ? 0 : itemIndex(for: snappedIndex)
+    private func itemIndex(for loopedID: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        return ((loopedID % count) + count) % count
     }
 
     var body: some View {
+        let currentItems = items
+        let count = currentItems.count
+        let loopedItems = makeLoopedItems(from: currentItems)
+        let loopStart = count
+        let displayedItemIndex = count == 0 ? 0 : itemIndex(for: snappedIndex, count: count)
+
         VStack(spacing: 12) {
             GeometryReader { geometry in
                 let cardWidth = geometry.size.width * carouselCardWidthRatio
@@ -82,40 +119,26 @@ struct Carousel: View {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal) {
                         HStack(spacing: carouselRestingGap) {
-                            ForEach(loopedItems, id: \.id) { (loopedID, item) in
-                                let isRealSection = loopedID >= loopStart && loopedID < loopStart + items.count
-                                let baseScale: CGFloat = snappedIndex == loopedID ? 1.0 : carouselNeighborScale
-                                let isHovered = hoveredID == loopedID
-                                let scale: CGFloat = isHovered ? min(baseScale + 0.05, 1.0) : baseScale
-                                CarouselCard(
-                                    item: item,
-                                    backdropURL: backdropURL,
-                                    width: cardWidth,
-                                    height: cardHeight
-                                )
-                                .id(loopedID)
-                                .scaleEffect(scale)
-                                .brightness(isHovered ? 0.06 : 0)
-                                .animation(.easeInOut(duration: 0.2), value: hoveredID)
-                                .matchedTransitionSource(
-                                    id: isRealSection ? AnyHashable(item) : AnyHashable(loopedID),
-                                    in: namespace
+                            ForEach(loopedItems) { looped in
+                                cardItem(
+                                    looped: looped,
+                                    cardWidth: cardWidth,
+                                    cardHeight: cardHeight
                                 )
                                 .onTapGesture {
-                                    if currentIndex == loopedID {
-                                        onSelect(item)
+                                    if currentIndex == looped.id {
+                                        onSelect(looped.item)
                                     } else {
                                         isAutoScrolling = false
-                                        
-                                        withAnimation(.easeInOut(duration: 0.3)) {
-                                            currentIndex = loopedID
-                                            proxy.scrollTo(loopedID, anchor: .center)
+                                        withAnimation(.smooth(duration: 0.35)) {
+                                            currentIndex = looped.id
+                                            proxy.scrollTo(looped.id, anchor: .center)
                                         }
                                     }
                                 }
                                 .onHover { hovering in
                                     withAnimation(.easeInOut(duration: 0.2)) {
-                                        hoveredID = hovering ? loopedID : nil
+                                        hoveredID = hovering ? looped.id : nil
                                     }
                                 }
                             }
@@ -128,7 +151,19 @@ struct Carousel: View {
                     .scrollIndicators(.hidden)
                     .frame(height: cardHeight)
                     .onAppear {
-                        guard !items.isEmpty else { return }
+                        guard count > 0 else { return }
+                        let target = viewModel.carouselSnappedIndex ?? loopStart
+                        let validTarget = (0..<loopedItems.count).contains(target) ? target : loopStart
+                        if currentIndex != validTarget {
+                            currentIndex = validTarget
+                            snappedIndex = validTarget
+                        }
+                        proxy.scrollTo(validTarget, anchor: .center)
+                    }
+                    .task {
+                        // Guarantee scroll position is centered at loopStart after initial layout pass
+                        guard count > 0 else { return }
+                        try? await Task.sleep(for: .milliseconds(30))
                         let target = viewModel.carouselSnappedIndex ?? loopStart
                         let validTarget = (0..<loopedItems.count).contains(target) ? target : loopStart
                         if currentIndex != validTarget {
@@ -139,32 +174,28 @@ struct Carousel: View {
                     }
                     .onChange(of: currentIndex) { _, newValue in
                         guard let newValue, newValue != snappedIndex else { return }
-
-                        let count = items.count
-                        let b = buf
                         guard count > 0 else { return }
 
-                        withAnimation(indexAnimation) {
-                            snappedIndex = newValue
-                        }
-                        viewModel.carouselSnappedIndex = newValue
-                        onSnap?(itemIndex(for: newValue), items[itemIndex(for: newValue)])
+                        snappedIndex = newValue
+                        slideStartDate = .now
 
-                        if isAutoScrolling {
-                            isAutoScrolling = false
-                        } else {
-                            timerResetTrigger = UUID()
-                        }
-
-                        if newValue < b {
-                            pendingTeleportTarget = count + newValue
-                        } else if newValue >= b + count {
-                            pendingTeleportTarget = newValue - count
+                        if newValue < count {
+                            pendingTeleportTarget = count + ((newValue % count) + count) % count
+                        } else if newValue >= 2 * count {
+                            pendingTeleportTarget = count + (newValue % count)
                         } else {
                             pendingTeleportTarget = nil
                         }
                     }
                     .onScrollPhaseChange { _, newPhase in
+                        isScrolling = newPhase.isScrolling
+                        if newPhase == .idle {
+                            isAutoScrolling = false
+                            viewModel.carouselSnappedIndex = snappedIndex
+                            onSnap?(itemIndex(for: snappedIndex, count: count), currentItems[itemIndex(for: snappedIndex, count: count)])
+                            timerResetTrigger = UUID()
+                            slideStartDate = .now
+                        }
                         guard newPhase == .idle, let target = pendingTeleportTarget else { return }
                         pendingTeleportTarget = nil
                         snappedIndex = target
@@ -172,9 +203,9 @@ struct Carousel: View {
                         viewModel.carouselSnappedIndex = target
                         proxy.scrollTo(target, anchor: .center)
                     }
-                    .onChange(of: items.count) { _, newCount in
+                    .onChange(of: count) { _, newCount in
                         guard newCount > 0 else { return }
-                        let start = min(carouselBufferSize, newCount)
+                        let start = newCount
                         pendingTeleportTarget = nil
                         snappedIndex = start
                         currentIndex = start
@@ -191,15 +222,22 @@ struct Carousel: View {
                             }
                             try? await Task.sleep(for: .seconds(carouselAutoScrollInterval))
                             guard !Task.isCancelled else { break }
-                            guard items.count > 1 else { continue }
+                            guard currentItems.count > 1 else { continue }
                             isAutoScrolling = true
                             let nextIndex = snappedIndex + 1
-                            currentIndex = nextIndex //Always Keep this for carousel
-                            withAnimation(.easeInOut(duration: 0.4)) {
+                            slideStartDate = .now
+                            currentIndex = nextIndex
+                            withAnimation(.smooth(duration: 0.45)) {
                                 proxy.scrollTo(nextIndex, anchor: .center)
                             }
-                            // Restart progress fill for the next slide
-                            slideStartDate = .now
+                            // Allow scroll animation to finish before snapping backdrop
+                            try? await Task.sleep(for: .milliseconds(460))
+                            guard !Task.isCancelled else { break }
+                            isAutoScrolling = false
+                            let snappedItemIdx = itemIndex(for: nextIndex, count: count)
+                            if snappedItemIdx < currentItems.count {
+                                onSnap?(snappedItemIdx, currentItems[snappedItemIdx])
+                            }
                         }
                     }
                 }
@@ -207,12 +245,12 @@ struct Carousel: View {
             .aspectRatio(16 / (9 * carouselCardWidthRatio), contentMode: .fit)
             .frame(maxWidth: .infinity)
 
-            if !items.isEmpty {
+            if !currentItems.isEmpty {
                 CarouselPageIndicator(
-                    count: items.count,
+                    count: count,
                     currentIndex: displayedItemIndex,
                     startDate: slideStartDate,
-                    isPaused: !isVisible
+                    isPaused: isScrolling || isAutoScrolling || !isVisible
                 )
             }
         }
@@ -225,13 +263,62 @@ struct Carousel: View {
         }
         .sensoryFeedback(.selection, trigger: displayedItemIndex)
         .onAppear {
-            let urls = items.compactMap { backdropURL($0) }
+            let urls = currentItems.compactMap { backdropURL($0) }
             CarouselImageMemoryCache.shared.preloadImages(for: urls)
         }
-        .onChange(of: items.compactMap(\.id)) { _, _ in
-            let urls = items.compactMap { backdropURL($0) }
+        .onChange(of: currentItems.compactMap(\.id)) { _, newIDs in
+            let urls = currentItems.compactMap { backdropURL($0) }
             CarouselImageMemoryCache.shared.preloadImages(for: urls)
+            if !newIDs.isEmpty {
+                let validTarget = (0..<loopedItems.count).contains(snappedIndex) ? snappedIndex : loopStart
+                if snappedIndex != validTarget {
+                    snappedIndex = validTarget
+                    currentIndex = validTarget
+                    viewModel.carouselSnappedIndex = validTarget
+                    pendingTeleportTarget = nil
+                }
+            }
         }
+    }
+
+    @ViewBuilder
+    private func cardItem(
+        looped: CarouselLoopedItem,
+        cardWidth: CGFloat,
+        cardHeight: CGFloat
+    ) -> some View {
+        let isHovered = hoveredID == looped.id
+
+        Group {
+            if looped.id == snappedIndex {
+                CarouselCard(
+                    item: looped.item,
+                    url: looped.url,
+                    width: cardWidth,
+                    height: cardHeight
+                )
+                .matchedTransitionSource(
+                    id: AnyHashable(looped.item),
+                    in: namespace
+                )
+            } else {
+                CarouselCard(
+                    item: looped.item,
+                    url: looped.url,
+                    width: cardWidth,
+                    height: cardHeight
+                )
+            }
+        }
+        .id(looped.id)
+        .scrollTransition(.interactive, axis: .horizontal) { content, phase in
+            let progress = min(max(abs(phase.value), 0), 1)
+            let scale = 1.0 - progress * (1.0 - carouselNeighborScale)
+            return content.scaleEffect(scale)
+        }
+        .scaleEffect(isHovered ? 1.05 : 1.0)
+        .brightness(isHovered ? 0.06 : 0)
+        .animation(.easeInOut(duration: 0.2), value: hoveredID)
     }
 }
 
@@ -246,34 +333,58 @@ private struct CarouselPageIndicator: View {
     private let dotSize: CGFloat = 6
     private let activePillWidth: CGFloat = 20
 
+    @State private var previousIndex: Int = 0
+
+    private var isWrapTransition: Bool {
+        guard count > 1 else { return false }
+        return (previousIndex == count - 1 && currentIndex == 0) ||
+               (previousIndex == 0 && currentIndex == count - 1)
+    }
+
+    private var indicatorAnimation: Animation {
+        if isWrapTransition {
+            return .spring(response: 0.44, dampingFraction: 0.78)
+        } else {
+            return .spring(response: 0.36, dampingFraction: 0.74)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 5) {
             ForEach(0..<count, id: \.self) { i in
                 let isActive = i == currentIndex
                 let width = isActive ? activePillWidth : dotSize
+
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color.mainOpp.opacity(0.3))
                         .frame(width: width, height: dotSize)
-                    if isActive {
-                        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: isPaused)) { context in
-                            let progress = min(max(context.date.timeIntervalSince(startDate) / carouselAutoScrollInterval, 0), 1)
-                            Canvas { ctx, size in
-                                let trackRect = CGRect(origin: .zero, size: size)
-                                let radius = size.height / 2
-                                ctx.fill(Path(roundedRect: trackRect, cornerRadius: radius), with: .color(Color.mainOpp.opacity(0.3)))
-                                guard progress > 0 else { return }
-                                let fillRect = CGRect(x: 0, y: 0, width: size.width * progress, height: size.height)
-                                ctx.clip(to: Path(roundedRect: fillRect, cornerRadius: radius))
-                                ctx.fill(Path(roundedRect: trackRect, cornerRadius: radius), with: .color(Color.mainOpp))
-                            }
+
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: isPaused || !isActive)) { context in
+                        let elapsed = max(context.date.timeIntervalSince(startDate), 0)
+                        let progress = isActive ? min(elapsed / carouselAutoScrollInterval, 1) : 0
+                        Canvas { ctx, size in
+                            guard progress > 0 else { return }
+                            let trackRect = CGRect(origin: .zero, size: size)
+                            let radius = size.height / 2
+                            let fillRect = CGRect(x: 0, y: 0, width: size.width * progress, height: size.height)
+                            ctx.clip(to: Path(roundedRect: fillRect, cornerRadius: radius))
+                            ctx.fill(Path(roundedRect: trackRect, cornerRadius: radius), with: .color(Color.mainOpp))
                         }
-                        .frame(width: width, height: dotSize)
                     }
+                    .frame(width: width, height: dotSize)
+                    .opacity(isActive ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.2), value: isActive)
                 }
                 .frame(width: width, height: dotSize)
-                .animation(.smooth(duration: 0.25), value: isActive)
             }
+        }
+        .animation(indicatorAnimation, value: currentIndex)
+        .onAppear {
+            previousIndex = currentIndex
+        }
+        .onChange(of: currentIndex) { oldVal, _ in
+            previousIndex = oldVal
         }
     }
 }
@@ -282,7 +393,7 @@ private struct CarouselPageIndicator: View {
 
 private struct CarouselCard: View {
     let item: BaseItemDto
-    let backdropURL: (BaseItemDto) -> URL?
+    let url: URL?
     let width: CGFloat
     let height: CGFloat
 
@@ -295,15 +406,15 @@ private struct CarouselCard: View {
     }
 
     var body: some View {
-        let url = backdropURL(item)
-        let initialCached = url.flatMap { CarouselImageMemoryCache.shared.image(for: $0) }
-        let currentImage = displayImage ?? initialCached
+        let cachedImage = url.flatMap { CarouselImageMemoryCache.shared.image(for: $0) }
+        let currentImage = displayImage ?? cachedImage
 
         ZStack(alignment: .bottomTrailing) {
+            placeholder
+
             if let currentImage {
                 Image(uiImage: currentImage)
                     .resizable()
-                    .interpolation(.high)
                     .scaledToFill()
             } else if let url {
                 WebImage(
@@ -313,42 +424,52 @@ private struct CarouselCard: View {
                     if let image = phase.image {
                         image
                             .resizable()
-                            .interpolation(.high)
                             .scaledToFill()
-                    } else {
-                        Color.sub
+                            .transition(.fade(duration: 0.25))
                     }
                 }
                 .onSuccess { image, _, _ in
                     displayImage = image
                     CarouselImageMemoryCache.shared.store(image, for: url)
                 }
-            } else {
-                Color.sub
             }
 
-            if let progress = watchProgress {
-                GlassProgressBar(progress: progress, label: item.timeRemainingFormatted)
-                    .padding(10)
+            VStack(alignment: .trailing, spacing: 6) {
+                if let progress = watchProgress {
+                    GlassProgressBar(progress: progress, label: item.timeRemainingFormatted)
+                }
+                if let episodeNumber = item.formattedEpisodeNumber {
+                    episodeBadge(text: episodeNumber)
+                }
             }
+            .padding(10)
         }
         .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous))
-        .clipped()
-        .task(id: url) {
-            guard let url else { return }
-            if let cached = CarouselImageMemoryCache.shared.image(for: url) {
-                if displayImage !== cached {
-                    displayImage = cached
-                }
-            } else {
-                CarouselImageMemoryCache.shared.loadImage(for: url) { image in
-                    if let image {
-                        displayImage = image
-                    }
-                }
+        .compositingGroup()
+    }
+
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
+            .fill(Color.sub)
+            .overlay {
+                Image("Jellyboi")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 75, height: 75)
+                    .foregroundStyle(Color.mainOpp.opacity(0.05))
+                    .rotationEffect(.degrees(45))
             }
-        }
+    }
+
+    private func episodeBadge(text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold, design: .rounded))
+            .foregroundStyle(Color.mainOpp)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
     }
 }
 
@@ -371,10 +492,6 @@ final class CarouselImageMemoryCache {
             memoryCache[url] = img
             return img
         }
-        if let img = SDImageCache.shared.imageFromDiskCache(forKey: key) {
-            memoryCache[url] = img
-            return img
-        }
         return nil
     }
 
@@ -384,8 +501,35 @@ final class CarouselImageMemoryCache {
 
     func preloadImages(for urls: [URL]) {
         for url in urls {
-            if image(for: url) != nil { continue }
-            loadImage(for: url) { _ in }
+            if memoryCache[url] != nil { continue }
+            let key = SDWebImageManager.shared.cacheKey(for: url)
+            if let img = SDImageCache.shared.imageFromMemoryCache(forKey: key) {
+                memoryCache[url] = img
+                continue
+            }
+            // Asynchronously check disk cache and network without blocking main thread
+            SDImageCache.shared.queryImage(
+                forKey: key,
+                options: [],
+                context: nil
+            ) { [weak self] image, _, _ in
+                if let image {
+                    Task { @MainActor [weak self] in
+                        self?.store(image, for: url)
+                    }
+                } else {
+                    SDWebImageManager.shared.loadImage(
+                        with: url,
+                        options: [.highPriority],
+                        progress: nil
+                    ) { image, _, _, _, finished, _ in
+                        guard let image, finished else { return }
+                        Task { @MainActor [weak self] in
+                            self?.store(image, for: url)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -395,16 +539,63 @@ final class CarouselImageMemoryCache {
             return
         }
 
-        SDWebImageManager.shared.loadImage(
-            with: url,
-            options: [.avoidAutoSetImage, .highPriority],
-            progress: nil
-        ) { [weak self] image, _, _, _, finished, _ in
-            guard let image, finished else { return }
-            Task { @MainActor [weak self] in
-                self?.store(image, for: url)
-                completion?(image)
+        let key = SDWebImageManager.shared.cacheKey(for: url)
+        SDImageCache.shared.queryImage(
+            forKey: key,
+            options: [],
+            context: nil
+        ) { [weak self] image, _, _ in
+            if let image {
+                Task { @MainActor [weak self] in
+                    self?.store(image, for: url)
+                    completion?(image)
+                }
+            } else {
+                SDWebImageManager.shared.loadImage(
+                    with: url,
+                    options: [.avoidAutoSetImage, .highPriority],
+                    progress: nil
+                ) { image, _, _, _, finished, _ in
+                    guard let image, finished else { return }
+                    Task { @MainActor [weak self] in
+                        self?.store(image, for: url)
+                        completion?(image)
+                    }
+                }
             }
+        }
+    }
+}
+
+// MARK: - Carousel Skeleton Placeholder
+
+extension Carousel {
+    /// Placeholder skeleton view matching the exact dimensions and layout of the hero carousel.
+    struct Placeholder: View {
+        var body: some View {
+            VStack(spacing: 12) {
+                GeometryReader { geometry in
+                    let w = geometry.size.width
+                    let cardWidth = w > 0 ? w * carouselCardWidthRatio : 300
+                    let cardHeight = cardWidth * 9 / 16
+                    SkeletonBlock(cornerRadius: 20)
+                        .frame(width: cardWidth, height: cardHeight)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .aspectRatio(16 / (9 * carouselCardWidthRatio), contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .transaction { $0.animation = nil }
+
+                HStack(spacing: 5) {
+                    SkeletonBlock(cornerRadius: 3).frame(width: 20, height: 6)
+                    SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                    SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                    SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                    SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                    SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                }
+            }
+            .skeleton()
         }
     }
 }

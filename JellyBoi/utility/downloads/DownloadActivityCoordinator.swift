@@ -71,9 +71,19 @@ public final class DownloadActivityCoordinator {
 
         // Hard payload size guard: verify encoded ContentState is well below the 4096-byte ActivityKit limit
         if let encoded = try? JSONEncoder().encode(state), encoded.count > 3800 {
-            print("[DownloadActivityCoordinator] Warning: ContentState payload (\(encoded.count) bytes) is too large. Stripping poster data.")
-            state.posterImageData = nil
-            lastPosterData = nil
+            if let posterData = state.posterImageData,
+               let image = UIImage(data: posterData),
+               let smallerData = image.liveActivityThumbnailData(maxDimension: 44),
+               smallerData.count < posterData.count {
+                state.posterImageData = smallerData
+                lastPosterData = smallerData
+            }
+
+            if let reEncoded = try? JSONEncoder().encode(state), reEncoded.count > 3800 {
+                print("[DownloadActivityCoordinator] Warning: ContentState payload (\(reEncoded.count) bytes) is too large. Stripping poster data.")
+                state.posterImageData = nil
+                lastPosterData = nil
+            }
         }
 
         let content = ActivityContent(state: state, staleDate: nil)
@@ -125,7 +135,11 @@ public final class DownloadActivityCoordinator {
         guard let activity = activeActivity else { return }
 
         let finalState = DownloadActivityAttributes.ContentState(
+            stateKind: .multiple,
             title: finalTitle,
+            subtitleLeftText: "100%",
+            subtitleLeftIcon: nil,
+            subtitleRightText: nil,
             subtitle: "All items ready offline",
             detailText: "100%",
             progress: 1.0,

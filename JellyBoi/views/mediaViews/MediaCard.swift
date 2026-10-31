@@ -14,7 +14,7 @@ import JellyfinAPI
 struct MediaCard: View {
     let item: BaseItemDto
     let posterURL: URL?
-    let namespace: Namespace.ID
+    let namespace: Namespace.ID?
     let onSelect: () -> Void
     var zoomID: AnyHashable? = nil
     var imageAspectRatio: CGFloat? = nil
@@ -23,32 +23,48 @@ struct MediaCard: View {
     var onResetProgress: (() -> Void)? = nil
 
     @Environment(ServerViewModel.self) private var serverViewModel: ServerViewModel?
-    @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
     @Environment(PlaybackManager.self) private var playbackManager: PlaybackManager?
+    @Environment(\.redactionReasons) private var redactionReasons
 
-    @State private var viewModel: MediaCardViewModel
+    @State private var isHovered: Bool = false
+    @State private var isProgressReset: Bool = false
+    @State private var isFavoriteOverride: Bool? = nil
 
-    init(
-        item: BaseItemDto,
-        posterURL: URL?,
-        namespace: Namespace.ID,
-        onSelect: @escaping () -> Void,
-        zoomID: AnyHashable? = nil,
-        imageAspectRatio: CGFloat? = nil,
-        onContinueWatching: (() -> Void)? = nil,
-        onStartFromBeginning: (() -> Void)? = nil,
-        onResetProgress: (() -> Void)? = nil
-    ) {
-        self.item = item
-        self.posterURL = posterURL
-        self.namespace = namespace
-        self.onSelect = onSelect
-        self.zoomID = zoomID
-        self.imageAspectRatio = imageAspectRatio
-        self.onContinueWatching = onContinueWatching
-        self.onStartFromBeginning = onStartFromBeginning
-        self.onResetProgress = onResetProgress
-        _viewModel = State(initialValue: MediaCardViewModel(item: item))
+    private var isFavorite: Bool {
+        isFavoriteOverride ?? item.isFavorite
+    }
+
+    private var isRedacted: Bool {
+        redactionReasons.contains(.placeholder)
+    }
+
+    private var effectiveAspectRatio: CGFloat {
+        imageAspectRatio ?? item.imageAspectRatio
+    }
+
+    private var isWatched: Bool {
+        guard !isProgressReset else { return false }
+        if item.type == .series {
+            return item.isSeriesWatched()
+        }
+        return item.isWatched
+    }
+
+    private var isWatching: Bool {
+        guard !isProgressReset, !isWatched else { return false }
+        if item.type == .series {
+            return item.isSeriesInProgress()
+        }
+        return item.isInProgress
+    }
+
+    private var watchProgress: Double? {
+        guard !isProgressReset else { return nil }
+        if isWatched { return 1.0 }
+        if item.type == .series {
+            return item.seriesWatchProgress()
+        }
+        return item.watchProgress
     }
 
     private func playAction(fromBeginning: Bool) {
@@ -57,22 +73,52 @@ struct MediaCard: View {
                 item: item,
                 fromBeginning: fromBeginning,
                 client: serverViewModel?.client,
-                userID: serverViewModel?.currentUser?.id,
-                libraryViewModel: libraryViewModel
+                userID: serverViewModel?.currentUser?.id
             )
         } else {
             onSelect()
         }
     }
 
-    var body: some View {
-        let isWatched = viewModel.isWatched(in: libraryViewModel)
-        let isWatching = viewModel.isWatching(in: libraryViewModel)
-        let watchProgress = viewModel.watchProgress(in: libraryViewModel)
+    private func handleToggleFavorite() {
+        guard let serverViewModel, let itemID = item.id else { return }
+        let currentFavorite = isFavorite
+        let newFavorite = !currentFavorite
+        isFavoriteOverride = newFavorite
+        Task {
+            let result = await serverViewModel.setFavorite(newFavorite, forItemID: itemID)
+            if result == nil {
+                isFavoriteOverride = currentFavorite
+            }
+        }
+    }
 
-        Button(action: onSelect) {
+    private func handleResetProgress() {
+        withAnimation(.smooth) {
+            isProgressReset = true
+        }
+        Task {
+            await serverViewModel?.resetProgress(for: item) {
+                onResetProgress?()
+            }
+        }
+    }
+
+    var body: some View {
+        if isRedacted {
             posterImage
-                .aspectRatio(viewModel.cardAspectRatio(overrideRatio: imageAspectRatio), contentMode: .fit)
+                .aspectRatio(effectiveAspectRatio, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            cardButton(isWatched: isWatched, isWatching: isWatching, watchProgress: watchProgress)
+        }
+    }
+
+    @ViewBuilder
+    private func cardButton(isWatched: Bool, isWatching: Bool, watchProgress: Double?) -> some View {
+        let baseButton = Button(action: onSelect) {
+            posterImage
+                .aspectRatio(effectiveAspectRatio, contentMode: .fit)
                 .overlay(alignment: .bottomTrailing) {
                     VStack(alignment: .trailing, spacing: 6) {
                         if let progress = watchProgress, !isWatched && isWatching && Int(progress * 100) > 0 {
@@ -124,10 +170,7 @@ struct MediaCard: View {
                     }
 
                     Button(role: .destructive) {
-                        viewModel.handleResetProgress(
-                            serverViewModel: serverViewModel,
-                            onResetProgress: onResetProgress
-                        )
+                        handleResetProgress()
                     } label: {
                         Label("Reset Progress", systemImage: "xmark.circle")
                     }
@@ -143,10 +186,7 @@ struct MediaCard: View {
                     }
 
                     Button(role: .destructive) {
-                        viewModel.handleResetProgress(
-                            serverViewModel: serverViewModel,
-                            onResetProgress: onResetProgress
-                        )
+                        handleResetProgress()
                     } label: {
                         Label("Reset Progress", systemImage: "xmark.circle")
                     }
@@ -163,11 +203,11 @@ struct MediaCard: View {
                 }
 
                 Button {
-                    viewModel.handleToggleFavorite(serverViewModel: serverViewModel)
+                    handleToggleFavorite()
                 } label: {
                     Label(
-                        viewModel.item.isFavorite ? "Unfavorite" : "Favorite",
-                        systemImage: viewModel.item.isFavorite ? "star.fill" : "star"
+                        item.isFavorite ? "Unfavorite" : "Favorite",
+                        systemImage: item.isFavorite ? "star.fill" : "star"
                     )
                 }
             } header: {
@@ -177,13 +217,16 @@ struct MediaCard: View {
                 }
             }
         }
-        .scaleEffect(viewModel.isHovered ? 1.04 : 1.0)
-        .brightness(viewModel.isHovered ? 0.06 : 0)
-        .animation(.easeInOut(duration: 0.2), value: viewModel.isHovered)
-        .onHover { viewModel.isHovered = $0 }
-        .matchedTransitionSource(id: zoomID ?? AnyHashable(item), in: namespace)
-        .onChange(of: item) { _, newItem in
-            viewModel.updateItem(newItem)
+        .scaleEffect(isHovered ? 1.04 : 1.0)
+        .brightness(isHovered ? 0.06 : 0)
+        .animation(.easeInOut(duration: 0.2), value: isHovered)
+        .onHover { isHovered = $0 }
+
+        if let namespace {
+            baseButton
+                .matchedTransitionSource(id: zoomID ?? AnyHashable(item), in: namespace)
+        } else {
+            baseButton
         }
     }
 
@@ -198,35 +241,42 @@ struct MediaCard: View {
 
     @ViewBuilder
     private var posterImage: some View {
-        if let url = posterURL {
-            WebImage(
-                url: url,
-                transaction: Transaction(animation: .easeInOut(duration: 0.25))
-            ) { phase in
-                if let image = phase.image {
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .transition(.fade(duration: 0.25))
-                } else {
-                    placeholder
+        ZStack {
+            if isRedacted {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.mainOpp.opacity(0.08))
+            } else {
+                placeholder
+
+                if let url = posterURL {
+                    WebImage(
+                        url: url,
+                        transaction: Transaction(animation: .easeInOut(duration: 0.25))
+                    ) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .transition(.fade(duration: 0.25))
+                        }
+                    }
                 }
             }
-            .frame(maxWidth: .infinity)
-        } else {
-            placeholder
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var placeholder: some View {
-        Color.sub
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(Color.sub)
             .overlay {
                 Image("Jellyboi")
+                    .renderingMode(.template)
                     .resizable()
                     .scaledToFit()
                     .frame(width: 50, height: 50)
-                    .opacity(0.05)
-                    .rotationEffect(Angle(degrees: 45))
+                    .foregroundStyle(Color.mainOpp.opacity(0.05))
+                    .rotationEffect(.degrees(45))
             }
     }
 }

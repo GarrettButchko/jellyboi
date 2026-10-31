@@ -79,7 +79,7 @@ struct CastCrewView: View {
                             .foregroundStyle(Color.mainOpp)
                             .padding(.horizontal, 16)
 
-                        SkeletonMediaGrid()
+                        MediaGrid.placeholder(namespace: mediaZoomTransition)
                     }
                 } else if viewModel.mediaItems.isEmpty && viewModel.episodeItems.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -108,10 +108,11 @@ struct CastCrewView: View {
                                     MediaCard(
                                         item: item,
                                         posterURL: item.posterURL(client: serverViewModel.client),
-                                        namespace: mediaZoomTransition
-                                    ) {
-                                        selectedMediaItem = item
-                                    }
+                                        namespace: mediaZoomTransition,
+                                        onSelect: {
+                                            selectedMediaItem = item
+                                        }
+                                    )
                                 }
                             }
                             .padding(.horizontal, 16)

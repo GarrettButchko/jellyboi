@@ -107,7 +107,7 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
         if item.type == .episode {
             var label = ""
             if let s = item.parentIndexNumber, let e = item.indexNumber {
-                label = "S\(s):E\(e)"
+                label = "S\(s) E\(e)"
             }
             if let name = item.name, !name.isEmpty {
                 label = label.isEmpty ? name : "\(label) • \(name)"
@@ -117,9 +117,9 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
         return item.name ?? "Movie"
     }
 
-    public var formattedTimeRemaining: String {
-        guard let seconds = estimatedTimeRemaining, seconds.isFinite, seconds > 0 else {
-            return "Estimating..."
+    public static func formattedRemainingTime(from seconds: TimeInterval?) -> String? {
+        guard let seconds, seconds.isFinite, seconds > 0 else {
+            return nil
         }
 
         let totalSeconds = Int(seconds)
@@ -139,6 +139,10 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
         } else {
             return "\(max(secs, 1)) sec left"
         }
+    }
+
+    public var formattedTimeRemaining: String {
+        Self.formattedRemainingTime(from: estimatedTimeRemaining) ?? "Estimating..."
     }
 
     public func statusIcon(isCompleted: Bool = false) -> String {
@@ -177,15 +181,13 @@ public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
 
         switch status {
         case .downloading:
-            let time = formattedTimeRemaining
-            if !time.isEmpty && time != "Estimating..." {
-                return "\(time)"
+            if let time = Self.formattedRemainingTime(from: estimatedTimeRemaining) {
+                return time
             }
             return "Downloading"
         case .converting, .finalizing:
-            let time = formattedTimeRemaining
-            if !time.isEmpty && time != "Estimating..." {
-                return "\(time)"
+            if let time = Self.formattedRemainingTime(from: estimatedTimeRemaining) {
+                return time
             }
             return "Converting"
         case .queued:

@@ -11,7 +11,7 @@ import JellyfinAPI
 
 // MARK: - Paths.GetItemsParameters Presets & Builders
 
-extension Paths.GetItemsParameters {
+nonisolated extension Paths.GetItemsParameters {
 
     /// Default standard fields requested across JellyBoi for card and detail display.
     public static var standardFields: [ItemFields] {
@@ -273,7 +273,7 @@ extension Paths.GetItemsParameters {
 
 // MARK: - Paths.GetNextUpParameters Presets
 
-extension Paths.GetNextUpParameters {
+nonisolated extension Paths.GetNextUpParameters {
     public static func standard(userID: String? = nil, limit: Int = 20) -> Paths.GetNextUpParameters {
         Paths.GetNextUpParameters(userID: userID, limit: limit, enableResumable: true)
     }
@@ -281,7 +281,7 @@ extension Paths.GetNextUpParameters {
 
 // MARK: - Paths.GetSeasonsParameters Presets
 
-extension Paths.GetSeasonsParameters {
+nonisolated extension Paths.GetSeasonsParameters {
     public static func standard(
         userID: String?,
         fields: [ItemFields] = [.primaryImageAspectRatio]
@@ -297,7 +297,7 @@ extension Paths.GetSeasonsParameters {
 
 // MARK: - Paths.GetEpisodesParameters Presets
 
-extension Paths.GetEpisodesParameters {
+nonisolated extension Paths.GetEpisodesParameters {
     /// Preset for fetching all episodes of a series across all seasons.
     public static func series(
         userID: String?,
@@ -329,7 +329,7 @@ extension Paths.GetEpisodesParameters {
 
 // MARK: - Paths.GetItemImageParameters Presets
 
-extension Paths.GetItemImageParameters {
+nonisolated extension Paths.GetItemImageParameters {
     /// Standard card poster artwork (e.g., library grids, download cards).
     public static func poster(
         maxWidth: Int = 280,
@@ -378,7 +378,7 @@ extension Paths.GetItemImageParameters {
 
 // MARK: - Paths.GetPersonImageParameters Presets
 
-extension Paths.GetPersonImageParameters {
+nonisolated extension Paths.GetPersonImageParameters {
     public static func standard(
         maxWidth: Int = 280,
         quality: Int = 70,
@@ -390,7 +390,7 @@ extension Paths.GetPersonImageParameters {
 
 // MARK: - Paths.GetUserImageParameters Presets
 
-extension Paths.GetUserImageParameters {
+nonisolated extension Paths.GetUserImageParameters {
     public static func standard(
         userID: String?,
         tag: String? = nil
@@ -401,7 +401,7 @@ extension Paths.GetUserImageParameters {
 
 // MARK: - Paths.GetSimilarItemsParameters Presets
 
-extension Paths.GetSimilarItemsParameters {
+nonisolated extension Paths.GetSimilarItemsParameters {
     public static func standard(
         userID: String?,
         limit: Int = 12,
@@ -413,7 +413,7 @@ extension Paths.GetSimilarItemsParameters {
 
 // MARK: - Paths.GetVideoStreamParameters Presets
 
-extension Paths.GetVideoStreamParameters {
+nonisolated extension Paths.GetVideoStreamParameters {
     /// Static direct-play stream parameters.
     public static func directStatic(
         sessionID: String?,
@@ -429,7 +429,7 @@ extension Paths.GetVideoStreamParameters {
 
 // MARK: - Paths.GetPostedPlaybackInfoParameters Presets
 
-extension Paths.GetPostedPlaybackInfoParameters {
+nonisolated extension Paths.GetPostedPlaybackInfoParameters {
     public static func standard(
         userID: String?,
         maxStreamingBitrate: Int? = nil

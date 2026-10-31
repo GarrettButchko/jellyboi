@@ -70,22 +70,17 @@ struct TabsView: View {
             playbackManager.client = serverViewModel.client
             playbackManager.userID = serverViewModel.currentUser?.id
             playbackManager.libraryViewModel = libraryViewModel
-            if let client = serverViewModel.client {
+            if libraryViewModel.isLibraryEmpty, let client = serverViewModel.client {
                 await libraryViewModel.load(using: client, userID: serverViewModel.currentUser?.id)
             }
         }
         .onAppear {
             syncViewModels()
         }
-        .onChange(of: serverViewModel.client != nil) { _, hasClient in
+        .onChange(of: serverViewModel.client != nil) { _, _ in
             syncViewModels()
             playbackManager.client = serverViewModel.client
             playbackManager.userID = serverViewModel.currentUser?.id
-            if hasClient, let client = serverViewModel.client {
-                Task {
-                    await libraryViewModel.load(using: client, userID: serverViewModel.currentUser?.id)
-                }
-            }
         }
     }
 }

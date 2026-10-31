@@ -83,16 +83,17 @@ class ServerViewModel {
             version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
         ))
 
-        // Pre-configure client & server URL so offline image caching and metadata resolution work
-        self.serverURL = session.serverURL
-        self.serverName = session.serverName
-        self.client = restoredClient
-
         do {
             let user = try await restoredClient.fetchCurrentUser()
-            currentUser = user
+            self.serverURL = session.serverURL
+            self.serverName = session.serverName
+            self.client = restoredClient
+            self.currentUser = user
             return .success
         } catch let apiError as APIError {
+            self.serverURL = session.serverURL
+            self.serverName = session.serverName
+            self.client = restoredClient
             if case .unacceptableStatusCode(let code) = apiError, code == 401 {
                 AppLogger.warning("Session token rejected by server (401 Unauthorized)", tag: "ServerViewModel")
                 return .unauthenticated
@@ -100,6 +101,9 @@ class ServerViewModel {
             AppLogger.info("Server connection error: \(apiError.localizedDescription), using offline mode", tag: "ServerViewModel")
             return .offline
         } catch {
+            self.serverURL = session.serverURL
+            self.serverName = session.serverName
+            self.client = restoredClient
             AppLogger.info("Network error restoring session (\(error.localizedDescription)), using offline mode", tag: "ServerViewModel")
             return .offline
         }

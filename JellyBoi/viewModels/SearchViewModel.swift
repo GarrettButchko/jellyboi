@@ -11,10 +11,15 @@ import JellyfinAPI
 
 // MARK: - Supporting types
 
-struct GenreCount: Identifiable, Hashable {
-    let name: String
-    let count: Int
-    var id: String { name }
+public struct GenreCount: Identifiable, Hashable, Sendable {
+    public let name: String
+    public let count: Int
+    public var id: String { name }
+
+    public init(name: String, count: Int) {
+        self.name = name
+        self.count = count
+    }
 }
 
 // MARK: - ViewModel
@@ -61,6 +66,9 @@ class SearchViewModel {
         #if DEBUG
         if DebugSettings.shared.simulateSearchEmptyLibrary || DebugSettings.shared.hideSearchGenres { return [] }
         #endif
+        if !showFavoritesOnly && !library.genres.isEmpty {
+            return library.genres
+        }
         var counts: [String: Int] = [:]
         for item in pool {
             for genre in item.genres ?? [] {

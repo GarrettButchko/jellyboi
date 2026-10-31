@@ -9,12 +9,22 @@ import SwiftUI
 import JellyfinAPI
 
 struct MediaGrid: View {
-    @Environment(ServerViewModel.self) private var serverViewModel
+    @Environment(ServerViewModel.self) private var serverViewModel: ServerViewModel?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     let items: [BaseItemDto]
-    let namespace: Namespace.ID
-    let onSelect: (BaseItemDto) -> Void
+    var namespace: Namespace.ID? = nil
+    var onSelect: ((BaseItemDto) -> Void)? = nil
+
+    init(
+        items: [BaseItemDto],
+        namespace: Namespace.ID? = nil,
+        onSelect: ((BaseItemDto) -> Void)? = nil
+    ) {
+        self.items = items
+        self.namespace = namespace
+        self.onSelect = onSelect
+    }
 
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 110), spacing: 16)]
@@ -25,10 +35,10 @@ struct MediaGrid: View {
             ForEach(items, id: \.id) { item in
                 MediaCard(
                     item: item,
-                    posterURL: posterURL(for: item, client: serverViewModel.client),
+                    posterURL: posterURL(for: item, client: serverViewModel?.client),
                     namespace: namespace,
                     onSelect: {
-                        onSelect(item)
+                        onSelect?(item)
                     },
                     imageAspectRatio: item.type == .episode ? (2.0 / 3.0) : nil
                 )
@@ -43,5 +53,18 @@ struct MediaGrid: View {
                 ?? item.posterURL(client: client)
         }
         return item.posterURL(client: client)
+    }
+}
+
+// MARK: - Skeleton Placeholder Factory
+
+extension MediaGrid {
+    /// Convenience factory rendering a static skeleton placeholder grid.
+    static func placeholder(
+        count: Int = 18,
+        namespace: Namespace.ID? = nil
+    ) -> some View {
+        MediaGrid(items: .placeholders(count: count), namespace: namespace)
+            .skeleton()
     }
 }

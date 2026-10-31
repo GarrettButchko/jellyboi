@@ -86,12 +86,12 @@ extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == Em
     init(
         title: String,
         items: [BaseItemDto],
-        namespace: Namespace.ID,
+        namespace: Namespace.ID? = nil,
         rowKey: String? = nil,
         imageAspectRatio: CGFloat? = 2.0 / 3.0,
         onTitleTap: (() -> Void)? = nil,
-        onSelect: @escaping (BaseItemDto, AnyHashable) -> Void,
-        posterURL: @escaping (BaseItemDto) -> URL?
+        onSelect: ((BaseItemDto, AnyHashable) -> Void)? = nil,
+        posterURL: ((BaseItemDto) -> URL?)? = nil
     ) {
         self.init(
             title: title,
@@ -116,11 +116,11 @@ extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == Em
 /// Standard horizontal scroll list of `MediaCard` items used by `SectionRow`.
 struct SectionRowMediaList: View {
     let items: [BaseItemDto]
-    let namespace: Namespace.ID
+    var namespace: Namespace.ID? = nil
     var rowKey: String? = nil
     var imageAspectRatio: CGFloat? = 2.0 / 3.0
-    let onSelect: (BaseItemDto, AnyHashable) -> Void
-    let posterURL: (BaseItemDto) -> URL?
+    var onSelect: ((BaseItemDto, AnyHashable) -> Void)? = nil
+    var posterURL: ((BaseItemDto) -> URL?)? = nil
 
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -134,10 +134,10 @@ struct SectionRowMediaList: View {
                     let zoomID: AnyHashable = rowKey.map { AnyHashable("\($0)-\(item.id ?? "")") } ?? AnyHashable(item)
                     MediaCard(
                         item: item,
-                        posterURL: posterURL(item),
+                        posterURL: posterURL?(item),
                         namespace: namespace,
                         onSelect: {
-                            onSelect(item, zoomID)
+                            onSelect?(item, zoomID)
                         },
                         zoomID: zoomID,
                         imageAspectRatio: imageAspectRatio
@@ -152,5 +152,25 @@ struct SectionRowMediaList: View {
         .scrollClipDisabled()
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.viewAligned)
+    }
+}
+
+// MARK: - Skeleton Placeholder Factory
+
+extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == EmptyView {
+    /// Convenience factory rendering a static skeleton placeholder shelf.
+    static func placeholder(
+        title: String = "Movies & Shows",
+        count: Int = 8,
+        imageAspectRatio: CGFloat? = 2.0 / 3.0,
+        namespace: Namespace.ID? = nil
+    ) -> some View {
+        SectionRow(
+            title: title,
+            items: .placeholders(count: count),
+            namespace: namespace,
+            imageAspectRatio: imageAspectRatio
+        )
+        .skeleton()
     }
 }

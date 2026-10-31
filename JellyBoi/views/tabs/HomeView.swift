@@ -7,7 +7,14 @@
 import SwiftUI
 import BaseColors
 import JellyfinAPI
+import SDWebImage
 import SDWebImageSwiftUI
+
+@Observable
+@MainActor
+final class HomeHeroCoordinator {
+    var heroItem: BaseItemDto? = nil
+}
 
 struct HomeView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
@@ -19,7 +26,7 @@ struct HomeView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     @State private var headerHeight: CGFloat = 74
-    @State private var heroItem: BaseItemDto?
+    @State private var heroCoordinator = HomeHeroCoordinator()
     @State private var safeAreaTop: CGFloat = 0
     @State private var selectedItem: BaseItemDto?
     @State private var zoomSourceID: AnyHashable?
@@ -56,106 +63,81 @@ struct HomeView: View {
                                         }
                                     }
                                 }
-                            } else if !viewModel.isLoading && viewModel.isLibraryEmpty {
-                                EmptyStateView(
-                                    icon: "film.stack",
-                                    title: "Your library is empty",
-                                    message: "Add media to your Jellyfin server to see it here.",
-                                    buttonTitle: "Refresh"
-                                ) {
-                                    Task {
-                                        if let client = serverViewModel.client {
-                                            await viewModel.refresh(using: client)
-                                        }
-                                    }
+                            } else if viewModel.isLoading {
+                                Carousel.Placeholder()
+                                HomeStatsRow.placeholder
+                                ForEach(0..<3, id: \.self) { _ in
+                                    SectionRow.placeholder(namespace: zoomTransition)
                                 }
                             } else {
-                                SkeletonZone(showsContent: !viewModel.isLoading) {
-                                    SkeletonCarousel()
-                                } content: {
-                                    if !viewModel.carouselItems.isEmpty {
-                                        Carousel(
-                                            title: viewModel.topWatchedMovies.isEmpty ? "Featured" : "Continue Watching",
-                                            namespace: zoomTransition
-                                        ) { item in
-                                            guard let client = serverViewModel.client else { return nil }
-                                            return item.backdropURL(client: client)
-                                        } onSelect: { item in
-                                            zoomSourceID = AnyHashable(item)
-                                            selectedItem = item
-                                        } onSnap: { index, item in
-                                            withAnimation(.smooth(duration: 0.4)) { heroItem = item }
-                                            if let client = serverViewModel.client {
-                                                libraryViewModel.prefetchBackdrops(around: index, items: viewModel.carouselItems, client: client)
-                                                libraryViewModel.prefetchPosters(around: index, client: client)
-                                            }
+                                if !viewModel.carouselItems.isEmpty {
+                                    Carousel(
+                                        title: viewModel.carouselTitle,
+                                        namespace: zoomTransition,
+                                        initialIndex: viewModel.carouselSnappedIndex ?? viewModel.carouselItems.count
+                                    ) { item in
+                                        guard let client = serverViewModel.client else { return nil }
+                                        return item.imageWithTitleURL(client: client, seriesLookup: { libraryViewModel.item(for: $0) })
+                                            ?? item.backdropURL(client: client)
+                                    } onSelect: { item in
+                                        zoomSourceID = AnyHashable(item)
+                                        selectedItem = item
+                                    } onSnap: { index, item in
+                                        withAnimation(.smooth(duration: 0.4)) {
+                                            heroCoordinator.heroItem = item
+                                        }
+                                        if let client = serverViewModel.client {
+                                            libraryViewModel.prefetchBackdrops(around: index, items: viewModel.carouselItems, client: client)
+                                            libraryViewModel.prefetchPosters(around: index, client: client)
                                         }
                                     }
+                                    .transition(.opacity)
                                 }
                                 
-                                SkeletonZone(showsContent: !viewModel.isLoading) {
-                                    SkeletonStatsRow()
-                                } content: {
-                                    if !viewModel.movies.isEmpty {
-                                        ScrollView(.horizontal) {
-                                            HStack(spacing: 10) {
-                                                HomeStatBubble(label: "Movies",   value: viewModel.movies.count,           icon: "film")
-                                                HomeStatsDoubleBubble(
-                                                    leftLabel: "Shows", leftValue: viewModel.tvSeriesCount, leftIcon: "tv",
-                                                    rightLabel: "Episodes", rightValue: viewModel.episodeCount, rightIcon: "film.stack"
-                                                )
-                                                HomeStatBubble(label: "Watching",  value: viewModel.inProgressMovies.count, icon: "play.circle")
-                                                HomeStatBubble(label: "Favorites", value: viewModel.favoritesCount,       icon: "heart.fill")
-                                                HomeStatBubble(label: "Completed", value: viewModel.completedCount,       icon: "checkmark.circle.fill")
-                                                HomeStatBubble(label: "Hrs Watched", value: viewModel.watchedHours,       icon: "clock.fill")
-                                            }
-                                            .padding(.horizontal, 16)
-                                        }
-                                        .scrollIndicators(.hidden)
-                                    }
+                                if !viewModel.movies.isEmpty {
+                                    HomeStatsRow(
+                                        moviesCount: viewModel.movies.count,
+                                        tvSeriesCount: viewModel.tvSeriesCount,
+                                        episodeCount: viewModel.episodeCount,
+                                        inProgressCount: viewModel.inProgressMovies.count,
+                                        favoritesCount: viewModel.favoritesCount,
+                                        completedCount: viewModel.completedCount,
+                                        watchedHours: viewModel.watchedHours
+                                    )
+                                    .transition(.opacity)
                                 }
                                 
                                 ForEach(sectionRows) { config in
-                                    SkeletonZone(showsContent: !viewModel.isLoading) {
-                                        SkeletonSectionRow()
-                                    } content: {
-                                        if !config.items.isEmpty {
-                                            SectionRow(
-                                                title: config.title,
-                                                items: config.items,
-                                                namespace: zoomTransition,
-                                                rowKey: config.id,
-                                                onTitleTap: config.onTitleTap,
-                                                onSelect: { item, zoomID in
-                                                    zoomSourceID = zoomID
-                                                    selectedItem = item
-                                                }
-                                            ) { item in
-                                                guard let client = serverViewModel.client else { return nil }
-                                                switch config.posterStyle {
-                                                case .poster:       return item.posterURL(client: client)
-                                                case .seriesPoster: return item.seriesPosterURL(client: client)
-                                                }
-                                            }
-                                            .transition(.opacity)
+                                    SectionRow(
+                                        title: config.title,
+                                        items: config.items,
+                                        namespace: zoomTransition,
+                                        rowKey: config.id,
+                                        onTitleTap: config.onTitleTap,
+                                        onSelect: { item, zoomID in
+                                            zoomSourceID = zoomID
+                                            selectedItem = item
+                                        }
+                                    ) { item in
+                                        guard let client = serverViewModel.client else { return nil }
+                                        switch config.posterStyle {
+                                        case .poster:       return item.posterURL(client: client)
+                                        case .seriesPoster: return item.seriesPosterURL(client: client)
                                         }
                                     }
+                                    .transition(.opacity)
                                 }
                             }
                             
                         }
                         .background(alignment: .top) {
-                            if let item = heroItem ?? viewModel.currentCarouselItem,
-                               let client = serverViewModel.client {
-                                HeroBackdropView(
-                                    url: item.backdropURL(client: client),
-                                    itemID: item.id,
-                                    blurRadius: 30
-                                )
-                                .offset(y: -(headerHeight + safeAreaTop + 500))
-                                .ignoresSafeArea(edges: .top)
-                                .allowsHitTesting(false)
-                            }
+                            HomeHeroBackdrop(
+                                coordinator: heroCoordinator,
+                                defaultItem: viewModel.carouselItems.first,
+                                client: serverViewModel.client,
+                                seriesLookup: { libraryViewModel.item(for: $0) },
+                                offsetY: -(headerHeight + safeAreaTop + 500)
+                            )
                         }
                 }
                 .refreshable {
@@ -185,6 +167,27 @@ struct HomeView: View {
                 Color.clear.onAppear { safeAreaTop = geo.safeAreaInsets.top }
             }
         }
+        .task(id: viewModel.carouselItems.compactMap(\.id)) {
+            guard let client = serverViewModel.client, !viewModel.carouselItems.isEmpty else { return }
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else { return }
+            let transformer = SDImageBlurTransformer(radius: 30)
+            let context: [SDWebImageContextOption: Any] = [.imageTransformer: transformer]
+            var carouselURLs: [URL] = []
+            for item in viewModel.carouselItems {
+                guard let url = item.imageWithTitleURL(client: client, seriesLookup: { libraryViewModel.item(for: $0) })
+                    ?? item.backdropURL(client: client) else { continue }
+                carouselURLs.append(url)
+                SDWebImageManager.shared.loadImage(
+                    with: url,
+                    options: [.avoidAutoSetImage, .lowPriority],
+                    context: context,
+                    progress: nil
+                ) { _, _, _, _, _, _ in }
+            }
+            CarouselImageMemoryCache.shared.preloadImages(for: carouselURLs)
+        }
     }
 
     private enum PosterStyle { case poster, seriesPoster }
@@ -197,100 +200,39 @@ struct HomeView: View {
         var onTitleTap: (() -> Void)? = nil
     }
 
-    private var sectionRows: [HomeSectionConfig] {[
-        .init(id: "collections",         title: "Collections",           items: viewModel.collections,         posterStyle: .poster, onTitleTap: { isShowingCollections = true }),
-        .init(id: "continueWatching",    title: "Continue Watching",     items: viewModel.inProgressMovies,    posterStyle: .poster),
-        .init(id: "continueShows",       title: "Continue Shows",        items: viewModel.resumeShows,          posterStyle: .seriesPoster),
-        .init(id: "topRated",            title: "Top Rated",             items: viewModel.recommended,          posterStyle: .poster),
-        .init(id: "recentlyAddedMovies", title: "Recently Added Movies", items: viewModel.recentlyAddedMovies, posterStyle: .poster),
-        .init(id: "recentlyAddedShows",  title: "Recently Added Shows",  items: viewModel.recentlyAddedShows,  posterStyle: .poster),
-    ]}
-}
-
-
-
-// MARK: - Stat Bubbles
-
-private struct HomeStatBubble: View {
-    let label: String
-    let value: Int
-    let icon: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.mainOpp.opacity(0.45))
-                .frame(width: 24)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("\(value)")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.mainOpp)
-                Text(label)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.mainOpp.opacity(0.45))
-            }
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 56)
-        .background(Color.mainOpp.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    private var sectionRows: [HomeSectionConfig] {
+        [
+            .init(id: "collections",         title: "Collections",           items: viewModel.collections,         posterStyle: .poster, onTitleTap: { isShowingCollections = true }),
+            .init(id: "continueWatching",    title: "Continue Watching",     items: viewModel.inProgressMovies,    posterStyle: .poster),
+            .init(id: "continueShows",       title: "Continue Shows",        items: viewModel.resumeShows,          posterStyle: .seriesPoster),
+            .init(id: "topRated",            title: "Top Rated",             items: viewModel.recommended,          posterStyle: .poster),
+            .init(id: "recentlyAddedMovies", title: "Recently Added Movies", items: viewModel.recentlyAddedMovies, posterStyle: .poster),
+            .init(id: "recentlyAddedShows",  title: "Recently Added Shows",  items: viewModel.recentlyAddedShows,  posterStyle: .poster),
+        ].filter { !$0.items.isEmpty }
     }
 }
 
-private struct HomeStatsDoubleBubble: View {
-    let leftLabel: String
-    let leftValue: Int
-    let leftIcon: String
-    let rightLabel: String
-    let rightValue: Int
-    let rightIcon: String
+private struct HomeHeroBackdrop: View {
+    let coordinator: HomeHeroCoordinator
+    let defaultItem: BaseItemDto?
+    let client: JellyfinClient?
+    let seriesLookup: ((String) -> BaseItemDto?)?
+    let offsetY: CGFloat
 
     var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: leftIcon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.mainOpp.opacity(0.45))
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("\(leftValue)")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.mainOpp)
-                    Text(leftLabel)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.mainOpp.opacity(0.45))
-                }
-            }
-            .padding(.horizontal, 14)
-
-            Rectangle()
-                .fill(Color.subTwo)
-                .frame(width: 0.5)
-                .padding(.vertical, 14)
-
-            HStack(spacing: 10) {
-                Image(systemName: rightIcon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.mainOpp.opacity(0.45))
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("\(rightValue)")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.mainOpp)
-                    Text(rightLabel)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.mainOpp.opacity(0.45))
-                }
-            }
-            .padding(.horizontal, 14)
+        if let item = coordinator.heroItem ?? defaultItem,
+           let client {
+            HeroBackdropView(
+                url: item.imageWithTitleURL(client: client, seriesLookup: seriesLookup)
+                    ?? item.backdropURL(client: client),
+                itemID: item.id,
+                blurRadius: 30
+            )
+            .offset(y: offsetY)
+            .ignoresSafeArea(edges: .top)
+            .allowsHitTesting(false)
         }
-        .frame(height: 56)
-        .background(Color.mainOpp.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
 
-#Preview {
-    HomeView()
-        .environment(LibraryViewModel())
-}

@@ -21,7 +21,7 @@ extension MediaDetailView {
             SectionRow(title: "Movies & Shows") {
                 if detailVM.collectionItems.isEmpty {
                     if detailVM.isLoadingCollectionItems {
-                        SkeletonMediaGrid()
+                        MediaGrid.placeholder(count: 12, namespace: collectionTransition)
                     } else {
                         EmptyStateView(
                             icon: "film.stack",
@@ -36,10 +36,11 @@ extension MediaDetailView {
                             MediaCard(
                                 item: item,
                                 posterURL: item.posterURL(client: serverViewModel.client),
-                                namespace: collectionTransition
-                            ) {
-                                selectedCollectionItem = item
-                            }
+                                namespace: collectionTransition,
+                                onSelect: {
+                                    selectedCollectionItem = item
+                                }
+                            )
                         }
                     }
                     .padding(.horizontal, 16)

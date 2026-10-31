@@ -223,7 +223,11 @@ extension BaseItemDto {
         guard type == .series else { return isWatched }
         if let unplayed = userData?.unplayedItemCount, unplayed == 0 { return true }
         if userData?.isPlayed == true { return true }
-        let showEpisodes = allEpisodes.filter { $0.seriesID == id }
+        if let unplayed = userData?.unplayedItemCount,
+           let total = recursiveItemCount ?? episodeCount, total > 0, unplayed == total {
+            return false
+        }
+        let showEpisodes = (allEpisodes.first?.seriesID == id) ? allEpisodes : allEpisodes.filter { $0.seriesID == id }
         if !showEpisodes.isEmpty {
             return showEpisodes.allSatisfy { $0.isWatched }
         }
@@ -234,13 +238,13 @@ extension BaseItemDto {
     public func seriesWatchProgress(allEpisodes: [BaseItemDto] = []) -> Double? {
         guard type == .series else { return watchProgress }
         if isSeriesWatched(allEpisodes: allEpisodes) { return 1.0 }
-        let showEpisodes = allEpisodes.filter { $0.seriesID == id }
-        if !showEpisodes.isEmpty {
-            return BaseItemDto.cumulativeProgress(for: showEpisodes, allEpisodes: allEpisodes)
-        }
         if let unplayed = userData?.unplayedItemCount,
            let total = recursiveItemCount ?? episodeCount, total > 0 {
             return max(0.0, min(1.0, Double(total - unplayed) / Double(total)))
+        }
+        let showEpisodes = (allEpisodes.first?.seriesID == id) ? allEpisodes : allEpisodes.filter { $0.seriesID == id }
+        if !showEpisodes.isEmpty {
+            return BaseItemDto.cumulativeProgress(for: showEpisodes, allEpisodes: showEpisodes)
         }
         return watchProgress
     }
@@ -249,12 +253,17 @@ extension BaseItemDto {
     public func isSeriesInProgress(allEpisodes: [BaseItemDto] = [], resumeShows: [BaseItemDto] = []) -> Bool {
         guard type == .series else { return isInProgress }
         if isSeriesWatched(allEpisodes: allEpisodes) { return false }
-        let showEpisodes = allEpisodes.filter { $0.seriesID == id }
-        if !showEpisodes.isEmpty {
-            return showEpisodes.contains { $0.isWatched || $0.isInProgress }
+        if let unplayed = userData?.unplayedItemCount,
+           let total = recursiveItemCount ?? episodeCount, total > 0 {
+            if unplayed == total { return false }
+            if unplayed < total { return true }
         }
         if resumeShows.contains(where: { $0.seriesID == id || $0.id == id }) {
             return true
+        }
+        let showEpisodes = (allEpisodes.first?.seriesID == id) ? allEpisodes : allEpisodes.filter { $0.seriesID == id }
+        if !showEpisodes.isEmpty {
+            return showEpisodes.contains { $0.isWatched || $0.isInProgress }
         }
         if let progress = seriesWatchProgress(allEpisodes: allEpisodes), progress > 0 {
             return true
@@ -269,6 +278,103 @@ extension BaseItemDto {
         !(backdropImageTags ?? []).isEmpty
             || imageTags?.keys.contains("Backdrop") == true
             || imageTags?.keys.contains("Thumb") == true
+            || !(parentBackdropImageTags ?? []).isEmpty
+    }
+
+    /// Whether an episode is the first episode of a show and has never been played.
+    public var isUnplayedFirstEpisode: Bool {
+        guard type == .episode else { return false }
+        let isFirst = (parentIndexNumber ?? 1) <= 1 && (indexNumber ?? 1) <= 1
+        let hasBeenPlayed = hasProgress || isWatched || (userData?.isPlayed == true)
+        return isFirst && !hasBeenPlayed
+    }
+
+    /// Whether this item (or its parent series if an episode) has an artwork image with the title (Thumb image).
+    public func hasImageWithTitle(
+        allShows: [BaseItemDto] = [],
+        seriesLookup: ((String) -> BaseItemDto?)? = nil
+    ) -> Bool {
+        if type == .episode {
+            if seriesThumbImageTag != nil || parentThumbImageTag != nil {
+                return true
+            }
+            if let sID = seriesID ?? parentThumbItemID ?? parentBackdropItemID {
+                let series = seriesLookup?(sID) ?? allShows.first(where: { $0.id == sID })
+                if let series {
+                    return series.imageTags?.keys.contains("Thumb") == true || series.seriesThumbImageTag != nil
+                }
+            }
+            return false
+        }
+        return imageTags?.keys.contains("Thumb") == true || seriesThumbImageTag != nil
+    }
+
+    /// Computes the artwork image URL that includes the title (Thumb image).
+    /// Returns nil if the item has no image with title.
+    public func imageWithTitleURL(
+        client: JellyfinClient?,
+        allShows: [BaseItemDto] = [],
+        seriesLookup: ((String) -> BaseItemDto?)? = nil
+    ) -> URL? {
+        guard let client else { return nil }
+
+        if type == .episode {
+            let sID = seriesID ?? parentThumbItemID ?? parentBackdropItemID
+            guard let sID else { return nil }
+            let parentSeries = seriesLookup?(sID) ?? allShows.first(where: { $0.id == sID })
+            let thumbTag = seriesThumbImageTag ?? parentThumbImageTag ?? parentSeries?.imageTags?["Thumb"] ?? parentSeries?.seriesThumbImageTag
+            guard thumbTag != nil || parentSeries?.imageTags?.keys.contains("Thumb") == true else {
+                return nil
+            }
+            return client.itemImageURL(
+                itemID: sID,
+                imageType: "Thumb",
+                parameters: .backdrop(maxWidth: 800, quality: 70, tag: thumbTag)
+            )
+        }
+
+        guard hasImageWithTitle(allShows: allShows, seriesLookup: seriesLookup) else { return nil }
+        let tag = imageTags?["Thumb"] ?? seriesThumbImageTag
+        guard let id else { return nil }
+        return client.itemImageURL(
+            itemID: id,
+            imageType: "Thumb",
+            parameters: .backdrop(maxWidth: 800, quality: 70, tag: tag)
+        )
+    }
+
+    /// Computes the backdrop/hero URL for the item using the given client.
+    /// Prefers the Thumb image (which includes the series or movie title embedded in the artwork).
+    /// If there is no image with title, returns nil so non-title images are not shown in carousel.
+    public func backdropURL(client: JellyfinClient?) -> URL? {
+        guard let client else { return nil }
+
+        if type == .episode {
+            let sID = seriesID ?? parentThumbItemID ?? parentBackdropItemID
+            guard let sID else { return nil }
+            let thumbTag = seriesThumbImageTag ?? parentThumbImageTag
+            if thumbTag != nil {
+                return client.itemImageURL(
+                    itemID: sID,
+                    imageType: "Thumb",
+                    parameters: .backdrop(maxWidth: 800, quality: 70, tag: thumbTag)
+                )
+            }
+            return client.itemImageURL(
+                itemID: sID,
+                imageType: "Thumb",
+                parameters: .backdrop(maxWidth: 800, quality: 70)
+            )
+        }
+
+        guard hasImageWithTitle() else { return nil }
+        let tag = imageTags?["Thumb"] ?? seriesThumbImageTag
+        guard let id else { return nil }
+        return client.itemImageURL(
+            itemID: id,
+            imageType: "Thumb",
+            parameters: .backdrop(maxWidth: 800, quality: 70, tag: tag)
+        )
     }
 
     /// Computes the poster URL for the item using the given client.
@@ -317,38 +423,7 @@ extension BaseItemDto {
         return posterURL(client: client, parameters: .detailPoster())
     }
 
-    /// Computes the backdrop URL for the item using the given client.
-    /// Prefers Thumb, then Backdrop, then episode Primary, then series Thumb, then Backdrop.
-    public func backdropURL(client: JellyfinClient?) -> URL? {
-        guard let client, let id else { return nil }
-        let hasThumb = imageTags?.keys.contains("Thumb") == true
-        let hasBackdrop = !(backdropImageTags ?? []).isEmpty || imageTags?.keys.contains("Backdrop") == true
-        let imageType: String
-        let targetID: String
 
-        if hasThumb {
-            imageType = "Thumb"
-            targetID = id
-        } else if hasBackdrop {
-            imageType = "Backdrop"
-            targetID = id
-        } else if type == .episode, imageTags?.keys.contains("Primary") == true {
-            imageType = "Primary"
-            targetID = id
-        } else if let seriesID {
-            imageType = "Thumb"
-            targetID = seriesID
-        } else {
-            imageType = "Backdrop"
-            targetID = id
-        }
-
-        return client.itemImageURL(
-            itemID: targetID,
-            imageType: imageType,
-            parameters: .backdrop(maxWidth: 800, quality: 70)
-        )
-    }
 }
 
 extension BaseItemPerson {
@@ -434,3 +509,66 @@ extension Array where Element == BaseItemDto {
         return first
     }
 }
+
+// MARK: - Placeholder Factories
+
+extension BaseItemDto {
+    /// Generates a placeholder `BaseItemDto` for skeleton loading states.
+    public static func placeholder(
+        id: String = UUID().uuidString,
+        type: BaseItemKind = .movie,
+        name: String = "Placeholder Title",
+        overview: String? = "Placeholder description text for previewing layout and skeletons."
+    ) -> BaseItemDto {
+        BaseItemDto(
+            id: id,
+            name: name,
+            overview: overview,
+            type: type
+        )
+    }
+
+    /// Generates an array of placeholder `BaseItemDto` objects for skeleton loading states.
+    public static func placeholders(
+        count: Int = 10,
+        type: BaseItemKind = .movie
+    ) -> [BaseItemDto] {
+        (0..<count).map {
+            placeholder(id: "placeholder-\($0)", type: type)
+        }
+    }
+}
+
+extension Array where Element == BaseItemDto {
+    /// Generates an array of placeholder `BaseItemDto` objects for skeleton loading states.
+    public static func placeholders(
+        count: Int = 10,
+        type: BaseItemKind = .movie
+    ) -> [BaseItemDto] {
+        BaseItemDto.placeholders(count: count, type: type)
+    }
+}
+
+extension BaseItemPerson {
+    /// Generates a placeholder `BaseItemPerson` for skeleton loading states.
+    public static func placeholder(
+        id: String = UUID().uuidString,
+        name: String = "Actor Name",
+        role: String = "Character Role"
+    ) -> BaseItemPerson {
+        BaseItemPerson(
+            id: id,
+            name: name,
+            role: role,
+            type: .actor
+        )
+    }
+
+    /// Generates an array of placeholder `BaseItemPerson` objects for skeleton loading states.
+    public static func placeholders(count: Int = 8) -> [BaseItemPerson] {
+        (0..<count).map {
+            placeholder(id: "person-placeholder-\($0)", name: "Actor \($0 + 1)", role: "Character")
+        }
+    }
+}
+

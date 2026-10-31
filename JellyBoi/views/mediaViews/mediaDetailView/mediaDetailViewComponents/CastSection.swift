@@ -59,6 +59,12 @@ struct CastCircle: View {
     let imageURL: URL?
     var namespace: Namespace.ID? = nil
 
+    @Environment(\.redactionReasons) private var redactionReasons
+
+    private var isRedacted: Bool {
+        redactionReasons.contains(.placeholder)
+    }
+
     var body: some View {
         VStack(spacing: 7) {
             avatarView
@@ -95,41 +101,47 @@ struct CastCircle: View {
 
     @ViewBuilder
     private var avatarView: some View {
-        let circleContent = ZStack {
+        if isRedacted {
             Circle()
-                .fill(Color.sub)
+                .fill(Color.mainOpp.opacity(0.08))
                 .frame(width: 70, height: 70)
-
-            if let url = imageURL {
-                WebImage(
-                    url: url,
-                    transaction: Transaction(animation: .easeInOut(duration: 0.3))
-                ) { phase in
-                    if let image = phase.image {
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .transition(.fade(duration: 0.3))
-                    } else {
-                        placeholderIcon
-                    }
-                }
-                .frame(width: 70, height: 70)
-                .clipShape(Circle())
-            } else {
-                placeholderIcon
-            }
-        }
-        .frame(width: 70, height: 70)
-
-        if let namespace {
-            circleContent
-                .matchedTransitionSource(
-                    id: person.id ?? person.name ?? "",
-                    in: namespace
-                )
         } else {
-            circleContent
+            let circleContent = ZStack {
+                Circle()
+                    .fill(Color.sub)
+                    .frame(width: 70, height: 70)
+
+                if let url = imageURL {
+                    WebImage(
+                        url: url,
+                        transaction: Transaction(animation: .easeInOut(duration: 0.3))
+                    ) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .transition(.fade(duration: 0.3))
+                        } else {
+                            placeholderIcon
+                        }
+                    }
+                    .frame(width: 70, height: 70)
+                    .clipShape(Circle())
+                } else {
+                    placeholderIcon
+                }
+            }
+            .frame(width: 70, height: 70)
+
+            if let namespace {
+                circleContent
+                    .matchedTransitionSource(
+                        id: person.id ?? person.name ?? "",
+                        in: namespace
+                    )
+            } else {
+                circleContent
+            }
         }
     }
 

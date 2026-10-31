@@ -90,15 +90,13 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
         let isAllFailed = !items.isEmpty && items.allSatisfy { $0.status == .failed }
         guard !isAllFailed else { return nil }
 
-        // Do not show time remaining for the group as a whole when multiple items are queued/active.
-        // Time remaining only shows when the single remaining item is the one downloading or converting.
         guard items.count == 1,
               let activeItem = items.first,
               (activeItem.status == .downloading || activeItem.status == .converting || activeItem.status == .finalizing),
               let time = activeItem.estimatedTimeRemaining, time > 0 else {
             return nil
         }
-        return activeItem.formattedTimeRemaining
+        return DownloadItem.formattedRemainingTime(from: time)
     }
 
     public var formattedTimeRemaining: String? {
@@ -124,7 +122,11 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
 }
 
 public struct DownloadSummaryPresentation: Equatable, Sendable {
+    public let stateKind: DownloadPresentationStateKind
     public let title: String
+    public let subtitleLeftText: String
+    public let subtitleLeftIcon: String?
+    public let subtitleRightText: String?
     public let subtitle: String?
     public let detailText: String?
     public let progress: Double
@@ -137,7 +139,11 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
     public let isEpisode: Bool
 
     public init(
+        stateKind: DownloadPresentationStateKind = .multiple,
         title: String,
+        subtitleLeftText: String? = nil,
+        subtitleLeftIcon: String? = nil,
+        subtitleRightText: String? = nil,
         subtitle: String? = nil,
         detailText: String? = nil,
         progress: Double,
@@ -149,7 +155,11 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
         isSingleElement: Bool = true,
         isEpisode: Bool = false
     ) {
+        self.stateKind = stateKind
         self.title = title
+        self.subtitleLeftText = subtitleLeftText ?? subtitle ?? ""
+        self.subtitleLeftIcon = subtitleLeftIcon
+        self.subtitleRightText = subtitleRightText
         self.subtitle = subtitle
         self.detailText = detailText
         self.progress = progress
@@ -164,14 +174,18 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
 
     public func contentState(fallbackPosterData: Data? = nil) -> DownloadActivityAttributes.ContentState {
         DownloadActivityAttributes.ContentState(
+            stateKind: stateKind,
             title: title,
+            subtitleLeftText: subtitleLeftText,
+            subtitleLeftIcon: subtitleLeftIcon,
+            subtitleRightText: subtitleRightText,
             subtitle: subtitle,
             detailText: detailText,
             progress: min(max(progress, 0.0), 1.0),
             itemsRemaining: itemsRemaining,
             totalItems: totalItems,
             status: status,
-            posterImageData: isSingleElement ? (posterImageData ?? fallbackPosterData) : nil,
+            posterImageData: (stateKind != .multiple) ? (posterImageData ?? fallbackPosterData) : nil,
             isSingleElement: isSingleElement,
             isEpisode: isEpisode
         )
@@ -187,7 +201,11 @@ public struct DownloadSummaryPresentation: Equatable, Sendable {
 
     public func with(posterImageData: Data?) -> DownloadSummaryPresentation {
         DownloadSummaryPresentation(
+            stateKind: stateKind,
             title: title,
+            subtitleLeftText: subtitleLeftText,
+            subtitleLeftIcon: subtitleLeftIcon,
+            subtitleRightText: subtitleRightText,
             subtitle: subtitle,
             detailText: detailText,
             progress: progress,
@@ -255,7 +273,11 @@ public enum DownloadGrouping {
     ) -> DownloadSummaryPresentation {
         guard !active.isEmpty else {
             return DownloadSummaryPresentation(
+                stateKind: .multiple,
                 title: "Downloads Complete",
+                subtitleLeftText: "100%",
+                subtitleLeftIcon: nil,
+                subtitleRightText: nil,
                 subtitle: "All items ready offline",
                 detailText: "100%",
                 progress: 1.0,
@@ -274,37 +296,27 @@ public enum DownloadGrouping {
         let totalActiveCount = active.count
         let totalItemsCount = active.count + completed.count
 
-        // Case 1: Exactly 1 group (Series or Collection) and no standalone items -> 1 element (shows poster)
+        // State 1: A group (could be collection, or series)
         if computedGroups.count == 1 && standalones.isEmpty, let singleGroup = computedGroups.first {
-            let activeItem = singleGroup.activeDownloads.first(where: { $0.status == .downloading || $0.status == .converting || $0.status == .finalizing }) ?? singleGroup.activeDownloads.first
-            var subtitleText: String?
-            if let activeItem {
-                let status = activeItem.statusDetail ?? (activeItem.status == .downloading ? "Downloading" : (activeItem.status == .converting || activeItem.status == .finalizing) ? "Converting" : activeItem.status.rawValue.capitalized)
-                subtitleText = "\(activeItem.title) • \(status)"
-            }
-
-            let itemWord = singleGroup.groupInfo?.type == .collection ? (singleGroup.episodesLeft == 1 ? "item" : "items") : (singleGroup.episodesLeft == 1 ? "episode" : "episodes")
-
-            var detail: String?
-            if singleGroup.isAllFailed {
-                detail = "\(singleGroup.episodesLeft) \(itemWord) left (Failed)"
-            } else if singleGroup.isAllQueued {
-                detail = "\(singleGroup.episodesLeft) \(itemWord) queued"
-            } else if let timeRemaining = singleGroup.formattedTimeRemaining {
-                detail = "\(singleGroup.episodesLeft) \(itemWord) left • \(timeRemaining)"
-            } else if singleGroup.isConverting {
-                detail = "\(singleGroup.episodesLeft) \(itemWord) left • Converting"
-            } else {
-                detail = "\(singleGroup.episodesLeft) \(itemWord) left"
-            }
-
+            let progress = singleGroup.overallProgress
+            let percent = Int(progress * 100)
+            let itemsLeft = singleGroup.episodesLeft
+            let itemsLeftText = itemsLeft == 1 ? "1 item left" : "\(itemsLeft) items left"
+            let title = singleGroup.seriesName
+            let subtitleLeftText = itemsLeftText
+            let subtitleLeftIcon = singleGroup.status.icon
+            let subtitleRightText = "\(percent)%"
             let posterURL = singleGroup.posterURL(client: client)
 
             return DownloadSummaryPresentation(
-                title: singleGroup.seriesName,
-                subtitle: subtitleText,
-                detailText: detail,
-                progress: singleGroup.overallProgress,
+                stateKind: .group,
+                title: title,
+                subtitleLeftText: subtitleLeftText,
+                subtitleLeftIcon: subtitleLeftIcon,
+                subtitleRightText: subtitleRightText,
+                subtitle: subtitleLeftText,
+                detailText: "\(subtitleLeftText) • \(subtitleRightText)",
+                progress: progress,
                 itemsRemaining: singleGroup.episodesLeft,
                 totalItems: singleGroup.totalCount,
                 status: singleGroup.status,
@@ -315,79 +327,107 @@ public enum DownloadGrouping {
             )
         }
 
-        // Case 2: Exactly 1 standalone item (Movie or standalone Episode) and no groups -> 1 element (shows poster or episode thumbnail)
-        if computedGroups.isEmpty && standalones.count == 1, let singleItem = standalones.first {
-            let status = singleItem.statusDetail ?? (singleItem.status == .downloading ? "Downloading" : (singleItem.status == .converting || singleItem.status == .finalizing) ? "Converting" : singleItem.status.rawValue.capitalized)
-            var detail: String?
-            if singleItem.status == .queued {
-                detail = "Queued"
-            } else if singleItem.status == .failed {
-                detail = "Failed"
-            } else if let time = singleItem.estimatedTimeRemaining, time > 0 {
-                detail = "\(singleItem.formattedTimeRemaining) • \(Int(singleItem.progress * 100))%"
-            } else {
-                detail = "\(status) • \(Int(singleItem.progress * 100))%"
-            }
-
-            var byteProgressText: String?
-            if singleItem.totalBytes > 0 && singleItem.status != .queued {
-                let downloadedStr = ByteCountFormatter.string(fromByteCount: singleItem.bytesDownloaded, countStyle: .file)
-                let totalStr = ByteCountFormatter.string(fromByteCount: singleItem.totalBytes, countStyle: .file)
-                byteProgressText = "\(downloadedStr) of \(totalStr)"
-            }
-
+        // State 2: One episode
+        if computedGroups.isEmpty && standalones.count == 1, let singleItem = standalones.first, singleItem.item.type == .episode {
+            let progress = singleItem.progress
+            let percent = Int(progress * 100)
+            let title = singleItem.title
+            let timeString: String = {
+                if singleItem.status == .failed {
+                    return "Failed"
+                } else if singleItem.status == .queued {
+                    return "Queued"
+                } else if let time = DownloadItem.formattedRemainingTime(from: singleItem.estimatedTimeRemaining) {
+                    return time
+                } else if singleItem.status == .converting || singleItem.status == .finalizing {
+                    return "Converting"
+                } else {
+                    return "Downloading"
+                }
+            }()
+            let subtitleLeftText = timeString
+            let subtitleLeftIcon = singleItem.statusIcon
+            let subtitleRightText = "\(percent)%"
             let posterURL = singleItem.artworkURL(client: client)
-            let isEpisode = singleItem.item.type == .episode
 
             return DownloadSummaryPresentation(
-                title: singleItem.title,
-                subtitle: byteProgressText ?? (singleItem.status == .queued ? "Queued" : status),
-                detailText: detail,
-                progress: singleItem.progress,
+                stateKind: .episode,
+                title: title,
+                subtitleLeftText: subtitleLeftText,
+                subtitleLeftIcon: subtitleLeftIcon,
+                subtitleRightText: subtitleRightText,
+                subtitle: subtitleLeftText,
+                detailText: "\(subtitleLeftText) • \(subtitleRightText)",
+                progress: progress,
                 itemsRemaining: 1,
                 totalItems: 1,
                 status: singleItem.status,
                 posterImageData: nil,
                 posterURL: posterURL,
                 isSingleElement: true,
-                isEpisode: isEpisode
+                isEpisode: true
             )
         }
 
-        // Case 3: Multiple unrelated elements -> NO POSTER, ONLY THE ICON!
+        // State 3: One movie
+        if computedGroups.isEmpty && standalones.count == 1, let singleItem = standalones.first {
+            let progress = singleItem.progress
+            let percent = Int(progress * 100)
+            let title = singleItem.title
+            let timeString: String = {
+                if singleItem.status == .failed {
+                    return "Failed"
+                } else if singleItem.status == .queued {
+                    return "Queued"
+                } else if let time = DownloadItem.formattedRemainingTime(from: singleItem.estimatedTimeRemaining) {
+                    return time
+                } else if singleItem.status == .converting || singleItem.status == .finalizing {
+                    return "Converting"
+                } else {
+                    return "Downloading"
+                }
+            }()
+            let subtitleLeftText = timeString
+            let subtitleLeftIcon = singleItem.statusIcon
+            let subtitleRightText = "\(percent)%"
+            let posterURL = singleItem.artworkURL(client: client)
+
+            return DownloadSummaryPresentation(
+                stateKind: .movie,
+                title: title,
+                subtitleLeftText: subtitleLeftText,
+                subtitleLeftIcon: subtitleLeftIcon,
+                subtitleRightText: subtitleRightText,
+                subtitle: subtitleLeftText,
+                detailText: "\(subtitleLeftText) • \(subtitleRightText)",
+                progress: progress,
+                itemsRemaining: 1,
+                totalItems: 1,
+                status: singleItem.status,
+                posterImageData: nil,
+                posterURL: posterURL,
+                isSingleElement: true,
+                isEpisode: false
+            )
+        }
+
+        // State 4: Multiple items (e.g. movie and episode, or collection and group, etc.)
         let overallProgress = active.reduce(0.0) { $0 + $1.progress } / Double(max(active.count, 1))
+        let percent = Int(overallProgress * 100)
         let globalStatus = DownloadStatus(items: active)
-        let isAllQueued = globalStatus == .queued
-        let isConverting = globalStatus == .converting || globalStatus == .finalizing
-        let activeItem = active.first(where: { $0.status == .downloading || $0.status == .converting || $0.status == .finalizing }) ?? active.first
-        let currentDownloadingTitle: String? = {
-            if isAllQueued {
-                return "\(totalActiveCount) items queued"
-            } else if let activeItem {
-                let action = (activeItem.status == .converting || activeItem.status == .finalizing) ? "Converting" : "Downloading"
-                return "\(action) \(activeItem.title)"
-            } else {
-                return "\(totalActiveCount) items"
-            }
-        }()
+        let title = "\(totalActiveCount) items"
+        let subtitleLeftText = "\(percent)%"
+        let subtitleLeftIcon: String? = nil
+        let subtitleRightText: String? = nil
 
-        let detail: String = {
-            if globalStatus == .failed {
-                return "\(totalActiveCount) items left (Failed)"
-            } else if isAllQueued {
-                return "\(totalActiveCount) items queued"
-            } else if isConverting {
-                return "\(totalActiveCount) items • Converting"
-            } else {
-                return "\(totalActiveCount) item\(totalActiveCount == 1 ? "" : "s") left • \(Int(overallProgress * 100))%"
-            }
-        }()
-
-        let mainTitle = isAllQueued ? "\(totalActiveCount) items queued" : "\(totalActiveCount) items"
         return DownloadSummaryPresentation(
-            title: mainTitle,
-            subtitle: currentDownloadingTitle,
-            detailText: detail,
+            stateKind: .multiple,
+            title: title,
+            subtitleLeftText: subtitleLeftText,
+            subtitleLeftIcon: subtitleLeftIcon,
+            subtitleRightText: subtitleRightText,
+            subtitle: title,
+            detailText: subtitleLeftText,
             progress: overallProgress,
             itemsRemaining: totalActiveCount,
             totalItems: totalItemsCount,

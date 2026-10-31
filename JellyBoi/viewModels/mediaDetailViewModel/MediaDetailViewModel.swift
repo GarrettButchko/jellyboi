@@ -257,10 +257,7 @@ class MediaDetailViewModel {
         guard let itemID = item.id else { return }
         self.client = client
         self.libraryViewModel = libraryViewModel
-        let resolvedItem = libraryViewModel.movies.first(where: { $0.id == itemID })
-            ?? libraryViewModel.resumeShows.first(where: { $0.id == itemID })
-            ?? libraryViewModel.episodes.first(where: { $0.id == itemID })
-            ?? libraryViewModel.tvShows.first(where: { $0.id == itemID })
+        let resolvedItem = libraryViewModel.item(for: itemID)
             ?? DownloadManager.shared.completedDownloads.first(where: { $0.item.id == itemID })?.item
             ?? item
         self.sourceItem = resolvedItem
@@ -330,7 +327,7 @@ class MediaDetailViewModel {
 
     func loadParentSeries(client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel) async {
         guard let seriesID = detailedItem?.seriesID ?? sourceItem?.seriesID else { return }
-        if let local = libraryViewModel.tvShows.first(where: { $0.id == seriesID }) {
+        if let local = libraryViewModel.item(for: seriesID) {
             self.seriesItem = local
             return
         }

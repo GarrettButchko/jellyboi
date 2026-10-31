@@ -91,9 +91,22 @@ public enum DownloadStatus: String, Codable, Sendable {
     }
 }
 
+// MARK: - Download Presentation State Kind
+
+public enum DownloadPresentationStateKind: Int, Codable, Sendable {
+    case group = 1      // Collection or Series
+    case episode = 2    // Single episode
+    case movie = 3      // Single movie
+    case multiple = 4   // Multiple items across different groups/types
+}
+
 public nonisolated struct DownloadActivityAttributes: Sendable {
     public struct ContentState: Codable, Hashable, Sendable {
+        public var stateKind: DownloadPresentationStateKind
         public var title: String
+        public var subtitleLeftText: String?
+        public var subtitleLeftIcon: String?
+        public var subtitleRightText: String?
         public var subtitle: String?
         public var detailText: String?
         public var progress: Double
@@ -194,7 +207,11 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
         }
 
         public init(
+            stateKind: DownloadPresentationStateKind = .multiple,
             title: String,
+            subtitleLeftText: String? = nil,
+            subtitleLeftIcon: String? = nil,
+            subtitleRightText: String? = nil,
             subtitle: String? = nil,
             detailText: String? = nil,
             progress: Double,
@@ -205,7 +222,11 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
             isSingleElement: Bool = true,
             isEpisode: Bool = false
         ) {
+            self.stateKind = stateKind
             self.title = title
+            self.subtitleLeftText = subtitleLeftText
+            self.subtitleLeftIcon = subtitleLeftIcon
+            self.subtitleRightText = subtitleRightText
             self.subtitle = subtitle
             self.detailText = detailText
             self.progress = progress
@@ -218,12 +239,18 @@ public nonisolated struct DownloadActivityAttributes: Sendable {
         }
 
         enum CodingKeys: String, CodingKey {
-            case title, subtitle, detailText, progress, itemsRemaining, totalItems, status, posterImageData, isSingleElement, isEpisode
+            case stateKind, title, subtitleLeftText, subtitleLeftIcon, subtitleRightText
+            case subtitle, detailText, progress, itemsRemaining, totalItems, status
+            case posterImageData, isSingleElement, isEpisode
         }
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.stateKind = try container.decodeIfPresent(DownloadPresentationStateKind.self, forKey: .stateKind) ?? .multiple
             self.title = try container.decode(String.self, forKey: .title)
+            self.subtitleLeftText = try container.decodeIfPresent(String.self, forKey: .subtitleLeftText)
+            self.subtitleLeftIcon = try container.decodeIfPresent(String.self, forKey: .subtitleLeftIcon)
+            self.subtitleRightText = try container.decodeIfPresent(String.self, forKey: .subtitleRightText)
             self.subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle)
             self.detailText = try container.decodeIfPresent(String.self, forKey: .detailText)
             self.progress = try container.decode(Double.self, forKey: .progress)

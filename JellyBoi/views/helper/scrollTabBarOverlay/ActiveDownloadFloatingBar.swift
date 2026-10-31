@@ -105,123 +105,124 @@ struct ActiveDownloadFloatingBar: View {
 
     @ViewBuilder
     private var leadingIndicatorView: some View {
-        if let singleItem = singleDownloadItem {
-            DownloadThumbnailView(
-                item: singleItem,
-                client: serverViewModel.client,
-                libraryViewModel: libraryViewModel,
-                size: .compact
-            )
-            .id("thumb-single-\(singleItem.id)")
-            .transition(.opacity.combined(with: .scale(scale: 0.85)))
-        } else if let group = commonGroupInfo {
-            DownloadThumbnailView(
-                group: group,
-                client: serverViewModel.client,
-                libraryViewModel: libraryViewModel,
-                size: .compact
-            )
-            .id("thumb-group-\(group.id)")
-            .transition(.opacity.combined(with: .scale(scale: 0.85)))
-        } else {
-            // Circular progress ring
-            ZStack {
-                Circle()
-                    .stroke(Color.mainOpp.opacity(0.12), lineWidth: 2.2)
-                Circle()
-                    .trim(from: 0, to: max(0.06, CGFloat(overallProgress)))
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(.smooth(duration: 0.3), value: overallProgress)
-
-                Image(systemName: ringIcon)
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Color.accentColor)
-                    .contentTransition(.symbolEffect(.replace))
+        switch presentation.stateKind {
+        case .group:
+            if let group = commonGroupInfo {
+                DownloadThumbnailView(
+                    group: group,
+                    client: serverViewModel.client,
+                    libraryViewModel: libraryViewModel,
+                    size: .compact
+                )
+                .id("thumb-group-\(group.id)")
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            } else if let posterURL = presentation.posterURL {
+                DownloadThumbnailView(
+                    imageURL: posterURL,
+                    isEpisode: false,
+                    isShow: true,
+                    size: .compact
+                )
+                .id("thumb-poster-\(posterURL.absoluteString)")
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            } else {
+                progressRingView
             }
-            .frame(width: 20, height: 20)
-            .id("multi-ring")
-            .transition(.opacity.combined(with: .scale(scale: 0.85)))
+
+        case .episode:
+            if let singleItem = singleDownloadItem {
+                DownloadThumbnailView(
+                    item: singleItem,
+                    client: serverViewModel.client,
+                    libraryViewModel: libraryViewModel,
+                    size: .compact
+                )
+                .id("thumb-single-\(singleItem.id)")
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            } else if let posterURL = presentation.posterURL {
+                DownloadThumbnailView(
+                    imageURL: posterURL,
+                    isEpisode: true,
+                    isShow: false,
+                    size: .compact
+                )
+                .id("thumb-poster-\(posterURL.absoluteString)")
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            } else {
+                progressRingView
+            }
+
+        case .movie:
+            if let singleItem = singleDownloadItem {
+                DownloadThumbnailView(
+                    item: singleItem,
+                    client: serverViewModel.client,
+                    libraryViewModel: libraryViewModel,
+                    size: .compact
+                )
+                .id("thumb-single-\(singleItem.id)")
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            } else if let posterURL = presentation.posterURL {
+                DownloadThumbnailView(
+                    imageURL: posterURL,
+                    isEpisode: false,
+                    isShow: false,
+                    size: .compact
+                )
+                .id("thumb-poster-\(posterURL.absoluteString)")
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            } else {
+                progressRingView
+            }
+
+        case .multiple:
+            progressRingView
         }
+    }
+
+    private var progressRingView: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.mainOpp.opacity(0.12), lineWidth: 2.2)
+            Circle()
+                .trim(from: 0, to: max(0.06, CGFloat(overallProgress)))
+                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.smooth(duration: 0.3), value: overallProgress)
+
+            Image(systemName: ringIcon)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Color.accentColor)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .frame(width: 20, height: 20)
+        .id("multi-ring")
+        .transition(.opacity.combined(with: .scale(scale: 0.85)))
     }
 
     @ViewBuilder
     private var subtitleContentView: some View {
-        if let singleItem = singleDownloadItem {
-            if singleItem.status == .failed {
-                HStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.red)
-                    Text(singleItem.errorMessage ?? "Download or conversion failed")
-                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.red)
-                        .lineLimit(1)
-                }
-                .id("sub-single-fail-\(singleItem.id)")
-                .transition(.opacity)
-            } else {
-                HStack(spacing: 4) {
-                    HStack(spacing: 4) {
-                        Image(systemName: singleItem.statusIcon)
-                            .font(.system(size: 9.5, weight: .medium))
-
-                        Text(singleItem.statusText)
-                    }
-                    .font(.system(size: 10.5, design: .rounded))
-                    .foregroundStyle(Color.mainOpp.opacity(0.6))
-
-                    Spacer(minLength: 4)
-
-                    if singleItem.status != .queued {
-                        Text(singleItem.formattedPercentage)
-                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.mainOpp.opacity(0.8))
-                    }
-                }
-                .id("sub-single-ok-\(singleItem.id)")
-                .transition(.opacity)
-            }
-        } else if let group = commonGroupInfo {
+        HStack(spacing: 4) {
             HStack(spacing: 4) {
-                HStack(spacing: 4) {
-                    Image(systemName: presentation.status.icon)
+                if let icon = presentation.subtitleLeftIcon {
+                    Image(systemName: icon)
                         .font(.system(size: 9.5, weight: .medium))
-
-                    Text(presentation.detailText ?? "\(group.episodesLeft) left")
                 }
-                .font(.system(size: 10.5, design: .rounded))
-                .foregroundStyle(group.isAllFailed ? Color.red : Color.mainOpp.opacity(0.6))
+                Text(presentation.subtitleLeftText)
+            }
+            .font(.system(size: 10.5, design: .rounded))
+            .foregroundStyle(presentation.status == .failed ? Color.red : Color.mainOpp.opacity(0.6))
+            .lineLimit(1)
 
-                Spacer(minLength: 4)
+            Spacer(minLength: 4)
 
-                Text("\(percent)%")
+            if let right = presentation.subtitleRightText {
+                Text(right)
                     .font(.system(size: 10.5, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.mainOpp.opacity(0.8))
             }
-            .id("sub-group-\(group.id)")
-            .transition(.opacity)
-        } else {
-            HStack(spacing: 4) {
-                HStack(spacing: 4) {
-                    Image(systemName: presentation.status.icon)
-                        .font(.system(size: 9.5, weight: .medium))
-
-                    Text(presentation.status.isQueued ? "Queued" : "\(activeDownloads.count) items")
-                }
-                .font(.system(size: 10.5, design: .rounded))
-                .foregroundStyle(presentation.status == .failed ? Color.red : Color.mainOpp.opacity(0.6))
-
-                Spacer(minLength: 4)
-
-                if !presentation.status.isQueued {
-                    Text("\(percent)%")
-                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.mainOpp.opacity(0.8))
-                }
-            }
-            .id("sub-multi")
-            .transition(.opacity)
         }
+        .id("sub-\(presentation.stateKind.rawValue)-\(presentation.subtitleLeftText)-\(presentation.subtitleRightText ?? "")")
+        .transition(.opacity)
     }
 }

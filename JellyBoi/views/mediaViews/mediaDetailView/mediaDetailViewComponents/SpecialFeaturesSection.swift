@@ -25,8 +25,12 @@ extension MediaDetailView {
             Group {
                 if detailVM.specialFeatures.isEmpty {
                     if detailVM.isLoadingSpecialFeatures && (displayItem.specialFeatureCount ?? 0) > 0 {
-                        SkeletonSpecialFeaturesSection()
-                            .transition(.opacity)
+                        SectionRow.placeholder(
+                            title: "Special Features",
+                            count: 4,
+                            imageAspectRatio: 16.0 / 9.0
+                        )
+                        .transition(.opacity)
                     }
                 } else {
                     SectionRow(title: "Special Features") {

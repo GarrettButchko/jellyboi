@@ -129,7 +129,7 @@ struct MediaView: View {
 
     private var downloadedMovies: [BaseItemDto] {
         downloadManager.downloadedMovies.map { movie in
-            if let id = movie.id, let liveItem = libraryViewModel.movies.first(where: { $0.id == id }) {
+            if let id = movie.id, let liveItem = libraryViewModel.item(for: id) {
                 return liveItem
             }
             return movie
@@ -142,8 +142,7 @@ struct MediaView: View {
 
     private var downloadedEpisodes: [BaseItemDto] {
         viewModel.downloadedEpisodes(downloadManager: downloadManager).map { episode in
-            if let id = episode.id,
-               let liveItem = libraryViewModel.resumeShows.first(where: { $0.id == id }) ?? libraryViewModel.episodes.first(where: { $0.id == id }) {
+            if let id = episode.id, let liveItem = libraryViewModel.item(for: id) {
                 return liveItem
             }
             return episode
@@ -193,7 +192,7 @@ struct MediaView: View {
     @ViewBuilder
     private var favoritesContent: some View {
         if viewModel.isLoading && viewModel.currentFavoriteItems.isEmpty {
-            SkeletonMediaGrid()
+            MediaGrid.placeholder(namespace: zoomTransition)
                 .transition(.opacity)
         } else if viewModel.currentFavoriteItems.isEmpty {
             let message: String = {
@@ -237,7 +236,7 @@ struct MediaView: View {
     private var regularContent: some View {
         if viewModel.regularItems.isEmpty {
             if viewModel.isLoading {
-                SkeletonMediaGrid()
+                MediaGrid.placeholder(namespace: zoomTransition)
                     .transition(.opacity)
             } else if let error = viewModel.errorMessage {
                 EmptyStateView(

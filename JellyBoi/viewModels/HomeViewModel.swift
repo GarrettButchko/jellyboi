@@ -87,45 +87,23 @@ class HomeViewModel {
         return library.isLibraryEmpty
     }
 
-    // MARK: - Random Featured Carousel Pool
+    // MARK: - Carousel Composition & State
 
-    private var cachedRandomPoolIDs: [String] = []
-    private var cachedRandomItems: [BaseItemDto] = []
-
-    /// 6 random movies and shows from the library, reshuffled on refresh or when the library changes.
-    var randomFeaturedItems: [BaseItemDto] {
-        let pool = library.movies + library.tvShows
-        guard !pool.isEmpty else { return [] }
-
-        let currentPoolIDs = pool.compactMap(\.id)
-        if cachedRandomPoolIDs != currentPoolIDs || cachedRandomItems.isEmpty {
-            cachedRandomPoolIDs = currentPoolIDs
-            cachedRandomItems = Array(pool.shuffled().prefix(6))
-        }
-        return cachedRandomItems
+    var carouselTitle: String {
+        (!topWatchedMovies.isEmpty || !resumeShows.isEmpty) ? "Continue Watching" : "Featured"
     }
 
-    func shuffleRandomFeaturedItems() {
-        let pool = library.movies + library.tvShows
-        cachedRandomPoolIDs = pool.compactMap(\.id)
-        cachedRandomItems = Array(pool.shuffled().prefix(6))
-    }
-
-    /// Items shown in the hero carousel.
-    /// Shows `topWatchedMovies` (Continue Watching) if available;
-    /// when Continue Watching disappears or is empty, falls back to 6 random movies and shows.
+    /// Items shown in the hero carousel. Precomputed in background by LibraryViewModel.
     var carouselItems: [BaseItemDto] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows { return [] }
         #endif
-        if !topWatchedMovies.isEmpty {
-            return Array(topWatchedMovies.prefix(6))
-        }
-        return randomFeaturedItems
+        return library.carouselItems
     }
 
     /// Preserved carousel looped index so that navigating to another view and back
     /// does not reset the carousel back to slide 0.
+    @ObservationIgnored
     var carouselSnappedIndex: Int? = nil
 
     /// The item currently selected/focused in the hero carousel based on carouselSnappedIndex.
@@ -133,11 +111,8 @@ class HomeViewModel {
         guard !carouselItems.isEmpty else { return nil }
         if let snapped = carouselSnappedIndex {
             let count = carouselItems.count
-            let b = min(5, count)
-            let idx: Int
-            if snapped < b { idx = count - b + snapped }
-            else if snapped >= b + count { idx = snapped - b - count }
-            else { idx = snapped - b }
+            guard count > 0 else { return carouselItems.first }
+            let idx = ((snapped % count) + count) % count
             if carouselItems.indices.contains(idx) {
                 return carouselItems[idx]
             }
@@ -147,11 +122,9 @@ class HomeViewModel {
 
     func load(using client: JellyfinClient) async {
         await library.load(using: client)
-        shuffleRandomFeaturedItems()
     }
 
     func refresh(using client: JellyfinClient) async {
         await library.refresh(using: client)
-        shuffleRandomFeaturedItems()
     }
 }

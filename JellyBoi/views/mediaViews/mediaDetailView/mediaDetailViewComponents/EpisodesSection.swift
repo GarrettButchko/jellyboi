@@ -55,8 +55,19 @@ extension MediaDetailView {
                 ) {
                     if detailVM.episodes.isEmpty {
                         if detailVM.isLoadingEpisodes {
-                            SkeletonEpisodesRow()
-                                .transition(.opacity)
+                            ScrollView(.horizontal) {
+                                HStack(alignment: .top, spacing: 12) {
+                                    ForEach(0..<5, id: \.self) { _ in
+                                        SkeletonBlock(cornerRadius: 16)
+                                            .frame(width: episodeCardHeight * (16.0 / 9.0), height: episodeCardHeight)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                            }
+                            .scrollClipDisabled()
+                            .scrollIndicators(.hidden)
+                            .skeleton()
+                            .transition(.opacity)
                         }
                     } else {
                         ScrollView(.horizontal) {

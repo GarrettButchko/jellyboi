@@ -848,7 +848,7 @@ public final class DownloadManager: NSObject {
         var presentation = currentPresentation
         if presentation.isSingleElement, let posterURL = presentation.posterURL {
             let urlString = posterURL.absoluteString
-            if let cached = cachedPosterThumbnails[urlString] {
+            if let cached = cachedPosterThumbnails[urlString], cached.count <= 2200 {
                 presentation = presentation.with(posterImageData: cached)
             } else {
                 let cacheKey = SDWebImageManager.shared.cacheKey(for: posterURL) ?? urlString
@@ -954,8 +954,8 @@ extension DownloadManager: URLSessionDownloadDelegate {
 
 // MARK: - UIImage Live Activity Thumbnail
 
-private extension UIImage {
-    func liveActivityThumbnailData(maxDimension: CGFloat = 72) -> Data? {
+extension UIImage {
+    func liveActivityThumbnailData(maxDimension: CGFloat = 56) -> Data? {
         guard size.width > 0 && size.height > 0 else { return nil }
 
         let aspect = size.width / size.height
@@ -979,6 +979,12 @@ private extension UIImage {
         let resized = renderer.image { _ in
             self.draw(in: CGRect(origin: .zero, size: targetSize))
         }
-        return resized.jpegData(compressionQuality: 0.8)
+
+        for quality in [0.6, 0.45, 0.3, 0.15] {
+            if let data = resized.jpegData(compressionQuality: quality), data.count <= 2000 {
+                return data
+            }
+        }
+        return resized.jpegData(compressionQuality: 0.15)
     }
 }

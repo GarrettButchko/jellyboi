@@ -15,7 +15,7 @@ import UIKit
 struct DownloadActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: DownloadActivityAttributes.self) { context in
-            // Lock screen / Banner UI
+            // Lock screen / Banner UI (Big view with progress bar)
             LockScreenDownloadView(state: context.state)
                 .activityBackgroundTint(Color.black.opacity(0.75))
                 .activitySystemActionForegroundColor(Color.white)
@@ -32,30 +32,28 @@ struct DownloadActivityWidget: Widget {
                 }
             } compactLeading: {
                 Group {
-                    let isEp = isEpisodeThumbnail(for: context.state)
-                    if context.state.isSingleElement, let imageData = context.state.posterImageData {
+                    if context.state.stateKind == .multiple {
+                        ProgressRingIndicator(
+                            progress: context.state.progress,
+                            status: context.state.status,
+                            size: 18,
+                            lineWidth: 2
+                        )
+                    } else {
+                        let isEp = isEpisodeThumbnail(for: context.state)
                         PosterView(
-                            imageData: imageData,
+                            imageData: context.state.posterImageData,
                             status: context.state.status,
                             isEpisode: isEp,
                             width: isEp ? 26 : 14,
                             height: isEp ? 17 : 21,
                             cornerRadius: isEp ? 4 : 3.5
                         )
-                    } else {
-                        // Default: Jellyboi SVG mascot
-                        Image("Jellyboi")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 14, height: 14)
-                            .foregroundStyle(Color.accentColor)
                     }
                 }
                 .padding(.leading, 6)
                 .padding(.vertical, 2)
             } compactTrailing: {
-                // Percentage instead of progress ring with padding
                 Text(context.state.compactPercentageText)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .monospacedDigit()
@@ -64,12 +62,16 @@ struct DownloadActivityWidget: Widget {
                     .padding(.vertical, 2)
             } minimal: {
                 Group {
-                    if context.state.status == .queued || context.state.status == .completed {
-                        Image("Jellyboi")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 12, height: 12)
+                    if context.state.stateKind == .multiple {
+                        ProgressRingIndicator(
+                            progress: context.state.progress,
+                            status: context.state.status,
+                            size: 16,
+                            lineWidth: 2
+                        )
+                    } else if context.state.status == .queued || context.state.status == .completed {
+                        Image(systemName: context.state.status.icon)
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(Color.accentColor)
                     } else {
                         Text("\(context.state.progressPercent)%")
@@ -86,7 +88,7 @@ struct DownloadActivityWidget: Widget {
     }
 }
 
-// MARK: - Lock Screen & Expanded Dynamic Island Banner View
+// MARK: - Lock Screen & Expanded Dynamic Island Banner View (Big View)
 
 private struct LockScreenDownloadView: View {
     let state: DownloadActivityAttributes.ContentState
@@ -120,68 +122,52 @@ private struct LockScreenDownloadView: View {
         let thumbHeight: CGFloat = isEp ? 40 : 48
         let radius: CGFloat = 6.5
 
-        if state.isSingleElement, let imageData = state.posterImageData {
-            // Single element with artwork: SHOW POSTER OR EPISODE THUMBNAIL
+        if state.stateKind == .multiple {
+            // State 4: Icon in card container (without progress ring)
+            ZStack {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+
+                Image(systemName: state.status.icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .frame(width: 32, height: 48)
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+            )
+        } else {
+            // States 1, 2, 3: Poster or Episode thumbnail
             PosterView(
-                imageData: imageData,
+                imageData: state.posterImageData,
                 status: state.status,
                 isEpisode: isEp,
                 width: thumbWidth,
                 height: thumbHeight,
                 cornerRadius: radius
             )
-        } else {
-            // Default: Jellyboi SVG in card container
-            ZStack {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
-
-                Image("Jellyboi")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: isEp ? 24 : 20, height: isEp ? 24 : 20)
-                    .foregroundStyle(Color.accentColor)
-            }
-            .frame(width: thumbWidth, height: thumbHeight)
-            .overlay(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-            )
         }
     }
 
     @ViewBuilder
     private var bottomStatusRow: some View {
-        if !state.isSingleElement {
-            // Multiple items: show percent only under the bar (amount of items is only shown once in the title above)
+        HStack {
             HStack(spacing: 4) {
-                Image(systemName: state.status.icon)
-                    .font(.system(size: 10, weight: .medium))
-
-                Text(state.percentageText)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .monospacedDigit()
-
-                Spacer()
-            }
-            .foregroundStyle(Color.white.opacity(0.75))
-        } else {
-            // Single element: shows icon + status (e.g. 1 min left / Converting / 3 episodes left) and percent on the right
-            HStack {
-                HStack(spacing: 4) {
-                    Image(systemName: state.status.icon)
+                if let icon = state.subtitleLeftIcon {
+                    Image(systemName: icon)
                         .font(.system(size: 10, weight: .medium))
-
-                    Text(state.statusDetail)
-                        .font(.system(size: 12, weight: .regular, design: .rounded))
                 }
-                .foregroundStyle(Color.white.opacity(0.65))
-                .lineLimit(1)
+                Text(state.subtitleLeftText ?? state.statusDetail)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+            }
+            .foregroundStyle(state.status == .failed ? Color.red : Color.white.opacity(0.65))
+            .lineLimit(1)
 
-                Spacer(minLength: 8)
+            Spacer(minLength: 8)
 
-                Text(state.percentageText)
+            if let right = state.subtitleRightText {
+                Text(right)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(Color.white.opacity(0.75))
@@ -227,11 +213,8 @@ private struct PosterView: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.08))
 
-            Image("Jellyboi")
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: max(8, width * 0.45), height: max(8, height * 0.45))
+            Image(systemName: status.icon)
+                .font(.system(size: max(8, width * 0.4)))
                 .foregroundStyle(Color.accentColor)
         }
         .frame(width: width, height: height)
