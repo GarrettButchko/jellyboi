@@ -41,7 +41,7 @@ struct ProfileAvatarButton: View {
                 viewManager.signOut()
             }
         }) {
-            ProfileView(onSignOut: { pendingSignOut = true })
+            SettingsView(onSignOut: { pendingSignOut = true })
         }
         .padding(.trailing, 20)
     }

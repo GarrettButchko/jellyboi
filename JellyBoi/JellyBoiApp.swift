@@ -71,6 +71,10 @@ struct JellyBoiApp: App {
     @State private var downloadManager = DownloadManager.shared
     @State private var networkMonitor = NetworkMonitor.shared
 
+    init() {
+        AppLogRecorder.shared.start()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

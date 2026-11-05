@@ -298,7 +298,6 @@ public struct DebugSettingsView: View {
         .background(Color.bg.ignoresSafeArea())
         .navigationTitle("Debug Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarVisibility(.visible, for: .navigationBar)
     }
 }
 #endif
