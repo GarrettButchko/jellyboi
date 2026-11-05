@@ -121,7 +121,7 @@ struct MediaCard: View {
                 .aspectRatio(effectiveAspectRatio, contentMode: .fit)
                 .overlay(alignment: .bottomTrailing) {
                     VStack(alignment: .trailing, spacing: 6) {
-                        if let progress = watchProgress, !isWatched && isWatching && Int(progress * 100) > 0 {
+                        if AppPreferences.shared.showGlassProgressBar, let progress = watchProgress, !isWatched && isWatching && Int(progress * 100) > 0 {
                             GlassProgressBar(progress: progress, barWidth: 40)
                                 .transition(.scale(scale: 0.8).combined(with: .opacity))
                         }
@@ -147,75 +147,39 @@ struct MediaCard: View {
         .buttonStyle(.plain)
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 16, style: .continuous))
         .contextMenu {
-            Section {
-                if isWatching {
-                    Button {
-                        if let onContinueWatching {
-                            onContinueWatching()
-                        } else {
-                            playAction(fromBeginning: false)
-                        }
-                    } label: {
-                        Label("Continue watching", systemImage: "play.fill")
+            PlaybackMenuContent(
+                title: item.contextMenuTitle(),
+                isInProgress: isWatching,
+                isWatched: isWatched,
+                isFavorite: isFavorite,
+                onContinueWatching: {
+                    if let onContinueWatching {
+                        onContinueWatching()
+                    } else {
+                        playAction(fromBeginning: false)
                     }
-
-                    Button {
-                        if let onStartFromBeginning {
-                            onStartFromBeginning()
-                        } else {
-                            playAction(fromBeginning: true)
-                        }
-                    } label: {
-                        Label("Start from beginning", systemImage: "arrow.counterclockwise")
+                },
+                onStartFromBeginning: {
+                    if let onStartFromBeginning {
+                        onStartFromBeginning()
+                    } else {
+                        playAction(fromBeginning: true)
                     }
-
-                    Button(role: .destructive) {
-                        handleResetProgress()
-                    } label: {
-                        Label("Reset Progress", systemImage: "xmark.circle")
+                },
+                onStart: {
+                    if let onStartFromBeginning {
+                        onStartFromBeginning()
+                    } else {
+                        playAction(fromBeginning: false)
                     }
-                } else if isWatched {
-                    Button {
-                        if let onStartFromBeginning {
-                            onStartFromBeginning()
-                        } else {
-                            playAction(fromBeginning: true)
-                        }
-                    } label: {
-                        Label("Start from beginning", systemImage: "arrow.counterclockwise")
-                    }
-
-                    Button(role: .destructive) {
-                        handleResetProgress()
-                    } label: {
-                        Label("Reset Progress", systemImage: "xmark.circle")
-                    }
-                } else {
-                    Button {
-                        if let onStartFromBeginning {
-                            onStartFromBeginning()
-                        } else {
-                            playAction(fromBeginning: false)
-                        }
-                    } label: {
-                        Label("Start", systemImage: "play.fill")
-                    }
-                }
-
-                Button {
+                },
+                onResetProgress: {
+                    handleResetProgress()
+                },
+                onToggleFavorite: {
                     handleToggleFavorite()
-                } label: {
-                    Label(
-                        item.isFavorite ? "Unfavorite" : "Favorite",
-                        systemImage: item.isFavorite ? "star.fill" : "star"
-                    )
                 }
-            } header: {
-                let title = item.contextMenuTitle()
-                if !title.isEmpty {
-                    Text(title)
-                }
-            }
+            )
         }
         .scaleEffect(isHovered ? 1.04 : 1.0)
         .brightness(isHovered ? 0.06 : 0)

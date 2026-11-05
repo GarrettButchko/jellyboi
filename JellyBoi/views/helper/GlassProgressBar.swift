@@ -9,33 +9,42 @@ import SwiftUI
 import BaseColors
 
 struct GlassProgressBar: View {
+    @Environment(AppPreferences.self) private var preferencesEnvironment: AppPreferences?
+
     let progress: Double
     var barWidth: CGFloat = 50
     var barHeight: CGFloat = 4
     var label: String? = nil
 
+    private var isVisible: Bool {
+        (preferencesEnvironment ?? AppPreferences.shared).showGlassProgressBar
+    }
+
+    @ViewBuilder
     var body: some View {
-        HStack(spacing: 8) {
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.mainOpp.opacity(0.35))
-                    .frame(width: barWidth, height: barHeight)
-                Capsule()
-                    .fill(Color.mainOpp)
-                    .frame(width: barWidth, height: barHeight)
-                    .mask(alignment: .leading) {
-                        Rectangle().frame(width: barWidth * progress)
-                    }
+        if isVisible {
+            HStack(spacing: 8) {
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.mainOpp.opacity(0.35))
+                        .frame(width: barWidth, height: barHeight)
+                    Capsule()
+                        .fill(Color.mainOpp)
+                        .frame(width: barWidth, height: barHeight)
+                        .mask(alignment: .leading) {
+                            Rectangle().frame(width: barWidth * progress)
+                        }
+                }
+                if let label {
+                    Text(label + " left")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.mainOpp)
+                        .fixedSize()
+                }
             }
-            if let label {
-                Text(label + " left")
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.mainOpp)
-                    .fixedSize()
-            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
     }
 }

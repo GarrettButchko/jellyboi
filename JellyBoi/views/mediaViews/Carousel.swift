@@ -435,7 +435,7 @@ private struct CarouselCard: View {
             }
 
             VStack(alignment: .trailing, spacing: 6) {
-                if let progress = watchProgress {
+                if AppPreferences.shared.showGlassProgressBar, let progress = watchProgress {
                     GlassProgressBar(progress: progress, label: item.timeRemainingFormatted)
                 }
                 if let episodeNumber = item.formattedEpisodeNumber {

@@ -21,7 +21,7 @@ struct ScrollToTopButton: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 18)
             .padding(.vertical, 10)
-            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(Color.appAccent, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
         .buttonStyle(.plain)
     }

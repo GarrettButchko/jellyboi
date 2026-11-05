@@ -38,7 +38,7 @@ struct EmptyStateView: View {
                     .foregroundStyle(Color.bg)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color.accent, in: Capsule())
+                    .background(Color.appAccent, in: Capsule())
             }
         }
         .frame(maxWidth: .infinity)

@@ -70,8 +70,12 @@ struct JellyBoiApp: App {
     @State private var playbackManager = PlaybackManager.shared
     @State private var downloadManager = DownloadManager.shared
     @State private var networkMonitor = NetworkMonitor.shared
+    @State private var preferences = AppPreferences.shared
 
     init() {
+        #if os(iOS)
+        UISwitch.appearance().onTintColor = .systemGreen
+        #endif
         AppLogRecorder.shared.start()
     }
 
@@ -84,6 +88,9 @@ struct JellyBoiApp: App {
                 .environment(playbackManager)
                 .environment(downloadManager)
                 .environment(networkMonitor)
+                .environment(preferences)
+                .tint(preferences.accentColor)
+                .toggleStyle(SwitchToggleStyle(tint: .green))
         }
     }
 }

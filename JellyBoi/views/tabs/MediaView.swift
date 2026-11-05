@@ -61,7 +61,7 @@ struct MediaView: View {
                 } label: {
                     Image(systemName: viewModel.showDownloadsOnly ? "square.and.arrow.down.fill" : "square.and.arrow.down")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(viewModel.showDownloadsOnly ? Color.accentColor : Color.mainOpp)
+                        .foregroundStyle(viewModel.showDownloadsOnly ? Color.appAccent : Color.mainOpp)
                         .frame(width: 44, height: 44)
                         .glassEffect(.regular.interactive(), in: Circle())
                         .contentShape(Circle())

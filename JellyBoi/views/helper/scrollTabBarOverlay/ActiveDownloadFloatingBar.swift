@@ -18,6 +18,7 @@ struct ActiveDownloadFloatingBar: View {
 
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
+    @Environment(AppPreferences.self) private var preferences: AppPreferences?
 
     private var singleDownloadItem: DownloadItem? {
         activeDownloads.count == 1 ? activeDownloads.first : nil
@@ -181,18 +182,19 @@ struct ActiveDownloadFloatingBar: View {
     }
 
     private var progressRingView: some View {
-        ZStack {
+        let accent = preferences?.accentColor ?? Color.appAccent
+        return ZStack {
             Circle()
                 .stroke(Color.mainOpp.opacity(0.12), lineWidth: 2.2)
             Circle()
                 .trim(from: 0, to: max(0.06, CGFloat(overallProgress)))
-                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                .stroke(accent, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.smooth(duration: 0.3), value: overallProgress)
 
             Image(systemName: ringIcon)
                 .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(accent)
                 .contentTransition(.symbolEffect(.replace))
         }
         .frame(width: 20, height: 20)

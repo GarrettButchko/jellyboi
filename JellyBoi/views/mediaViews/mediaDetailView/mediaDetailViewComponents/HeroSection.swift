@@ -44,14 +44,16 @@ extension MediaDetailView {
         HStack(alignment: .bottom, spacing: 8) {
             heroImage
                 .background(alignment: .top) {
-                    HeroBackdropView(
-                        url: heroBackdropURL,
-                        itemID: displayItem.id,
-                        blurRadius: 15,
-                        isFlipped: true
-                    )
-                    .offset(y: -400)
-                    .ignoresSafeArea(edges: .top)
+                    if AppPreferences.shared.showDetailBlurredBackdrop {
+                        HeroBackdropView(
+                            url: heroBackdropURL,
+                            itemID: displayItem.id,
+                            blurRadius: 15,
+                            isFlipped: true
+                        )
+                        .offset(y: -400)
+                        .ignoresSafeArea(edges: .top)
+                    }
                 }
             buttonColumn
         }

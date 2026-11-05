@@ -296,6 +296,7 @@ public struct DebugSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Color.bg.ignoresSafeArea())
+        .toggleStyle(SwitchToggleStyle(tint: .green))
         .navigationTitle("Debug Settings")
         .navigationBarTitleDisplayMode(.inline)
     }

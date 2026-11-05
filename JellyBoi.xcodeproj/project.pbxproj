@@ -192,6 +192,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 21707805303646DD0055889C /* Build configuration list for PBXNativeTarget "JellyBoi" */;
 			buildPhases = (
+				217077D0303646DD0055889C /* Generate Package Dependencies */,
 				217077F6303646DD0055889C /* Sources */,
 				217077F7303646DD0055889C /* Frameworks */,
 				217077F8303646DD0055889C /* Resources */,
@@ -291,6 +292,30 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		217077D0303646DD0055889C /* Generate Package Dependencies */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/JellyBoi.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+				"$(SRCROOT)/scripts/generate_dependencies.py",
+			);
+			name = "Generate Package Dependencies";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/JellyBoi/utility/PackageDependencies.generated.swift",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/usr/bin/python3 \"${SRCROOT}/scripts/generate_dependencies.py\" \"${SRCROOT}/JellyBoi.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved\" \"${SRCROOT}/JellyBoi/utility/PackageDependencies.generated.swift\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		2161FFBD3087D4CD00196CDF /* Sources */ = {

@@ -69,7 +69,8 @@ extension MediaDetailView {
     // MARK: - Progress Ring Button
 
     private var progressRingButton: some View {
-        Menu {
+        let accent = preferences?.accentColor ?? Color.appAccent
+        return Menu {
             playbackMenuContent
         } label: {
             ZStack {
@@ -79,7 +80,7 @@ extension MediaDetailView {
 
                 if detailVM.isWatched {
                     Circle()
-                        .stroke(Color.accent, lineWidth: 5)
+                        .stroke(accent, lineWidth: 5)
                         .frame(width: 35, height: 35)
 
                     Image(systemName: "checkmark")
@@ -88,7 +89,7 @@ extension MediaDetailView {
                 } else {
                     Circle()
                         .trim(from: 0, to: detailVM.progressValue)
-                        .stroke(Color.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                        .stroke(accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .frame(width: 35, height: 35)
 
@@ -98,7 +99,9 @@ extension MediaDetailView {
                 }
             }
             .frame(width: 50, height: 50)
+            .contentShape(Circle())
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Playback Menu Content
@@ -106,85 +109,45 @@ extension MediaDetailView {
     @ViewBuilder
     private var playbackMenuContent: some View {
         let isSeriesContainer = detailVM.displayItem?.type == .series
-        Section {
-            if detailVM.isInProgress {
-                Button {
+        PlaybackMenuContent(
+            title: !isSeriesContainer ? detailVM.targetPlayableTitle() : nil,
+            isInProgress: detailVM.isInProgress,
+            isWatched: detailVM.isWatched,
+            onContinueWatching: {
+                detailVM.playMedia(
+                    fromBeginning: false,
+                    playbackManager: playbackManager,
+                    serverViewModel: serverViewModel,
+                    libraryViewModel: libraryViewModel
+                )
+            },
+            onStartFromBeginning: {
+                if isSeriesContainer {
+                    detailVM.seriesAlertAction = .startFromBeginning
+                } else {
                     detailVM.playMedia(
-                        fromBeginning: false,
+                        fromBeginning: true,
                         playbackManager: playbackManager,
                         serverViewModel: serverViewModel,
                         libraryViewModel: libraryViewModel
                     )
-                } label: {
-                    Label("Continue watching", systemImage: "play.fill")
                 }
-
-                Button {
-                    if isSeriesContainer {
-                        detailVM.seriesAlertAction = .startFromBeginning
-                    } else {
-                        detailVM.playMedia(
-                            fromBeginning: true,
-                            playbackManager: playbackManager,
-                            serverViewModel: serverViewModel,
-                            libraryViewModel: libraryViewModel
-                        )
-                    }
-                } label: {
-                    Label("Start from beginning", systemImage: "arrow.counterclockwise")
-                }
-
-                Button(role: .destructive) {
-                    if isSeriesContainer {
-                        detailVM.seriesAlertAction = .resetProgress
-                    } else {
-                        detailVM.resetProgress(serverViewModel: serverViewModel)
-                    }
-                } label: {
-                    Label("Reset Progress", systemImage: "xmark.circle")
-                }
-            } else if detailVM.isWatched {
-                Button {
-                    if isSeriesContainer {
-                        detailVM.seriesAlertAction = .startFromBeginning
-                    } else {
-                        detailVM.playMedia(
-                            fromBeginning: true,
-                            playbackManager: playbackManager,
-                            serverViewModel: serverViewModel,
-                            libraryViewModel: libraryViewModel
-                        )
-                    }
-                } label: {
-                    Label("Start from beginning", systemImage: "arrow.counterclockwise")
-                }
-
-                Button(role: .destructive) {
-                    if isSeriesContainer {
-                        detailVM.seriesAlertAction = .resetProgress
-                    } else {
-                        detailVM.resetProgress(serverViewModel: serverViewModel)
-                    }
-                } label: {
-                    Label("Reset Progress", systemImage: "xmark.circle")
-                }
-            } else {
-                Button {
-                    detailVM.playMedia(
-                        fromBeginning: false,
-                        playbackManager: playbackManager,
-                        serverViewModel: serverViewModel,
-                        libraryViewModel: libraryViewModel
-                    )
-                } label: {
-                    Label("Start", systemImage: "play.fill")
+            },
+            onStart: {
+                detailVM.playMedia(
+                    fromBeginning: false,
+                    playbackManager: playbackManager,
+                    serverViewModel: serverViewModel,
+                    libraryViewModel: libraryViewModel
+                )
+            },
+            onResetProgress: {
+                if isSeriesContainer {
+                    detailVM.seriesAlertAction = .resetProgress
+                } else {
+                    detailVM.resetProgress(serverViewModel: serverViewModel)
                 }
             }
-        } header: {
-            let title = detailVM.targetPlayableTitle()
-            if !isSeriesContainer && !title.isEmpty {
-                Text(title)
-            }
-        }
+        )
     }
 }

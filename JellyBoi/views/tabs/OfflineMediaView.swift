@@ -233,7 +233,7 @@ struct OfflineMediaView: View {
                 .padding(.vertical, 13)
                 .background(
                     Capsule()
-                        .fill(Color.accentColor)
+                        .fill(Color.appAccent)
                 )
             }
             .buttonStyle(.plain)

@@ -109,7 +109,7 @@ struct ServerSignInView: View {
                 .padding(.vertical, 6)
                 .background {
                     RoundedRectangle(cornerRadius: 25)
-                        .fill(Color.accent.opacity(0.1))
+                        .fill(Color.appAccent.opacity(0.1))
                 }
             }
         }

@@ -25,6 +25,7 @@ struct MediaDetailView: View {
     @Environment(LibraryViewModel.self) var libraryViewModel
     @Environment(PlaybackManager.self) var playbackManager
     @Environment(DownloadManager.self) var downloadManager
+    @Environment(AppPreferences.self) var preferences: AppPreferences?
     @Environment(\.verticalSizeClass) var verticalSizeClass
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
 

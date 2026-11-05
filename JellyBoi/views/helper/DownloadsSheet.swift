@@ -562,7 +562,7 @@ struct DownloadsSheet: View {
 
             if hasActiveItems {
                 ProgressView(value: resolvedProgress)
-                    .tint(Color.accentColor)
+                    .tint(Color.appAccent)
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }

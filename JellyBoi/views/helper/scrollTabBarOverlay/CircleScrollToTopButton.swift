@@ -16,7 +16,7 @@ struct CircleScrollToTopButton: View {
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 38, height: 38)
-                .background(Color.accentColor, in: Circle())
+                .background(Color.appAccent, in: Circle())
         }
         .buttonStyle(.plain)
     }

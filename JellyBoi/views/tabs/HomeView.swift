@@ -220,7 +220,8 @@ private struct HomeHeroBackdrop: View {
     let offsetY: CGFloat
 
     var body: some View {
-        if let item = coordinator.heroItem ?? defaultItem,
+        if AppPreferences.shared.showHomeBlurredBackdrop,
+           let item = coordinator.heroItem ?? defaultItem,
            let client {
             HeroBackdropView(
                 url: item.imageWithTitleURL(client: client, seriesLookup: seriesLookup)

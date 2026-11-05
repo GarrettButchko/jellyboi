@@ -91,11 +91,13 @@ struct MediaDetailDownloadButton: View {
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
+    @Environment(AppPreferences.self) private var preferences: AppPreferences?
 
     var body: some View {
         let isDownloading = detailVM.isDetailDownloading(downloadManager: downloadManager)
         let isDownloaded = detailVM.isDetailDownloaded(downloadManager: downloadManager, libraryViewModel: libraryViewModel)
         let downloadProgress = detailVM.detailDownloadProgress(downloadManager: downloadManager, libraryViewModel: libraryViewModel)
+        let accent = preferences?.accentColor ?? Color.appAccent
 
         Button {
             detailVM.handleDownloadTap(
@@ -112,7 +114,7 @@ struct MediaDetailDownloadButton: View {
 
                     Circle()
                         .trim(from: 0, to: max(0.04, CGFloat(downloadProgress)))
-                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .stroke(accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .frame(width: 22, height: 22)
                         .animation(.smooth(duration: 0.2), value: downloadProgress)
@@ -127,7 +129,7 @@ struct MediaDetailDownloadButton: View {
                 if isDownloaded {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.white, Color.accentColor)
+                        .foregroundStyle(Color.white, accent)
                         .contentTransition(.symbolEffect(.replace))
                         .padding(11)
                 } else {

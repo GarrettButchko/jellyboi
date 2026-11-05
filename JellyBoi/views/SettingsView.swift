@@ -45,6 +45,20 @@ struct SettingsView: View {
                     .padding(.vertical, 6)
                 }
 
+                // MARK: - Preferences Section
+                Section {
+                    NavigationLink {
+                        PreferencesSettingsView()
+                    } label: {
+                        settingsRow(
+                            icon: "slider.horizontal.3",
+                            color: Color.red,
+                            title: "Preferences",
+                            subtitle: "Accent color, progress bar, and backdrops"
+                        )
+                    }
+                }
+
                 // MARK: - Settings Section
                 Section {
                     // Storage & Cache
@@ -144,10 +158,11 @@ struct SettingsView: View {
                         dismiss()
                     }
                     .font(.system(.body, design: .rounded, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Color.appAccent)
                 }
             }
         }
+        .toggleStyle(SwitchToggleStyle(tint: .green))
         .presentationDragIndicator(.visible)
         .presentationBackground(Color.bg)
     }

@@ -47,7 +47,6 @@ struct StorageSettingsView: View {
                     clearImageCache()
                 } label: {
                     HStack {
-                        Image(systemName: "photo.badge.arrow.forward")
                         Text("Clear Image Cache")
                         Spacer()
                         if isClearingImageCache {

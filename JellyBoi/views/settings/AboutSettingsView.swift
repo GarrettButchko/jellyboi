@@ -10,6 +10,9 @@ import BaseColors
 
 struct AboutSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+
+    private let dependencies: [DependencyItem] = PackageDependencies.all
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -19,42 +22,25 @@ struct AboutSettingsView: View {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
     }
 
-    private struct DependencyItem: Identifiable {
-        let id = UUID()
-        let name: String
-        let description: String
-        let license: String
-    }
-
-    private let dependencies: [DependencyItem] = [
-        DependencyItem(name: "JellyfinAPI", description: "Official Swift SDK and OpenAPI models for Jellyfin.", license: "GPL-3.0"),
-        DependencyItem(name: "FFmpegKit", description: "On-device hardware-accelerated media inspection and remuxing.", license: "LGPL-3.0"),
-        DependencyItem(name: "SDWebImageSwiftUI", description: "High-performance image caching and progressive decoding.", license: "MIT"),
-        DependencyItem(name: "StatusOverlayKit", description: "Transient pill status overlays and notifications.", license: "MIT"),
-        DependencyItem(name: "LoggingKit", description: "Lightweight structured logging with log level filtering.", license: "MIT"),
-        DependencyItem(name: "SkeletonUI", description: "Shimmer skeleton loading placeholders for SwiftUI.", license: "MIT"),
-        DependencyItem(name: "MarqueeText", description: "Smooth auto-scrolling text for titles and subtitles.", license: "MIT"),
-        DependencyItem(name: "BaseColors", description: "Adaptive semantic color palette and dark mode tokens.", license: "Proprietary")
-    ]
-
     var body: some View {
         List {
             // MARK: - App Identity Header
             Section {
                 VStack(spacing: 12) {
-                    Image("appIcon")
+                    Image("Jellyboi")
+                        .renderingMode(.template)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 80, height: 80)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+                        .rotationEffect(Angle(degrees: 45))
+                        .foregroundStyle(Color.mainOpp)
 
                     VStack(spacing: 4) {
                         Text("JellyBoi")
                             .font(.title2.weight(.bold))
                             .foregroundStyle(Color.mainOpp)
 
-                        Text("Version \(appVersion) (\(appBuild))")
+                        Text("Version \(appVersion)")
                             .font(.footnote)
                             .foregroundStyle(Color.mainOpp.opacity(0.6))
 
@@ -97,23 +83,7 @@ struct AboutSettingsView: View {
             // MARK: - Open Source Acknowledgments
             Section {
                 ForEach(dependencies) { item in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(item.name)
-                                .foregroundStyle(Color.mainOpp)
-                            Spacer()
-                            Text(item.license)
-                                .font(.caption2)
-                                .foregroundStyle(Color.mainOpp.opacity(0.5))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.subTwo, in: Capsule())
-                        }
-                        Text(item.description)
-                            .font(.caption)
-                            .foregroundStyle(Color.mainOpp.opacity(0.6))
-                    }
-                    .padding(.vertical, 3)
+                    dependencyRow(for: item)
                 }
             } header: {
                 Text("Third-Party Acknowledgments")
@@ -125,5 +95,46 @@ struct AboutSettingsView: View {
         .background(Color.bg.ignoresSafeArea())
         .navigationTitle("About JellyBoi")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private func dependencyRow(for item: DependencyItem) -> some View {
+        if let url = item.url {
+            Button {
+                openURL(url)
+            } label: {
+                dependencyRowContent(for: item)
+            }
+            .buttonStyle(.plain)
+        } else {
+            dependencyRowContent(for: item)
+        }
+    }
+
+    @ViewBuilder
+    private func dependencyRowContent(for item: DependencyItem) -> some View {
+        HStack(spacing: 6) {
+            Text(item.name)
+                .foregroundStyle(Color.mainOpp)
+
+            if item.hasGitHubLink {
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.mainOpp.opacity(0.4))
+            }
+
+            Spacer()
+
+            if let version = item.version {
+                Text("v\(version)")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(Color.mainOpp.opacity(0.7))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.mainOpp.opacity(0.1), in: Capsule())
+            }
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 }
