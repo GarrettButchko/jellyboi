@@ -158,21 +158,21 @@ struct MediaDetailView: View {
         .navigationDestination(item: $selectedRelatedItem) { relatedItem in
             MediaDetailView(item: relatedItem)
                 .navigationTransition(.zoom(
-                    sourceID: relatedZoomID ?? AnyHashable(relatedItem),
+                    sourceID: relatedZoomID ?? relatedItem.zoomTransitionID(rowKey: "related"),
                     in: relatedTransition
                 ))
         }
         .navigationDestination(item: $selectedEpisode) { episode in
             MediaDetailView(item: episode, cameFromShow: true)
                 .navigationTransition(.zoom(
-                    sourceID: episodeZoomID ?? AnyHashable(episode),
+                    sourceID: episodeZoomID ?? episode.zoomTransitionID(rowKey: "episode"),
                     in: episodeTransition
                 ))
         }
         .navigationDestination(item: $selectedCollectionItem) { collectionItem in
             MediaDetailView(item: collectionItem)
                 .navigationTransition(.zoom(
-                    sourceID: collectionItem,
+                    sourceID: collectionItem.zoomTransitionID(),
                     in: collectionTransition
                 ))
         }

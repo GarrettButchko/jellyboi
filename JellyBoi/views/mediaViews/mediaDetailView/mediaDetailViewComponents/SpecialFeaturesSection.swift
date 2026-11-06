@@ -40,7 +40,7 @@ extension MediaDetailView {
                                     if let featureID = feature.id {
                                         let ratio = feature.imageAspectRatio
                                         let cardWidth = specialFeatureCardHeight * ratio
-                                        let zoomID: AnyHashable = AnyHashable("specialFeature-\(featureID)")
+                                        let zoomID = feature.zoomTransitionID(rowKey: "specialFeature")
 
                                         VStack(alignment: .leading, spacing: 6) {
                                             MediaCard(

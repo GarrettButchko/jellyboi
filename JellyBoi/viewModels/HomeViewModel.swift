@@ -25,6 +25,18 @@ class HomeViewModel {
         #endif
         return library.movies
     }
+    var tvShows: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows { return [] }
+        #endif
+        return library.tvShows
+    }
+    var episodes: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows { return [] }
+        #endif
+        return library.episodes
+    }
     var collections: [BaseItemDto] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideCollections { return [] }
@@ -66,6 +78,24 @@ class HomeViewModel {
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideContinueShows { return [] }
         #endif
         return library.resumeShows
+    }
+    var favorites: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows { return [] }
+        #endif
+        return library.favorites
+    }
+    var completedMovies: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows { return [] }
+        #endif
+        return library.completedMovies
+    }
+    var watchedMovies: [BaseItemDto] {
+        #if DEBUG
+        if DebugSettings.shared.hideAllHomeRows { return [] }
+        #endif
+        return library.watchedMovies
     }
     var tvSeriesCount: Int { library.tvSeriesCount }
     var episodeCount: Int { library.episodeCount }

@@ -16,6 +16,7 @@ struct ServerDetailsView: View {
     @Environment(NetworkMonitor.self) private var networkMonitor
 
     @State private var isSyncing = false
+    @State private var isRefreshingArtwork = false
 
     var body: some View {
         List {
@@ -129,11 +130,25 @@ struct ServerDetailsView: View {
                         }
                     }
                 }
-                .disabled(isSyncing || serverViewModel.client == nil)
+                .disabled(isSyncing || isRefreshingArtwork || serverViewModel.client == nil)
+
+                Button {
+                    refreshArtwork()
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Refresh Media Artwork")
+                        Spacer()
+                        if isRefreshingArtwork {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isRefreshingArtwork || isSyncing || serverViewModel.client == nil)
             } header: {
                 Text("Library Sync")
             } footer: {
-                Text("Fetches fresh library items, resume positions, and collections directly from your Jellyfin server.")
+                Text("Fetches fresh library items, resume positions, and media artwork directly from your Jellyfin server.")
             }
         }
         .scrollContentBackground(.hidden)
@@ -180,6 +195,22 @@ struct ServerDetailsView: View {
                 title: "Library Synced",
                 subtitle: "Latest items updated",
                 icon: "arrow.triangle.2.circlepath",
+                tint: .green
+            )
+        }
+    }
+
+    private func refreshArtwork() {
+        guard let client = serverViewModel.client, !isRefreshingArtwork else { return }
+        isRefreshingArtwork = true
+
+        Task {
+            await libraryViewModel.refreshMediaArtwork(using: client, userID: serverViewModel.currentUser?.id)
+            isRefreshingArtwork = false
+            TransientStatusSignal.shared.pending = StatusMessage(
+                title: "Artwork Refreshed",
+                subtitle: "Updated media artwork",
+                icon: "arrow.clockwise",
                 tint: .green
             )
         }

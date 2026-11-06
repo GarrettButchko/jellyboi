@@ -572,3 +572,35 @@ extension BaseItemPerson {
     }
 }
 
+// MARK: - Navigation Transition Helpers
+
+extension BaseItemDto {
+    /// Generates a unique transition identifier for navigation zoom animations.
+    /// - Parameters:
+    ///   - isCarousel: Whether the item is displayed in the hero carousel.
+    ///   - rowKey: An optional row identifier (e.g. section row id) to distinguish shelf items.
+    /// - Returns: An `AnyHashable` identifier to use with `matchedTransitionSource` and `.zoom(sourceID:)`.
+    public func zoomTransitionID(isCarousel: Bool = false, rowKey: String? = nil) -> AnyHashable {
+        let identifier = id ?? ""
+        if isCarousel {
+            return AnyHashable("carousel-\(identifier)")
+        }
+        if let rowKey {
+            return AnyHashable("\(rowKey)-\(identifier)")
+        }
+        return identifier.isEmpty ? AnyHashable(self) : AnyHashable(identifier)
+    }
+
+    /// Generates a unique transition identifier for navigation zoom animations from an optional item ID.
+    public static func zoomTransitionID(itemID: String?, isCarousel: Bool = false, rowKey: String? = nil) -> AnyHashable {
+        let identifier = itemID ?? ""
+        if isCarousel {
+            return AnyHashable("carousel-\(identifier)")
+        }
+        if let rowKey {
+            return AnyHashable("\(rowKey)-\(identifier)")
+        }
+        return AnyHashable(identifier)
+    }
+}
+

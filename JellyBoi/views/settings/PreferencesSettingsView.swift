@@ -28,7 +28,7 @@ struct PreferencesSettingsView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
                         Text("Theme Accent")
-                            .font(.system(.body, design: .rounded, weight: .semibold))
+                            .font(.system(.body, weight: .regular))
                             .foregroundStyle(Color.mainOpp)
 
                         Spacer()
@@ -53,6 +53,39 @@ struct PreferencesSettingsView: View {
                 Text("Appearance")
             } footer: {
                 Text("Changes the accent color applied to buttons, indicators, and navigation elements across the app.")
+            }
+
+            // MARK: - Home Screen Section
+            Section {
+                Toggle(isOn: $bindablePreferences.showHomeCarousel) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.orange.gradient)
+                                .frame(width: 30, height: 30)
+
+                            Image(systemName: "rectangle.stack.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Home Carousel")
+                                .font(.system(.body, design: .rounded, weight: .semibold))
+                                .foregroundStyle(Color.mainOpp)
+
+                            Text("Featured hero carousel on Home")
+                                .font(.system(.caption, design: .rounded))
+                                .foregroundStyle(Color.mainOpp.opacity(0.6))
+                        }
+                    }
+                }
+                .tint(.green)
+                .padding(.vertical, 2)
+            } header: {
+                Text("Home Screen")
+            } footer: {
+                Text("Display the featured carousel at the top of the Home tab.")
             }
 
             // MARK: - Progress Bar Section
@@ -115,6 +148,8 @@ struct PreferencesSettingsView: View {
                 }
                 .tint(.green)
                 .padding(.vertical, 2)
+                .disabled(!bindablePreferences.showHomeCarousel)
+                .opacity(bindablePreferences.showHomeCarousel ? 1.0 : 0.5)
 
                 Toggle(isOn: $bindablePreferences.showDetailBlurredBackdrop) {
                     HStack(spacing: 12) {
@@ -178,7 +213,7 @@ struct PreferencesSettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will restore default accent color, progress bar visibility, and blurred backdrops.")
+            Text("This will restore default accent color, home carousel visibility, progress bar visibility, and blurred backdrops.")
         }
     }
 
@@ -199,10 +234,6 @@ struct PreferencesSettingsView: View {
                     .frame(width: 42, height: 42)
 
                 if isSelected {
-                    Circle()
-                        .strokeBorder(Color.white, lineWidth: 2.5)
-                        .frame(width: 42, height: 42)
-
                     Image(systemName: "checkmark")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(Color.white)

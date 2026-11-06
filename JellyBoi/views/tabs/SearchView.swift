@@ -76,7 +76,7 @@ struct SearchView: View {
             // Detail destination — zoom into a media item
             .navigationDestination(item: $selectedItem) { item in
                 MediaDetailView(item: item)
-                    .navigationTransition(.zoom(sourceID: item, in: zoomTransition))
+                    .navigationTransition(.zoom(sourceID: item.zoomTransitionID(), in: zoomTransition))
             }
             // Genre destination — push a filtered poster grid
             .navigationDestination(item: $selectedGenre) { genre in

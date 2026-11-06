@@ -9,14 +9,18 @@ import SwiftUI
 import BaseColors
 import SDWebImage
 import StatusOverlayKit
+import JellyfinAPI
 
 struct StorageSettingsView: View {
     @Environment(DownloadManager.self) private var downloadManager
+    @Environment(LibraryViewModel.self) private var libraryViewModel
+    @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var imageCacheBytes: UInt = 0
     @State private var downloadsBytes: Int64 = 0
     @State private var isClearingImageCache = false
+    @State private var isRefreshingArtwork = false
     @State private var showDeleteAllDownloadsAlert = false
 
     var body: some View {
@@ -43,6 +47,20 @@ struct StorageSettingsView: View {
                 }
                 .padding(.vertical, 4)
 
+                Button {
+                    refreshMediaArtwork()
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Refresh Media Artwork")
+                        Spacer()
+                        if isRefreshingArtwork {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isRefreshingArtwork || isClearingImageCache)
+
                 Button(role: .destructive) {
                     clearImageCache()
                 } label: {
@@ -55,11 +73,11 @@ struct StorageSettingsView: View {
                         }
                     }
                 }
-                .disabled(isClearingImageCache || imageCacheBytes == 0)
+                .disabled(isClearingImageCache || isRefreshingArtwork || imageCacheBytes == 0)
             } header: {
                 Text("Artwork & Caches")
             } footer: {
-                Text("Clearing image cache does not affect downloaded media files. Images will re-download when browsing.")
+                Text("Refreshing artwork purges cached images and reloads the latest artwork from your server. Clearing image cache removes all cached images to free disk space.")
             }
 
             // MARK: - Downloads Storage
@@ -99,6 +117,9 @@ struct StorageSettingsView: View {
         .onAppear {
             refreshSizes()
         }
+        .onChange(of: downloadManager.downloads) {
+            refreshSizes()
+        }
         .confirmationDialog(
             "Delete All Downloads?",
             isPresented: $showDeleteAllDownloadsAlert,
@@ -125,8 +146,12 @@ struct StorageSettingsView: View {
     @ViewBuilder
     private var deviceStorageView: some View {
         let (available, total) = calculateDeviceCapacity()
+        let jellyBoiBytes = Int64(imageCacheBytes) + downloadsBytes
         let used = max(0, total - available)
+        let otherUsed = max(0, used - jellyBoiBytes)
         let usedFraction = total > 0 ? Double(used) / Double(total) : 0.0
+        let jellyBoiFraction = total > 0 ? Double(jellyBoiBytes) / Double(total) : 0.0
+        let otherFraction = total > 0 ? Double(otherUsed) / Double(total) : 0.0
 
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -138,14 +163,54 @@ struct StorageSettingsView: View {
             }
 
             GeometryReader { proxy in
+                let totalWidth = proxy.size.width
+                let totalUsedWidth = used > 0 ? max(8, min(totalWidth, totalWidth * usedFraction)) : 0
+
+                let (displayOtherWidth, displayJellyBoiWidth): (CGFloat, CGFloat) = {
+                    guard totalUsedWidth > 0 else { return (0, 0) }
+
+                    if jellyBoiBytes > 0 && otherUsed > 0 {
+                        let rawJellyBoi = totalWidth * jellyBoiFraction
+                        let rawOther = totalWidth * otherFraction
+                        let minSegmentWidth: CGFloat = 6
+
+                        if rawJellyBoi < minSegmentWidth {
+                            let jelly = min(minSegmentWidth, totalUsedWidth / 2)
+                            return (totalUsedWidth - jelly, jelly)
+                        } else if rawOther < minSegmentWidth {
+                            let other = min(minSegmentWidth, totalUsedWidth / 2)
+                            return (other, totalUsedWidth - other)
+                        } else {
+                            return (totalUsedWidth - rawJellyBoi, rawJellyBoi)
+                        }
+                    } else if jellyBoiBytes > 0 {
+                        return (0, totalUsedWidth)
+                    } else {
+                        return (totalUsedWidth, 0)
+                    }
+                }()
+
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color.subTwo)
                         .frame(height: 8)
 
-                    Capsule()
-                        .fill(Color.blue)
-                        .frame(width: max(8, proxy.size.width * usedFraction), height: 8)
+                    if totalUsedWidth > 0 {
+                        HStack(spacing: 0) {
+                            if displayOtherWidth > 0 {
+                                Rectangle()
+                                    .fill(Color.blue)
+                                    .frame(width: displayOtherWidth)
+                            }
+                            if displayJellyBoiWidth > 0 {
+                                Rectangle()
+                                    .fill(Color.purple)
+                                    .frame(width: displayJellyBoiWidth)
+                            }
+                        }
+                        .frame(width: totalUsedWidth, height: 8)
+                        .clipShape(Capsule())
+                    }
                 }
             }
             .frame(height: 8)
@@ -153,13 +218,13 @@ struct StorageSettingsView: View {
             HStack(spacing: 16) {
                 HStack(spacing: 6) {
                     Circle().fill(Color.blue).frame(width: 8, height: 8)
-                    Text("Used: \(formattedBytes(used))")
+                    Text("Other: \(formattedBytes(otherUsed))")
                         .font(.caption)
                         .foregroundStyle(Color.mainOpp.opacity(0.6))
                 }
                 HStack(spacing: 6) {
                     Circle().fill(Color.purple).frame(width: 8, height: 8)
-                    Text("JellyBoi: \(formattedBytes(Int64(imageCacheBytes) + downloadsBytes))")
+                    Text("JellyBoi: \(formattedBytes(jellyBoiBytes))")
                         .font(.caption)
                         .foregroundStyle(Color.mainOpp.opacity(0.6))
                 }
@@ -173,6 +238,26 @@ struct StorageSettingsView: View {
     private func refreshSizes() {
         imageCacheBytes = SDImageCache.shared.totalDiskSize()
         downloadsBytes = calculateDownloadsDirectorySize()
+    }
+
+    private func refreshMediaArtwork() {
+        guard !isRefreshingArtwork else { return }
+        isRefreshingArtwork = true
+
+        Task {
+            await libraryViewModel.refreshMediaArtwork(
+                using: serverViewModel.client,
+                userID: serverViewModel.currentUser?.id
+            )
+            refreshSizes()
+            isRefreshingArtwork = false
+            TransientStatusSignal.shared.pending = StatusMessage(
+                title: "Artwork Refreshed",
+                subtitle: "Updated media artwork",
+                icon: "arrow.clockwise",
+                tint: .green
+            )
+        }
     }
 
     private func clearImageCache() {

@@ -165,7 +165,7 @@ struct CastCrewView: View {
         .navigationDestination(item: $selectedMediaItem) { item in
             MediaDetailView(item: item)
                 .navigationTransition(.zoom(
-                    sourceID: item,
+                    sourceID: item.zoomTransitionID(),
                     in: mediaZoomTransition
                 ))
         }

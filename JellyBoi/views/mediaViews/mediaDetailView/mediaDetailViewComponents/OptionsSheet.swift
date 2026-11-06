@@ -13,8 +13,6 @@ extension MediaDetailView {
 
     var optionsSheet: some View {
         VStack(alignment: .leading, spacing: 18) {
-            headerSection
-
             if detailVM.isLoadingPlaybackOptions {
                 HStack(spacing: 12) {
                     ProgressView()
@@ -55,22 +53,6 @@ extension MediaDetailView {
                 client: serverViewModel.client,
                 userID: serverViewModel.currentUser?.id
             )
-        }
-    }
-
-    // MARK: - Header Section
-
-    @ViewBuilder
-    private var headerSection: some View {
-        let title = detailVM.targetPlayableTitle(libraryViewModel: libraryViewModel)
-        if !title.isEmpty {
-            Text(title)
-                .font(.system(.title3, design: .rounded, weight: .bold))
-                .foregroundStyle(Color.mainOpp)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.horizontal, 4)
-                .padding(.bottom, 2)
         }
     }
 

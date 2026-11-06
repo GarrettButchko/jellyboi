@@ -188,7 +188,7 @@ struct MediaCard: View {
 
         if let namespace {
             baseButton
-                .matchedTransitionSource(id: zoomID ?? AnyHashable(item), in: namespace)
+                .matchedTransitionSource(id: zoomID ?? item.zoomTransitionID(), in: namespace)
         } else {
             baseButton
         }

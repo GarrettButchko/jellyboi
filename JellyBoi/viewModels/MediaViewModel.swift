@@ -216,4 +216,12 @@ class MediaViewModel {
     func refresh(using client: JellyfinClient) async {
         await library.refresh(using: client)
     }
+
+    func refreshMediaArtwork(using client: JellyfinClient? = nil) async {
+        await library.refreshMediaArtwork(using: client)
+    }
+
+    func refreshArtwork(using client: JellyfinClient? = nil) async {
+        await library.refreshArtwork(using: client)
+    }
 }

@@ -115,7 +115,7 @@ struct MediaView: View {
             }
             .navigationDestination(item: $selectedItem) { item in
                 MediaDetailView(item: item)
-                    .navigationTransition(.zoom(sourceID: item, in: zoomTransition))
+                    .navigationTransition(.zoom(sourceID: item.zoomTransitionID(), in: zoomTransition))
             }
             .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
                 selectedItem = nil

@@ -121,6 +121,36 @@ class LibraryViewModel {
     private(set) var completedCount: Int = 0
     private(set) var watchedHours: Int = 0
 
+    // MARK: - Stats Collections for Results View
+
+    var favorites: [BaseItemDto] {
+        let favMovies = movies.filter { $0.userData?.isFavorite == true }
+        let favShows = tvShows.filter { $0.userData?.isFavorite == true }
+        let starredShowIDs = Set(favShows.compactMap(\.id))
+        let favEpisodes = episodes.filter { ep in
+            guard ep.userData?.isFavorite == true else { return false }
+            let showID = ep.seriesID ?? ep.parentBackdropItemID
+            if let showID, starredShowIDs.contains(showID) {
+                return false
+            }
+            return true
+        }
+        return (favMovies + favShows + favEpisodes)
+            .sorted { ($0.sortName ?? $0.name ?? "") < ($1.sortName ?? $1.name ?? "") }
+    }
+
+    var completedMovies: [BaseItemDto] {
+        movies
+            .filter { $0.userData?.isPlayed == true }
+            .sorted { ($0.userData?.lastPlayedDate ?? .distantPast) > ($1.userData?.lastPlayedDate ?? .distantPast) }
+    }
+
+    var watchedMovies: [BaseItemDto] {
+        movies
+            .filter { ($0.userData?.playedPercentage ?? 0) > 0 || $0.userData?.isPlayed == true }
+            .sorted { ($0.userData?.lastPlayedDate ?? .distantPast) > ($1.userData?.lastPlayedDate ?? .distantPast) }
+    }
+
     // MARK: - Similar items cache
 
     private var similarItemsCache: [String: [BaseItemDto]] = [:]
@@ -163,6 +193,8 @@ class LibraryViewModel {
     private var isFetching = false
     @ObservationIgnored
     private var currentUserID: String?
+    @ObservationIgnored
+    private var currentClient: JellyfinClient?
 
     init() {
         progressResetTask = Task { @MainActor [weak self] in
@@ -216,6 +248,7 @@ class LibraryViewModel {
     var isLibraryEmpty: Bool { movieIDs.isEmpty && tvShowIDs.isEmpty && episodeIDs.isEmpty }
 
     func load(using client: JellyfinClient, userID: String? = nil) async {
+        self.currentClient = client
         if let userID {
             self.currentUserID = userID
         }
@@ -225,6 +258,7 @@ class LibraryViewModel {
     }
 
     func refresh(using client: JellyfinClient, userID: String? = nil) async {
+        self.currentClient = client
         guard !isFetching else { return }
         isFetching = true
         defer { isFetching = false }
@@ -603,7 +637,7 @@ class LibraryViewModel {
         )
     }
 
-    // MARK: - Prefetching
+    // MARK: - Prefetching & Artwork
 
     func prefetchBackdrops(around index: Int, items: [BaseItemDto]? = nil, client: JellyfinClient) {
         let targetItems = items ?? movies
@@ -618,5 +652,60 @@ class LibraryViewModel {
             .filter { $0 >= 0 && $0 < movies.count }
         let urls = neighbors.compactMap { movies[$0].posterURL(client: client) }
         SDWebImagePrefetcher.shared.prefetchURLs(urls)
+    }
+
+    /// Prefetches poster and backdrop artwork for the primary items across the library.
+    func prefetchArtwork(client: JellyfinClient, maxCount: Int = 50) {
+        var urls: [URL] = []
+        for item in carouselItems.prefix(10) {
+            if let url = item.backdropURL(client: client) {
+                urls.append(url)
+            }
+        }
+        let cardItems = movies.prefix(maxCount) + tvShows.prefix(maxCount) + collections.prefix(20)
+        for item in cardItems {
+            if let url = item.posterURL(client: client) {
+                urls.append(url)
+            }
+        }
+        if !urls.isEmpty {
+            SDWebImagePrefetcher.shared.prefetchURLs(urls)
+        }
+    }
+
+    /// Refreshes media artwork across the library by clearing memory and disk image caches,
+    /// re-fetching library metadata to pick up new image tags from the server,
+    /// and prefetching the latest artwork.
+    func refreshMediaArtwork(using client: JellyfinClient? = nil, userID: String? = nil) async {
+        if let client {
+            self.currentClient = client
+        }
+        if let userID {
+            self.currentUserID = userID
+        }
+        let effectiveClient = client ?? currentClient
+
+        // 1. Cancel ongoing prefetching
+        SDWebImagePrefetcher.shared.cancelPrefetching()
+
+        // 2. Clear image cache in memory and on disk
+        await withCheckedContinuation { continuation in
+            SDImageCache.shared.clearMemory()
+            SDImageCache.shared.clearDisk {
+                continuation.resume()
+            }
+        }
+
+        // 3. If a client is available, re-fetch library items to obtain updated image tags
+        if let effectiveClient {
+            await refresh(using: effectiveClient, userID: userID ?? currentUserID)
+            // 4. Prefetch fresh artwork for primary views
+            prefetchArtwork(client: effectiveClient)
+        }
+    }
+
+    /// Alias for `refreshMediaArtwork(using:userID:)`.
+    func refreshArtwork(using client: JellyfinClient? = nil, userID: String? = nil) async {
+        await refreshMediaArtwork(using: client, userID: userID)
     }
 }

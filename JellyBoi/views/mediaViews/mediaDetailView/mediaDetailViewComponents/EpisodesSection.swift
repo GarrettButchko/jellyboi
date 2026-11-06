@@ -75,7 +75,7 @@ extension MediaDetailView {
                                 ForEach(detailVM.episodes, id: \.id) { episode in
                                     if let episodeID = episode.id {
                                         let cardWidth = episodeCardHeight * episode.imageAspectRatio
-                                        let zoomID: AnyHashable = AnyHashable("episode-\(episodeID)")
+                                        let zoomID = episode.zoomTransitionID(rowKey: "episode")
 
                                         MediaCard(
                                             item: episode,
@@ -154,11 +154,20 @@ extension MediaDetailView {
                     }
                 } label: {
                     if isSelected {
-                        Label(seasonLabel(season), systemImage: "checkmark")
+                        Label {
+                            Text(seasonLabel(season))
+                        } icon: {
+                            Image(systemName: "checkmark")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(Color.mainOpp)
+                        }
+                        .foregroundStyle(Color.mainOpp)
+                        .tint(Color.mainOpp)
                     } else {
                         Text(seasonLabel(season))
                     }
                 }
+                .tint(Color.mainOpp)
             }
         } label: {
             HStack(spacing: 6) {
@@ -172,6 +181,7 @@ extension MediaDetailView {
             .padding(.vertical, 6)
             .glassEffect(.regular.interactive(), in: Capsule())
         }
+        .tint(Color.mainOpp)
     }
 
     private var currentSeasonTitle: String {

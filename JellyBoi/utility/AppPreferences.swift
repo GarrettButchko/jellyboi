@@ -64,6 +64,7 @@ public final class AppPreferences: @unchecked Sendable {
 
     private enum Keys {
         static let showGlassProgressBar = "app_pref_show_glass_progress_bar"
+        static let showHomeCarousel = "app_pref_show_home_carousel"
         static let showHomeBlurredBackdrop = "app_pref_show_home_blurred_backdrop"
         static let showDetailBlurredBackdrop = "app_pref_show_detail_blurred_backdrop"
         static let accentColor = "app_pref_accent_color"
@@ -72,6 +73,12 @@ public final class AppPreferences: @unchecked Sendable {
     public var showGlassProgressBar: Bool {
         didSet {
             UserDefaults.standard.set(showGlassProgressBar, forKey: Keys.showGlassProgressBar)
+        }
+    }
+
+    public var showHomeCarousel: Bool {
+        didSet {
+            UserDefaults.standard.set(showHomeCarousel, forKey: Keys.showHomeCarousel)
         }
     }
 
@@ -106,6 +113,12 @@ public final class AppPreferences: @unchecked Sendable {
             self.showGlassProgressBar = defaults.bool(forKey: Keys.showGlassProgressBar)
         }
 
+        if defaults.object(forKey: Keys.showHomeCarousel) == nil {
+            self.showHomeCarousel = true
+        } else {
+            self.showHomeCarousel = defaults.bool(forKey: Keys.showHomeCarousel)
+        }
+
         if defaults.object(forKey: Keys.showHomeBlurredBackdrop) == nil {
             self.showHomeBlurredBackdrop = true
         } else {
@@ -128,6 +141,7 @@ public final class AppPreferences: @unchecked Sendable {
 
     public func resetToDefaults() {
         showGlassProgressBar = true
+        showHomeCarousel = true
         showHomeBlurredBackdrop = true
         showDetailBlurredBackdrop = true
         accentColorChoice = .indigo

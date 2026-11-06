@@ -12,6 +12,36 @@ import JellyfinAPI
 
 extension MediaDetailViewModel {
 
+    // MARK: - Seasons Derivation
+
+    static func deriveSeasons(from episodes: [BaseItemDto], seriesID: String? = nil) -> [BaseItemDto] {
+        var seasonsDict: [Int: (id: String?, name: String?)] = [:]
+        for ep in episodes {
+            let seasonNum = ep.parentIndexNumber ?? 1
+            guard seasonNum > 0 else { continue }
+            if let existing = seasonsDict[seasonNum] {
+                let id = existing.id ?? ep.seasonID
+                let name = existing.name ?? ep.seasonName
+                seasonsDict[seasonNum] = (id, name)
+            } else {
+                seasonsDict[seasonNum] = (ep.seasonID, ep.seasonName)
+            }
+        }
+
+        return seasonsDict.keys.sorted().map { sNum in
+            let info = seasonsDict[sNum]
+            let sID = info?.id ?? (seriesID != nil ? "\(seriesID!)-season-\(sNum)" : "season-\(sNum)")
+            let sName = info?.name ?? "Season \(sNum)"
+            return BaseItemDto(
+                id: sID,
+                indexNumber: sNum,
+                name: sName,
+                parentIndexNumber: sNum,
+                type: .season
+            )
+        }
+    }
+
     func loadSeasonsAndEpisodes(client: JellyfinClient, userID: String?) async {
         guard let seriesID = sourceItem?.id else {
             isLoadingEpisodes = false
@@ -84,13 +114,22 @@ extension MediaDetailViewModel {
 
         guard !Task.isCancelled else { return }
 
-        self.seasons = result.seasons
-        self.episodes = result.episodes
+        Self.seasonsCache[seriesID] = result.seasons
+        Self.episodesCache[seriesID] = result.episodes
 
-        if let nextEp = nextPlayableEpisode(libraryViewModel: nil),
-           let sIdx = seasonIndex(for: nextEp) {
-            selectedSeasonIndex = sIdx
-        } else {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            self.seasons = result.seasons
+            self.episodes = result.episodes
+        }
+
+        if !hasInitialEpisodeScrolled {
+            if let nextEp = nextPlayableEpisode(libraryViewModel: libraryViewModel),
+               let sIdx = seasonIndex(for: nextEp) {
+                selectedSeasonIndex = sIdx
+            } else {
+                selectedSeasonIndex = 0
+            }
+        } else if !seasons.indices.contains(selectedSeasonIndex) {
             selectedSeasonIndex = 0
         }
     }

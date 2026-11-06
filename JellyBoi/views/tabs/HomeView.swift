@@ -20,6 +20,7 @@ struct HomeView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(HomeViewModel.self) private var viewModel
+    @Environment(AppPreferences.self) private var preferences
     @Namespace private var zoomTransition
     
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -31,6 +32,7 @@ struct HomeView: View {
     @State private var selectedItem: BaseItemDto?
     @State private var zoomSourceID: AnyHashable?
     @State private var isShowingCollections: Bool = false
+    @State private var selectedStat: HomeStatCategory?
     
     var body: some View {
         NavigationStack {
@@ -64,13 +66,15 @@ struct HomeView: View {
                                     }
                                 }
                             } else if viewModel.isLoading {
-                                Carousel.Placeholder()
+                                if preferences.showHomeCarousel {
+                                    Carousel.Placeholder()
+                                }
                                 HomeStatsRow.placeholder
                                 ForEach(0..<3, id: \.self) { _ in
                                     SectionRow.placeholder(namespace: zoomTransition)
                                 }
                             } else {
-                                if !viewModel.carouselItems.isEmpty {
+                                if preferences.showHomeCarousel && !viewModel.carouselItems.isEmpty {
                                     Carousel(
                                         title: viewModel.carouselTitle,
                                         namespace: zoomTransition,
@@ -102,7 +106,10 @@ struct HomeView: View {
                                         inProgressCount: viewModel.inProgressMovies.count,
                                         favoritesCount: viewModel.favoritesCount,
                                         completedCount: viewModel.completedCount,
-                                        watchedHours: viewModel.watchedHours
+                                        watchedHours: viewModel.watchedHours,
+                                        onSelectStat: { stat in
+                                            selectedStat = stat
+                                        }
                                     )
                                     .transition(.opacity)
                                 }
@@ -152,9 +159,13 @@ struct HomeView: View {
                 .navigationDestination(isPresented: $isShowingCollections) {
                     MediaResultsView(collections: viewModel.collections)
                 }
+                .navigationDestination(item: $selectedStat) { stat in
+                    statResultsView(for: stat)
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
                     selectedItem = nil
                     isShowingCollections = false
+                    selectedStat = nil
                 }
                 .toolbarVisibility(.hidden, for: .navigationBar)
             }
@@ -167,7 +178,8 @@ struct HomeView: View {
                 Color.clear.onAppear { safeAreaTop = geo.safeAreaInsets.top }
             }
         }
-        .task(id: viewModel.carouselItems.compactMap(\.id)) {
+        .task(id: preferences.showHomeCarousel ? viewModel.carouselItems.compactMap(\.id) : []) {
+            guard preferences.showHomeCarousel else { return }
             guard let client = serverViewModel.client, !viewModel.carouselItems.isEmpty else { return }
             await Task.yield()
             try? await Task.sleep(nanoseconds: 150_000_000)
@@ -187,6 +199,68 @@ struct HomeView: View {
                 ) { _, _, _, _, _, _ in }
             }
             CarouselImageMemoryCache.shared.preloadImages(for: carouselURLs)
+        }
+    }
+
+    @ViewBuilder
+    private func statResultsView(for stat: HomeStatCategory) -> some View {
+        switch stat {
+        case .movies:
+            MediaResultsView(
+                title: "Movies",
+                items: viewModel.movies,
+                emptyIcon: "film",
+                emptyTitle: "No Movies",
+                emptyMessage: "No movies found in your library."
+            )
+        case .shows:
+            MediaResultsView(
+                title: "Shows",
+                items: viewModel.tvShows,
+                emptyIcon: "tv",
+                emptyTitle: "No TV Shows",
+                emptyMessage: "No TV shows found in your library."
+            )
+        case .episodes:
+            MediaResultsView(
+                title: "Episodes",
+                items: viewModel.episodes,
+                emptyIcon: "film.stack",
+                emptyTitle: "No Episodes",
+                emptyMessage: "No episodes found in your library."
+            )
+        case .watching:
+            MediaResultsView(
+                title: "Watching",
+                items: viewModel.inProgressMovies,
+                emptyIcon: "play.circle",
+                emptyTitle: "Nothing in Progress",
+                emptyMessage: "You don't have any titles currently in progress."
+            )
+        case .favorites:
+            MediaResultsView(
+                title: "Favorites",
+                items: viewModel.favorites,
+                emptyIcon: "heart.fill",
+                emptyTitle: "No Favorites",
+                emptyMessage: "You haven't added any favorites yet."
+            )
+        case .completed:
+            MediaResultsView(
+                title: "Completed",
+                items: viewModel.completedMovies,
+                emptyIcon: "checkmark.circle.fill",
+                emptyTitle: "No Completed Titles",
+                emptyMessage: "You haven't finished watching any titles yet."
+            )
+        case .watchedHours:
+            MediaResultsView(
+                title: "Watched",
+                items: viewModel.watchedMovies,
+                emptyIcon: "clock.fill",
+                emptyTitle: "No Watch History",
+                emptyMessage: "You haven't watched any titles yet."
+            )
         }
     }
 
@@ -221,6 +295,7 @@ private struct HomeHeroBackdrop: View {
 
     var body: some View {
         if AppPreferences.shared.showHomeBlurredBackdrop,
+           AppPreferences.shared.showHomeCarousel,
            let item = coordinator.heroItem ?? defaultItem,
            let client {
             HeroBackdropView(
@@ -235,5 +310,3 @@ private struct HomeHeroBackdrop: View {
         }
     }
 }
-
-

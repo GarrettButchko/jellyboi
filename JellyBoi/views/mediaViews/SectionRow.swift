@@ -131,7 +131,7 @@ struct SectionRowMediaList: View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 16) {
                 ForEach(items, id: \.id) { item in
-                    let zoomID: AnyHashable = rowKey.map { AnyHashable("\($0)-\(item.id ?? "")") } ?? AnyHashable(item)
+                    let zoomID = item.zoomTransitionID(isCarousel: false, rowKey: rowKey)
                     MediaCard(
                         item: item,
                         posterURL: posterURL?(item),

@@ -39,6 +39,8 @@ class MediaDetailViewModel {
     var client: JellyfinClient?
     weak var libraryViewModel: LibraryViewModel?
     static var collectionItemsCache: [String: [BaseItemDto]] = [:]
+    static var seasonsCache: [String: [BaseItemDto]] = [:]
+    static var episodesCache: [String: [BaseItemDto]] = [:]
 
     // MARK: - Playback Configuration State
 
@@ -61,6 +63,14 @@ class MediaDetailViewModel {
             self.sourceItem = item
             if item.type == .boxSet, let id = item.id, let cached = Self.collectionItemsCache[id] {
                 self.collectionItems = cached
+            }
+            if item.type == .series, let id = item.id {
+                if let cachedSeasons = Self.seasonsCache[id] {
+                    self.seasons = cachedSeasons
+                }
+                if let cachedEpisodes = Self.episodesCache[id] {
+                    self.episodes = cachedEpisodes
+                }
             }
             if item.type == .series {
                 self.isLoadingEpisodes = true
@@ -228,10 +238,17 @@ class MediaDetailViewModel {
         }
         if item.type == .series {
             self.isLoadingEpisodes = true
-            if let seriesID = item.id, let lvm = libraryViewModel {
-                let cached = lvm.episodes(forSeriesID: seriesID)
-                if !cached.isEmpty && self.episodes.isEmpty {
+            if let seriesID = item.id {
+                if let cached = Self.episodesCache[seriesID], !cached.isEmpty && self.episodes.isEmpty {
                     self.episodes = cached
+                } else if let lvm = libraryViewModel {
+                    let cached = lvm.episodes(forSeriesID: seriesID)
+                    if !cached.isEmpty && self.episodes.isEmpty {
+                        self.episodes = cached
+                    }
+                }
+                if let cached = Self.seasonsCache[seriesID], !cached.isEmpty && self.seasons.isEmpty {
+                    self.seasons = cached
                 }
             }
         }
