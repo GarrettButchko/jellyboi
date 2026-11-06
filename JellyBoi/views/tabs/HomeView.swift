@@ -181,9 +181,6 @@ struct HomeView: View {
         .task(id: preferences.showHomeCarousel ? viewModel.carouselItems.compactMap(\.id) : []) {
             guard preferences.showHomeCarousel else { return }
             guard let client = serverViewModel.client, !viewModel.carouselItems.isEmpty else { return }
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            guard !Task.isCancelled else { return }
             let transformer = SDImageBlurTransformer(radius: 30)
             let context: [SDWebImageContextOption: Any] = [.imageTransformer: transformer]
             var carouselURLs: [URL] = []

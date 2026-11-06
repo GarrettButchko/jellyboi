@@ -79,6 +79,9 @@ struct ContentView: View {
                 LoadingOverlay(message: playbackManager.loadingMessage)
             }
         }
+        .statusOverlayLoadingIndicator {
+            JellyBoiLoadingIndicator()
+        }
         .animation(statusOverlaySpring, value: playbackManager.isLoading)
         .alert(
             playbackManager.currentError?.title ?? "Playback Error",

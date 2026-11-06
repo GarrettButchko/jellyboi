@@ -184,9 +184,6 @@ struct MediaDetailView: View {
         }
         .task(id: item.id) {
             guard let client = serverViewModel.client, item.id != nil else { return }
-            // Allow the 350ms navigation zoom transition to finish smoothly before loading remote data
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            guard !Task.isCancelled else { return }
             await detailVM.load(
                 item: item,
                 client: client,

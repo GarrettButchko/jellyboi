@@ -71,6 +71,9 @@ class MediaDetailViewModel {
                 if let cachedEpisodes = Self.episodesCache[id] {
                     self.episodes = cachedEpisodes
                 }
+                if self.seasons.isEmpty && !self.episodes.isEmpty {
+                    self.seasons = Self.deriveSeasons(from: self.episodes, seriesID: id)
+                }
             }
             if item.type == .series {
                 self.isLoadingEpisodes = true
@@ -250,6 +253,9 @@ class MediaDetailViewModel {
                 if let cached = Self.seasonsCache[seriesID], !cached.isEmpty && self.seasons.isEmpty {
                     self.seasons = cached
                 }
+                if self.seasons.isEmpty && !self.episodes.isEmpty {
+                    self.seasons = Self.deriveSeasons(from: self.episodes, seriesID: seriesID)
+                }
             }
         }
         if item.type == .boxSet, let collectionID = item.id {
@@ -303,9 +309,28 @@ class MediaDetailViewModel {
             return
         }
 
-        // STAGE 1: Essential item details and primary playback streams
-        let detailResult = await client.fetchItemOrNil(itemID: itemID, userID: userID)
+        let isSeries = item.type == .series || resolvedItem.type == .series
+        let isBoxSet = item.type == .boxSet || resolvedItem.type == .boxSet
+        let isEpisode = item.type == .episode || resolvedItem.type == .episode
+
+        // STAGE 1 & 2 in parallel: Fetch essential details and series/seasons concurrently
+        async let detailFetch = client.fetchItemOrNil(itemID: itemID, userID: userID)
+        async let seriesOrCollectionTask: Void = { @MainActor in
+            if isSeries {
+                await loadSeasonsAndEpisodes(client: client, userID: userID)
+            } else {
+                isLoadingEpisodes = false
+                if isBoxSet {
+                    await loadCollectionItems(client: client, userID: userID, libraryViewModel: libraryViewModel)
+                } else if isEpisode {
+                    await loadParentSeries(client: client, userID: userID, libraryViewModel: libraryViewModel)
+                }
+            }
+        }()
+
+        let detailResult = await detailFetch
         guard !Task.isCancelled else { return }
+
         self.detailedItem = detailResult
 
         if let sources = detailedItem?.mediaSources ?? sourceItem?.mediaSources, !sources.isEmpty {
@@ -320,17 +345,7 @@ class MediaDetailViewModel {
             }
         }
 
-        // STAGE 2: Episodes / Collections / Series relationship
-        if item.type == .series || resolvedItem.type == .series {
-            await loadSeasonsAndEpisodes(client: client, userID: userID)
-        } else {
-            isLoadingEpisodes = false
-            if item.type == .boxSet || resolvedItem.type == .boxSet {
-                await loadCollectionItems(client: client, userID: userID, libraryViewModel: libraryViewModel)
-            } else if item.type == .episode || resolvedItem.type == .episode {
-                await loadParentSeries(client: client, userID: userID, libraryViewModel: libraryViewModel)
-            }
-        }
+        _ = await seriesOrCollectionTask
 
         // STAGE 3: Secondary below-the-fold content (Similar items & Special features)
         guard !Task.isCancelled else { return }

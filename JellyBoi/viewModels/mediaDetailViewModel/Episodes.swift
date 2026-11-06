@@ -50,8 +50,8 @@ extension MediaDetailViewModel {
         isLoadingEpisodes = true
         defer { isLoadingEpisodes = false }
 
-        // Fetch seasons and episodes and sort them off the main actor
-        let result = await Task.detached(priority: .userInitiated) { () -> (seasons: [BaseItemDto], episodes: [BaseItemDto]) in
+        // 1. Fetch seasons and sort them off the main actor
+        let sortedSeasons = await Task.detached(priority: .userInitiated) { () -> [BaseItemDto] in
             let seasonResult = await client.fetchSeasonsOrEmpty(seriesID: seriesID, userID: userID)
 
             // Filter out specials and missing-season placeholders
@@ -60,22 +60,38 @@ extension MediaDetailViewModel {
                 guard num != 0 else { return false }
                 return season.type == .season
             }
-            let sortedSeasons = (filtered.isEmpty ? seasonResult : filtered).sorted {
+            let sorted = (filtered.isEmpty ? seasonResult : filtered).sorted {
                 let s0 = $0.indexNumber ?? $0.parentIndexNumber ?? 0
                 let s1 = $1.indexNumber ?? $1.parentIndexNumber ?? 0
                 return s0 < s1
             }
-            guard !sortedSeasons.isEmpty else { return ([], []) }
+            return sorted
+        }.value
 
-            // Build fast O(1) map for season numbers by seasonID
-            var seasonNumberMap: [String: Int] = [:]
-            for season in sortedSeasons {
-                if let id = season.id {
-                    seasonNumberMap[id] = season.indexNumber ?? season.parentIndexNumber ?? 1
-                }
+        guard !Task.isCancelled else { return }
+
+        // Publish seasons immediately so the season picker appears without waiting for episodes
+        if !sortedSeasons.isEmpty {
+            Self.seasonsCache[seriesID] = sortedSeasons
+            withAnimation(.easeInOut(duration: 0.2)) {
+                self.seasons = sortedSeasons
             }
+            if !seasons.indices.contains(selectedSeasonIndex) {
+                selectedSeasonIndex = 0
+            }
+        }
 
-            // Load all seasons' episodes in parallel to build continuous list
+        guard !sortedSeasons.isEmpty else { return }
+
+        // 2. Fetch all seasons' episodes in parallel off the main actor
+        var seasonNumberMap: [String: Int] = [:]
+        for season in sortedSeasons {
+            if let id = season.id {
+                seasonNumberMap[id] = season.indexNumber ?? season.parentIndexNumber ?? 1
+            }
+        }
+
+        let sortedEpisodes = await Task.detached(priority: .userInitiated) { () -> [BaseItemDto] in
             let allEpisodes = await withTaskGroup(of: (Int, [BaseItemDto]).self) { group in
                 for (index, season) in sortedSeasons.enumerated() {
                     group.addTask {
@@ -95,7 +111,7 @@ extension MediaDetailViewModel {
                 return dict.sorted { $0.key < $1.key }.map(\.value)
             }
 
-            let sortedEpisodes = allEpisodes.flatMap { $0 }.sorted { a, b in
+            return allEpisodes.flatMap { $0 }.sorted { a, b in
                 let sA = a.parentIndexNumber ?? (a.seasonID.flatMap { seasonNumberMap[$0] }) ?? 1
                 let sB = b.parentIndexNumber ?? (b.seasonID.flatMap { seasonNumberMap[$0] }) ?? 1
                 if sA != sB {
@@ -108,18 +124,14 @@ extension MediaDetailViewModel {
                 }
                 return (a.premiereDate ?? .distantPast) < (b.premiereDate ?? .distantPast)
             }
-
-            return (sortedSeasons, sortedEpisodes)
         }.value
 
         guard !Task.isCancelled else { return }
 
-        Self.seasonsCache[seriesID] = result.seasons
-        Self.episodesCache[seriesID] = result.episodes
+        Self.episodesCache[seriesID] = sortedEpisodes
 
         withAnimation(.easeInOut(duration: 0.3)) {
-            self.seasons = result.seasons
-            self.episodes = result.episodes
+            self.episodes = sortedEpisodes
         }
 
         if !hasInitialEpisodeScrolled {

@@ -10,6 +10,7 @@ import SwiftUI
 import UIKit
 #endif
 import LoggingKit
+import StatusOverlayKit
 
 #if os(iOS)
 final class AppDelegate: NSObject, UIApplicationDelegate {
@@ -77,11 +78,17 @@ struct JellyBoiApp: App {
         UISwitch.appearance().onTintColor = .systemGreen
         #endif
         AppLogRecorder.shared.start()
+        StatusOverlayKit.defaultLoadingIndicator = {
+            AnyView(JellyBoiLoadingIndicator())
+        }
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .statusOverlayLoadingIndicator {
+                    JellyBoiLoadingIndicator()
+                }
                 .environment(viewManager)
                 .environment(serverViewModel)
                 .environment(libraryViewModel)
