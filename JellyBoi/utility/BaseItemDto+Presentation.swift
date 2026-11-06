@@ -71,6 +71,32 @@ extension BaseItemDto {
         return name ?? ""
     }
 
+    /// Formatted title for media playback headers and player overlays.
+    var playbackTitle: String {
+        if type == .episode {
+            var parts: [String] = []
+            if let season = parentIndexNumber, let episode = indexNumber {
+                parts.append("S\(season):E\(episode)")
+            }
+            if let name, !name.isEmpty {
+                parts.append(name)
+            }
+            return parts.isEmpty ? (name ?? "Episode") : parts.joined(separator: " - ")
+        }
+        return name ?? "Video"
+    }
+
+    /// Formatted subtitle for media playback headers (e.g. series name or production year).
+    var playbackSubtitle: String? {
+        if type == .episode {
+            return seriesName
+        }
+        if let year = productionYear {
+            return String(year)
+        }
+        return nil
+    }
+
     /// Resets playback progress and watch state to unplayed.
     mutating func clearProgress() {
         userData?.playedPercentage = 0
@@ -431,6 +457,18 @@ extension BaseItemPerson {
     public func avatarURL(client: JellyfinClient?) -> URL? {
         guard let client, let id, primaryImageTag != nil else { return nil }
         return client.itemImageURL(itemID: id, parameters: .avatar(tag: primaryImageTag))
+    }
+}
+
+extension Sequence where Element == BaseItemDto {
+    /// Sorts episodes by season number (parentIndexNumber) and episode number (indexNumber).
+    func sortedBySeasonAndEpisode() -> [BaseItemDto] {
+        sorted { a, b in
+            let sA = a.parentIndexNumber ?? 1
+            let sB = b.parentIndexNumber ?? 1
+            if sA != sB { return sA < sB }
+            return (a.indexNumber ?? 1) < (b.indexNumber ?? 1)
+        }
     }
 }
 

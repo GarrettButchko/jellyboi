@@ -262,6 +262,14 @@ public final class DownloadManager: NSObject {
         return storage.isLocallyPlayable(fileName: record.fileName)
     }
 
+    public func playableLocalFileURL(for id: String) -> URL? {
+        #if DEBUG
+        if DebugSettings.shared.forceStreamFallback { return nil }
+        #endif
+        guard isLocallyPlayable(id: id) else { return nil }
+        return localFileURL(for: id)
+    }
+
     // MARK: - Actions
 
     public func startDownload(item: BaseItemDto, client: JellyfinClient, group: DownloadGroupInfo? = nil) {

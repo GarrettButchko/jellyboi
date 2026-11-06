@@ -190,6 +190,16 @@ struct MediaDetailView: View {
                 userID: serverViewModel.currentUser?.id,
                 libraryViewModel: libraryViewModel
             )
+            detailVM.startPreload(
+                playbackManager: playbackManager,
+                serverViewModel: serverViewModel,
+                libraryViewModel: libraryViewModel
+            )
+        }
+        .onDisappear {
+            if playbackManager.activePlayerViewModel == nil && !playbackManager.isLoading {
+                playbackManager.cancelPreload()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .mediaProgressReset)) { notification in
             if let itemID = notification.object as? String {

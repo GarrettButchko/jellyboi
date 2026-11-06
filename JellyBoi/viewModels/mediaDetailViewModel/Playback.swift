@@ -31,6 +31,16 @@ extension MediaDetailViewModel {
         return currentItem
     }
 
+    var playbackQueue: [BaseItemDto]? {
+        if displayItem?.type == .series, !episodes.isEmpty {
+            return episodes
+        }
+        if displayItem?.type == .boxSet, !collectionItems.isEmpty {
+            return collectionItems
+        }
+        return nil
+    }
+
     func playMedia(
         fromBeginning: Bool,
         playbackManager: PlaybackManager,
@@ -38,16 +48,6 @@ extension MediaDetailViewModel {
         libraryViewModel: LibraryViewModel
     ) {
         let itemToPlay = playableItem(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning)
-        let queue: [BaseItemDto]? = {
-            if displayItem?.type == .series, !episodes.isEmpty {
-                return episodes
-            }
-            if displayItem?.type == .boxSet, !collectionItems.isEmpty {
-                return collectionItems
-            }
-            return nil
-        }()
-
         playbackManager.play(
             item: itemToPlay,
             fromBeginning: fromBeginning,
@@ -58,7 +58,29 @@ extension MediaDetailViewModel {
             audioStreamIndex: selectedAudioStreamIndex,
             subtitleStreamIndex: selectedSubtitleStreamIndex,
             maxBitrate: selectedMaxBitrate,
-            queue: queue
+            queue: playbackQueue
+        )
+    }
+
+    func startPreload(
+        playbackManager: PlaybackManager,
+        serverViewModel: ServerViewModel,
+        libraryViewModel: LibraryViewModel
+    ) {
+        guard !isPlayDisabled else { return }
+        let fromBeginning = isWatched
+        let itemToPlay = playableItem(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning)
+        playbackManager.preload(
+            item: itemToPlay,
+            fromBeginning: fromBeginning,
+            client: serverViewModel.client,
+            userID: serverViewModel.currentUser?.id,
+            libraryViewModel: libraryViewModel,
+            mediaSourceID: selectedMediaSourceID,
+            audioStreamIndex: selectedAudioStreamIndex,
+            subtitleStreamIndex: selectedSubtitleStreamIndex,
+            maxBitrate: selectedMaxBitrate,
+            queue: playbackQueue
         )
     }
 
