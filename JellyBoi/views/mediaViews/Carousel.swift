@@ -231,6 +231,40 @@ struct Carousel: View {
                         proxy.scrollTo(start, anchor: .center)
                         timerResetTrigger = UUID()
                     }
+                    #if DEBUG
+                    .task(id: "\(timerResetTrigger)-\(DebugSettings.shared.disableCarouselTimerAnimation)") {
+                        slideStartDate = .now
+                        while !Task.isCancelled {
+                            if !isVisible {
+                                try? await Task.sleep(for: .milliseconds(200))
+                                continue
+                            }
+                            if DebugSettings.shared.disableCarouselTimerAnimation {
+                                try? await Task.sleep(for: .milliseconds(200))
+                                continue
+                            }
+                            try? await Task.sleep(for: .seconds(carouselAutoScrollInterval))
+                            guard !Task.isCancelled else { break }
+                            guard currentItems.count > 1 else { continue }
+                            isAutoScrolling = true
+                            let nextIndex = snappedIndex + 1
+                            slideStartDate = .now
+                            currentIndex = nextIndex
+                            withAnimation(.smooth(duration: 0.45)) {
+                                proxy.scrollTo(nextIndex, anchor: .center)
+                            }
+                            // Allow scroll animation to finish before snapping backdrop
+                            try? await Task.sleep(for: .milliseconds(460))
+                            guard !Task.isCancelled else { break }
+                            isAutoScrolling = false
+                            let snappedItemIdx = itemIndex(for: nextIndex, count: count)
+                            if snappedItemIdx < currentItems.count {
+                                lastReportedSnappedIndex = snappedItemIdx
+                                onSnap?(snappedItemIdx, currentItems[snappedItemIdx])
+                            }
+                        }
+                    }
+                    #else
                     .task(id: timerResetTrigger) {
                         slideStartDate = .now
                         while !Task.isCancelled {
@@ -259,12 +293,19 @@ struct Carousel: View {
                             }
                         }
                     }
+                    #endif
                 }
             }
             .aspectRatio(16 / (9 * carouselCardWidthRatio), contentMode: .fit)
             .frame(maxWidth: .infinity)
 
-            if !currentItems.isEmpty {
+            #if DEBUG
+            let hideIndicator = DebugSettings.shared.hideCarouselIndicator
+            #else
+            let hideIndicator = false
+            #endif
+
+            if !hideIndicator && !currentItems.isEmpty {
                 CarouselPageIndicator(
                     count: count,
                     currentIndex: displayedItemIndex,
@@ -364,6 +405,12 @@ private struct CarouselPageIndicator: View {
     }
 
     var body: some View {
+        #if DEBUG
+        let showTimerAnimation = !DebugSettings.shared.disableCarouselTimerAnimation
+        #else
+        let showTimerAnimation = true
+        #endif
+
         HStack(spacing: 5) {
             ForEach(0..<count, id: \.self) { i in
                 let isActive = i == currentIndex
@@ -375,20 +422,26 @@ private struct CarouselPageIndicator: View {
                         .frame(width: width, height: dotSize)
 
                     if isActive {
-                        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: isPaused)) { context in
-                            let elapsed = max(context.date.timeIntervalSince(startDate), 0)
-                            let progress = min(elapsed / carouselAutoScrollInterval, 1)
-                            Canvas { ctx, size in
-                                guard progress > 0 else { return }
-                                let trackRect = CGRect(origin: .zero, size: size)
-                                let radius = size.height / 2
-                                let fillRect = CGRect(x: 0, y: 0, width: size.width * progress, height: size.height)
-                                ctx.clip(to: Path(roundedRect: fillRect, cornerRadius: radius))
-                                ctx.fill(Path(roundedRect: trackRect, cornerRadius: radius), with: .color(Color.mainOpp))
+                        if showTimerAnimation {
+                            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: isPaused)) { context in
+                                let elapsed = max(context.date.timeIntervalSince(startDate), 0)
+                                let progress = min(elapsed / carouselAutoScrollInterval, 1)
+                                Canvas { ctx, size in
+                                    guard progress > 0 else { return }
+                                    let trackRect = CGRect(origin: .zero, size: size)
+                                    let radius = size.height / 2
+                                    let fillRect = CGRect(x: 0, y: 0, width: size.width * progress, height: size.height)
+                                    ctx.clip(to: Path(roundedRect: fillRect, cornerRadius: radius))
+                                    ctx.fill(Path(roundedRect: trackRect, cornerRadius: radius), with: .color(Color.mainOpp))
+                                }
                             }
+                            .frame(width: width, height: dotSize)
+                            .transition(.opacity)
+                        } else {
+                            Capsule()
+                                .fill(Color.mainOpp)
+                                .frame(width: width, height: dotSize)
                         }
-                        .frame(width: width, height: dotSize)
-                        .transition(.opacity)
                     }
                 }
                 .frame(width: width, height: dotSize)
@@ -606,13 +659,21 @@ extension Carousel {
                 .frame(maxWidth: .infinity)
                 .transaction { $0.animation = nil }
 
-                HStack(spacing: 5) {
-                    SkeletonBlock(cornerRadius: 3).frame(width: 20, height: 6)
-                    SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
-                    SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
-                    SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
-                    SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
-                    SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                #if DEBUG
+                let hideIndicator = DebugSettings.shared.hideCarouselIndicator
+                #else
+                let hideIndicator = false
+                #endif
+
+                if !hideIndicator {
+                    HStack(spacing: 5) {
+                        SkeletonBlock(cornerRadius: 3).frame(width: 20, height: 6)
+                        SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                        SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                        SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                        SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                        SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
+                    }
                 }
             }
             .skeleton()

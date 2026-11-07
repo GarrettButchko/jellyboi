@@ -18,6 +18,9 @@ public final class DebugSettings {
     public var simulateEmptyLibrary = false
     public var simulateLibraryError = false
     public var hideAllHomeRows = false
+    public var hideCarousel = false
+    public var hideCarouselIndicator = false
+    public var disableCarouselTimerAnimation = false
     public var hideCollections = false
     public var hideContinueWatching = false
     public var hideContinueShows = false
@@ -67,6 +70,9 @@ public final class DebugSettings {
         if simulateEmptyLibrary { count += 1 }
         if simulateLibraryError { count += 1 }
         if hideAllHomeRows { count += 1 }
+        if hideCarousel { count += 1 }
+        if hideCarouselIndicator { count += 1 }
+        if disableCarouselTimerAnimation { count += 1 }
         if hideCollections { count += 1 }
         if hideContinueWatching { count += 1 }
         if hideContinueShows { count += 1 }
@@ -113,6 +119,9 @@ public final class DebugSettings {
         simulateEmptyLibrary = false
         simulateLibraryError = false
         hideAllHomeRows = false
+        hideCarousel = false
+        hideCarouselIndicator = false
+        disableCarouselTimerAnimation = false
         hideCollections = false
         hideContinueWatching = false
         hideContinueShows = false
@@ -184,6 +193,12 @@ public struct DebugSettingsView: View {
                 Toggle("Simulate Empty Library", isOn: $debugSettings.simulateEmptyLibrary)
                 Toggle("Simulate Library Error", isOn: $debugSettings.simulateLibraryError)
                 Toggle("Hide All Home Rows", isOn: $debugSettings.hideAllHomeRows)
+                Toggle("Hide Carousel", isOn: $debugSettings.hideCarousel)
+                    .disabled(debugSettings.hideAllHomeRows)
+                Toggle("Hide Carousel Page Indicator", isOn: $debugSettings.hideCarouselIndicator)
+                    .disabled(debugSettings.hideAllHomeRows || debugSettings.hideCarousel)
+                Toggle("Disable Carousel Timer Animation", isOn: $debugSettings.disableCarouselTimerAnimation)
+                    .disabled(debugSettings.hideAllHomeRows || debugSettings.hideCarousel || debugSettings.hideCarouselIndicator)
                 Toggle("Hide Collections", isOn: $debugSettings.hideCollections)
                     .disabled(debugSettings.hideAllHomeRows)
                 Toggle("Hide Continue Watching", isOn: $debugSettings.hideContinueWatching)

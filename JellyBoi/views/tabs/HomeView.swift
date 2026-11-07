@@ -1,6 +1,7 @@
 //
 //  HomeView.swift
 //  JellyBoi
+//
 //  Created by Garrett Butchko on 8/19/26.
 //
 
@@ -66,7 +67,12 @@ struct HomeView: View {
                                     }
                                 }
                             } else if viewModel.isLoading {
-                                if preferences.showHomeCarousel {
+                                #if DEBUG
+                                let isCarouselHidden = DebugSettings.shared.hideCarousel || DebugSettings.shared.hideAllHomeRows
+                                #else
+                                let isCarouselHidden = false
+                                #endif
+                                if preferences.showHomeCarousel && !isCarouselHidden {
                                     Carousel.Placeholder()
                                 }
                                 HomeStatsRow.placeholder
@@ -291,7 +297,14 @@ private struct HomeHeroBackdrop: View {
     let offsetY: CGFloat
 
     var body: some View {
-        if AppPreferences.shared.showHomeBlurredBackdrop,
+        #if DEBUG
+        let isCarouselHidden = DebugSettings.shared.hideCarousel || DebugSettings.shared.hideAllHomeRows
+        #else
+        let isCarouselHidden = false
+        #endif
+
+        if !isCarouselHidden,
+           AppPreferences.shared.showHomeBlurredBackdrop,
            AppPreferences.shared.showHomeCarousel,
            let item = coordinator.heroItem ?? defaultItem,
            let client {

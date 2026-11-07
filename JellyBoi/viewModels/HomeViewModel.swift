@@ -126,7 +126,7 @@ class HomeViewModel {
     /// Items shown in the hero carousel. Precomputed in background by LibraryViewModel.
     var carouselItems: [BaseItemDto] {
         #if DEBUG
-        if DebugSettings.shared.hideAllHomeRows { return [] }
+        if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideCarousel { return [] }
         #endif
         return library.carouselItems
     }
