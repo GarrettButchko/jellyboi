@@ -557,51 +557,15 @@ final class PlaybackManager {
             return
         }
         AppLogger.info("Requesting local file playback for '\(item.name ?? "Unknown")' at \(fileURL.lastPathComponent)", tag: "PlaybackManager")
-
-        resetActivePlayback()
-        isLoading = true
-        loadingMessage = "Loading Media…"
-
-        activeTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            let vm = self.makePlayerViewModel(
-                targetItem: item,
-                fromBeginning: fromBeginning,
-                localFileURL: fileURL,
-                mediaSourceID: nil,
-                audioStreamIndex: nil,
-                subtitleStreamIndex: nil,
-                maxBitrate: nil,
-                activeQueue: queue ?? [item],
-                client: self.client,
-                userID: self.userID,
-                libraryViewModel: self.libraryViewModel
-            )
-
-            let success = await vm.prepare()
-            guard !Task.isCancelled else {
-                vm.cleanup()
-                self.isLoading = false
-                return
-            }
-
-            self.isLoading = false
-
-            if success {
-                self.activePlayerViewModel = vm
-            } else {
-                let err = vm.errorMessage ?? "An error occurred while opening the local file."
-                vm.cleanup()
-                self.currentError = PlaybackErrorInfo(
-                    title: "Playback Error",
-                    message: err,
-                    retryAction: { [weak self] in
-                        self?.playLocal(item: item, fileURL: fileURL, fromBeginning: fromBeginning, queue: queue)
-                    }
-                )
-                self.showErrorAlert = true
-            }
-        }
+        play(
+            item: item,
+            fromBeginning: fromBeginning,
+            client: client,
+            userID: userID,
+            libraryViewModel: libraryViewModel,
+            localFileURL: fileURL,
+            queue: queue
+        )
     }
 
     func clearError() {

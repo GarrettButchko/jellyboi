@@ -289,22 +289,7 @@ extension MediaDetailViewModel {
         }
 
         guard let source = selectedMediaSource else { return }
-
-        let audios = (source.mediaStreams ?? []).filter { $0.type == .audio }
-        if selectedAudioStreamIndex == nil || !audios.contains(where: { $0.index == selectedAudioStreamIndex }) {
-            selectedAudioStreamIndex = source.defaultAudioStreamIndex
-                ?? audios.first(where: { $0.isDefault == true })?.index
-                ?? audios.first?.index
-        }
-
-        let subs = (source.mediaStreams ?? []).filter { $0.type == .subtitle }
-        if selectedSubtitleStreamIndex == nil {
-            if let defSub = source.defaultSubtitleStreamIndex, subs.contains(where: { $0.index == defSub }) {
-                selectedSubtitleStreamIndex = defSub
-            } else {
-                selectedSubtitleStreamIndex = -1
-            }
-        }
+        applyDefaultStreamSelection(from: source, preserveExisting: true)
     }
 
     func selectMediaSource(_ sourceID: String?) {
@@ -312,18 +297,7 @@ extension MediaDetailViewModel {
         selectedMediaSourceID = sourceID
         selectedMaxBitrate = nil
         guard let source = selectedMediaSource else { return }
-
-        let audios = (source.mediaStreams ?? []).filter { $0.type == .audio }
-        selectedAudioStreamIndex = source.defaultAudioStreamIndex
-            ?? audios.first(where: { $0.isDefault == true })?.index
-            ?? audios.first?.index
-
-        let subs = (source.mediaStreams ?? []).filter { $0.type == .subtitle }
-        if let defSub = source.defaultSubtitleStreamIndex, subs.contains(where: { $0.index == defSub }) {
-            selectedSubtitleStreamIndex = defSub
-        } else {
-            selectedSubtitleStreamIndex = -1
-        }
+        applyDefaultStreamSelection(from: source, preserveExisting: false)
     }
 
     func selectAudioStream(index: Int?) {
@@ -342,17 +316,24 @@ extension MediaDetailViewModel {
             selectedSubtitleStreamIndex = -1
             return
         }
+        applyDefaultStreamSelection(from: source, preserveExisting: false)
+    }
 
+    private func applyDefaultStreamSelection(from source: MediaSourceInfo, preserveExisting: Bool) {
         let audios = (source.mediaStreams ?? []).filter { $0.type == .audio }
-        selectedAudioStreamIndex = source.defaultAudioStreamIndex
-            ?? audios.first(where: { $0.isDefault == true })?.index
-            ?? audios.first?.index
+        if !preserveExisting || selectedAudioStreamIndex == nil || !audios.contains(where: { $0.index == selectedAudioStreamIndex }) {
+            selectedAudioStreamIndex = source.defaultAudioStreamIndex
+                ?? audios.first(where: { $0.isDefault == true })?.index
+                ?? audios.first?.index
+        }
 
         let subs = (source.mediaStreams ?? []).filter { $0.type == .subtitle }
-        if let defSub = source.defaultSubtitleStreamIndex, subs.contains(where: { $0.index == defSub }) {
-            selectedSubtitleStreamIndex = defSub
-        } else {
-            selectedSubtitleStreamIndex = -1
+        if !preserveExisting || selectedSubtitleStreamIndex == nil {
+            if let defSub = source.defaultSubtitleStreamIndex, subs.contains(where: { $0.index == defSub }) {
+                selectedSubtitleStreamIndex = defSub
+            } else {
+                selectedSubtitleStreamIndex = -1
+            }
         }
     }
 }

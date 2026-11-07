@@ -268,6 +268,31 @@ final class PlayerViewModel: Identifiable {
         }
     }
 
+    private func observeItemDidPlayToEnd(for item: AVPlayerItem) {
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                AppLogger.info("Playback reached end of media item", tag: "Player")
+                self?.handlePlaybackFinished()
+            }
+        }
+    }
+
+    private func makeNextPlaybackRequest(for next: BaseItemDto) -> PlaybackManager.PlaybackRequest {
+        let resolvedLocalURL = next.id.flatMap { DownloadManager.shared.playableLocalFileURL(for: $0) }
+        return PlaybackManager.PlaybackRequest(
+            item: next,
+            startFromBeginning: true,
+            localFileURL: resolvedLocalURL
+        )
+    }
+
     func prepare(isPreload: Bool = false) async -> Bool {
         guard !isCleanedUp else {
             AppLogger.warning("Aborted player preparation: already cleaned up", tag: "Player")
@@ -302,17 +327,6 @@ final class PlayerViewModel: Identifiable {
         avPlayer.usesExternalPlaybackWhileExternalScreenIsActive = true
         if isPreload {
             avPlayer.rate = 0.0
-        }
-
-        // Prime the player immediately with the resume timestamp before waiting for readiness.
-        // This instructs AVPlayer to fetch chunks directly at the resume position rather than
-        // buffering from 0:00 and then discarding that buffer on first seek.
-        if initialResumeTicks > 0 {
-            let resumeSeconds = Double(initialResumeTicks) / 10_000_000.0
-            let targetTime = CMTime(seconds: resumeSeconds, preferredTimescale: 600)
-            let tolerance = CMTime(seconds: 0.5, preferredTimescale: 600)
-            await avPlayer.seek(to: targetTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
-            AppLogger.info("Primed AVPlayer with initial resume position: \(String(format: "%.1f", resumeSeconds))s (ticks: \(initialResumeTicks))", tag: "Player")
         }
 
         self.player = avPlayer
@@ -359,16 +373,7 @@ final class PlayerViewModel: Identifiable {
             }
         }
 
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: prepared.playerItem,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                AppLogger.info("Playback reached end of media item", tag: "Player")
-                self?.handlePlaybackFinished()
-            }
-        }
+        observeItemDidPlayToEnd(for: prepared.playerItem)
 
         var activeItem = prepared.playerItem
         var isReady = false
@@ -393,19 +398,7 @@ final class PlayerViewModel: Identifiable {
                 activeItem = newItem
                 avPlayer.replaceCurrentItem(with: newItem)
 
-                if let endObserver {
-                    NotificationCenter.default.removeObserver(endObserver)
-                }
-                endObserver = NotificationCenter.default.addObserver(
-                    forName: .AVPlayerItemDidPlayToEndTime,
-                    object: newItem,
-                    queue: .main
-                ) { [weak self] _ in
-                    Task { @MainActor [weak self] in
-                        AppLogger.info("Playback reached end of media item", tag: "Player")
-                        self?.handlePlaybackFinished()
-                    }
-                }
+                observeItemDidPlayToEnd(for: newItem)
             }
 
             let attemptReady = await withTaskGroup(of: Bool.self) { group in
@@ -648,7 +641,7 @@ final class PlayerViewModel: Identifiable {
             return nil
         }
 
-        let artwork = await loadArtwork(for: req.item)
+        let artwork = loadCachedArtwork(for: req.item)
         let meta = createMetadata(for: req.item, artworkData: artwork?.0)
         playerItem.externalMetadata = meta
 
@@ -778,13 +771,7 @@ final class PlayerViewModel: Identifiable {
 
         AppLogger.info("Preloading next media item: '\(next.name ?? "Unknown")'", tag: "Player")
 
-        let resolvedLocalURL = next.id.flatMap { DownloadManager.shared.playableLocalFileURL(for: $0) }
-
-        let nextReq = PlaybackManager.PlaybackRequest(
-            item: next,
-            startFromBeginning: true,
-            localFileURL: resolvedLocalURL
-        )
+        let nextReq = makeNextPlaybackRequest(for: next)
 
         if let prepared = await prepareMediaItem(for: nextReq) {
             self.preloadedMedia = prepared
@@ -811,12 +798,7 @@ final class PlayerViewModel: Identifiable {
             AppLogger.info("Using preloaded player item for '\(next.name ?? "Unknown")'", tag: "Player")
         } else {
             isLoading = true
-            let resolvedLocalURL = next.id.flatMap { DownloadManager.shared.playableLocalFileURL(for: $0) }
-            let nextReq = PlaybackManager.PlaybackRequest(
-                item: next,
-                startFromBeginning: true,
-                localFileURL: resolvedLocalURL
-            )
+            let nextReq = makeNextPlaybackRequest(for: next)
             guard let newlyPrepared = await prepareMediaItem(for: nextReq) else {
                 isLoading = false
                 AppLogger.error("Failed to prepare next item for playback", tag: "Player")
@@ -843,26 +825,7 @@ final class PlayerViewModel: Identifiable {
 
         player?.replaceCurrentItem(with: mediaToPlay.playerItem)
 
-        if nextResume > 0 {
-            let resumeSeconds = Double(nextResume) / 10_000_000.0
-            let targetTime = CMTime(seconds: resumeSeconds, preferredTimescale: 600)
-            let tolerance = CMTime(seconds: 0.5, preferredTimescale: 600)
-            await player?.seek(to: targetTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
-        }
-
-        if let endObserver {
-            NotificationCenter.default.removeObserver(endObserver)
-        }
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: mediaToPlay.playerItem,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                AppLogger.info("Playback reached end of media item", tag: "Player")
-                self?.handlePlaybackFinished()
-            }
-        }
+        observeItemDidPlayToEnd(for: mediaToPlay.playerItem)
 
         if let img = loadedArtworkImage {
             updateNowPlayingInfo(with: img)
@@ -1046,6 +1009,7 @@ final class PlayerViewModel: Identifiable {
     }
 
     private func configureAudioSession() async {
+        guard !hasActivatedAudioSession else { return }
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo)
             try await activateAudioSession()
@@ -1173,20 +1137,29 @@ final class PlayerViewModel: Identifiable {
         updateLocalProgress(positionTicks: currentPositionTicks)
     }
 
-    func reportPlaybackStopped() async {
-        guard let client, let itemID = request.item.id else { return }
-        AppLogger.info("Reporting playback stopped to Jellyfin (final positionTicks: \(currentPositionTicks))", tag: "Player")
-        let stopInfo = PlaybackStopInfo(
-            itemID: itemID,
-            mediaSourceID: mediaSourceID,
-            playSessionID: playSessionID,
-            positionTicks: currentPositionTicks
-        )
-        do {
-            try await client.reportPlaybackStopped(stopInfo)
-            AppLogger.debug("Successfully reported playback stop to server", tag: "Player")
-        } catch {
-            AppLogger.warning("Failed to report playback stop: \(error.localizedDescription)", tag: "Player")
+    func reportPlaybackStopped() {
+        sendPlaybackStopped(positionTicks: currentPositionTicks)
+    }
+
+    private func sendPlaybackStopped(positionTicks: Int) {
+        guard hasReportedStart, let client, let itemID = request.item.id else { return }
+        hasReportedStart = false
+        let sessionID = playSessionID
+        let sourceID = mediaSourceID
+        AppLogger.info("Reporting playback stopped to Jellyfin (positionTicks: \(positionTicks))", tag: "Player")
+        Task.detached {
+            let stopInfo = PlaybackStopInfo(
+                itemID: itemID,
+                mediaSourceID: sourceID,
+                playSessionID: sessionID,
+                positionTicks: positionTicks
+            )
+            do {
+                try await client.reportPlaybackStopped(stopInfo)
+                AppLogger.debug("Successfully reported playback stop to server", tag: "Player")
+            } catch {
+                AppLogger.warning("Failed to report playback stop: \(error.localizedDescription)", tag: "Player")
+            }
         }
     }
 
@@ -1195,19 +1168,7 @@ final class PlayerViewModel: Identifiable {
         currentPositionTicks = finalTicks
         AppLogger.success("Playback marked as watched (100%)", tag: "Player")
         updateLocalProgress(positionTicks: finalTicks, forcePlayed: true)
-        if hasReportedStart, let client, let itemID = request.item.id {
-            let sessionID = playSessionID
-            let sourceID = mediaSourceID
-            Task.detached {
-                let stopInfo = PlaybackStopInfo(
-                    itemID: itemID,
-                    mediaSourceID: sourceID,
-                    playSessionID: sessionID,
-                    positionTicks: finalTicks
-                )
-                _ = try? await client.reportPlaybackStopped(stopInfo)
-            }
-        }
+        sendPlaybackStopped(positionTicks: finalTicks)
 
         if !isSwitchingToNext {
             if nextItem != nil {
@@ -1318,11 +1279,10 @@ final class PlayerViewModel: Identifiable {
         return urls
     }
 
-    private func loadArtwork(for targetItem: BaseItemDto? = nil, timeoutSeconds: Double = 2.5) async -> (Data, UIImage)? {
+    private func loadCachedArtwork(for targetItem: BaseItemDto? = nil) -> (Data, UIImage)? {
         let urls = resolveArtworkURLs(for: targetItem)
         guard !urls.isEmpty else { return nil }
 
-        // 1. Check SDWebImage memory or disk cache first (instant)
         for url in urls {
             let cacheKey = SDWebImageManager.shared.cacheKey(for: url) ?? url.absoluteString
             if let img = SDImageCache.shared.imageFromMemoryCache(forKey: cacheKey) ?? SDImageCache.shared.imageFromDiskCache(forKey: cacheKey) {
@@ -1333,7 +1293,17 @@ final class PlayerViewModel: Identifiable {
             }
         }
 
-        // 2. Fetch asynchronously if not cached
+        return nil
+    }
+
+    private func loadArtwork(for targetItem: BaseItemDto? = nil, timeoutSeconds: Double = 5.0) async -> (Data, UIImage)? {
+        if let cached = loadCachedArtwork(for: targetItem) {
+            return cached
+        }
+
+        let urls = resolveArtworkURLs(for: targetItem)
+        guard !urls.isEmpty else { return nil }
+
         for url in urls {
             if let img = await fetchImage(for: url, timeoutSeconds: timeoutSeconds) {
                 if let data = img.jpegData(compressionQuality: 0.85) ?? img.pngData() {
@@ -1509,20 +1479,7 @@ final class PlayerViewModel: Identifiable {
             hasActivatedAudioSession = false
         }
 
-        if hasReportedStart, let client, let itemID = request.item.id {
-            let finalTicks = currentPositionTicks
-            let sessionID = playSessionID
-            let sourceID = mediaSourceID
-            Task.detached {
-                let stopInfo = PlaybackStopInfo(
-                    itemID: itemID,
-                    mediaSourceID: sourceID,
-                    playSessionID: sessionID,
-                    positionTicks: finalTicks
-                )
-                _ = try? await client.reportPlaybackStopped(stopInfo)
-            }
-        }
+        sendPlaybackStopped(positionTicks: currentPositionTicks)
     }
 
     private func activateAudioSession() async throws {
