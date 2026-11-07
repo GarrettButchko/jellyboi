@@ -100,10 +100,6 @@ public final class AppPreferences: @unchecked Sendable {
         }
     }
 
-    public var accentColor: Color {
-        accentColorChoice.color
-    }
-
     public init() {
         let defaults = UserDefaults.standard
 
@@ -151,13 +147,13 @@ public final class AppPreferences: @unchecked Sendable {
 extension Color {
     /// App-wide dynamic accent color based on user preferences.
     public static var appAccent: Color {
-        AppPreferences.shared.accentColor
+        AppPreferences.shared.accentColorChoice.color
     }
 }
 
 extension ShapeStyle where Self == Color {
     /// App-wide dynamic accent color based on user preferences.
     public static var appAccent: Color {
-        AppPreferences.shared.accentColor
+        AppPreferences.shared.accentColorChoice.color
     }
 }

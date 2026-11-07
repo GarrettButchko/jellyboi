@@ -97,7 +97,7 @@ struct MediaDetailDownloadButton: View {
         let isDownloading = detailVM.isDetailDownloading(downloadManager: downloadManager)
         let isDownloaded = detailVM.isDetailDownloaded(downloadManager: downloadManager, libraryViewModel: libraryViewModel)
         let downloadProgress = detailVM.detailDownloadProgress(downloadManager: downloadManager, libraryViewModel: libraryViewModel)
-        let accent = preferences?.accentColor ?? Color.appAccent
+        let accent = Color.appAccent
 
         Button {
             detailVM.handleDownloadTap(
