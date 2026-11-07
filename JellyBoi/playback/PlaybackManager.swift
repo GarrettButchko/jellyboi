@@ -125,7 +125,20 @@ final class PlaybackManager {
         }
 
         if targetItem.type == .series {
-            if !activeQueue.isEmpty, let playable = activeQueue.nextPlayableItem(fromBeginning: fromBeginning) {
+            if !fromBeginning, let resumeEp = resolvedLibrary?.resumeShows.first(where: { $0.seriesID == targetItem.id }) {
+                targetItem = resumeEp
+                if activeQueue.isEmpty {
+                    let cached = (resolvedLibrary?.episodes ?? [])
+                        .filter { $0.seriesID == targetItem.seriesID || $0.seriesID == item.id }
+                        .sortedBySeasonAndEpisode()
+                    activeQueue = cached.isEmpty ? [resumeEp] : cached
+                } else if let matchIndex = activeQueue.firstIndex(where: { $0.id == resumeEp.id }) {
+                    if activeQueue[matchIndex].resumePlaybackTicks == 0 && resumeEp.resumePlaybackTicks > 0 {
+                        activeQueue[matchIndex].userData = resumeEp.userData
+                    }
+                }
+                AppLogger.info("Selected resume episode '\(targetItem.name ?? "Unknown")' from library resume shows", tag: "PlaybackManager")
+            } else if !activeQueue.isEmpty, let playable = activeQueue.nextPlayableItem(fromBeginning: fromBeginning) {
                 targetItem = playable
                 AppLogger.info("Selected next playable episode '\(targetItem.name ?? "Unknown")' from provided queue", tag: "PlaybackManager")
             } else if let resolved = await self.resolvePlayableEpisode(
@@ -164,6 +177,7 @@ final class PlaybackManager {
             if let id = targetItem.id,
                let match = resolvedLibrary?.movies.first(where: { $0.id == id })
                         ?? resolvedLibrary?.resumeShows.first(where: { $0.id == id })
+                        ?? (targetItem.seriesID.flatMap { sID in resolvedLibrary?.resumeShows.first(where: { $0.seriesID == sID }) })
                         ?? resolvedLibrary?.episodes.first(where: { $0.id == id }),
                match.resumePlaybackTicks > 0 {
                 targetItem = match

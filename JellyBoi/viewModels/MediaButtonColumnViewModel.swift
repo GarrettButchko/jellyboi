@@ -51,7 +51,8 @@ class MediaButtonColumnViewModel {
         onContinueWatching: (() -> Void)? = nil,
         onStartFromBeginning: (() -> Void)? = nil
     ) {
-        if !isProgressReset && item.isInProgress {
+        let isWatching = item.type == .series ? (progressValue > 0 && !item.isWatched) : item.isInProgress
+        if !isProgressReset && isWatching {
             onContinueWatching?() ?? onPlay?()
         } else if !isProgressReset && item.isWatched {
             onStartFromBeginning?()

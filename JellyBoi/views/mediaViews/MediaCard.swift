@@ -23,6 +23,7 @@ struct MediaCard: View {
     var onResetProgress: (() -> Void)? = nil
 
     @Environment(ServerViewModel.self) private var serverViewModel: ServerViewModel?
+    @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
     @Environment(PlaybackManager.self) private var playbackManager: PlaybackManager?
     @Environment(\.redactionReasons) private var redactionReasons
 

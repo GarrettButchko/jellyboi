@@ -331,6 +331,14 @@ final class PlayerViewModel: Identifiable {
 
         self.player = avPlayer
 
+        if initialResumeTicks > 0 {
+            let resumeSeconds = Double(initialResumeTicks) / 10_000_000.0
+            let targetTime = CMTime(seconds: resumeSeconds, preferredTimescale: 600)
+            let tolerance = CMTime(seconds: 0.5, preferredTimescale: 600)
+            await avPlayer.seek(to: targetTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
+            AppLogger.info("Primed AVPlayer with initial resume position: \(String(format: "%.1f", resumeSeconds))s (ticks: \(initialResumeTicks))", tag: "Player")
+        }
+
         startAsyncArtworkFetchIfNeeded()
 
         var lastNonZeroVolume: Float = 1.0
@@ -946,15 +954,6 @@ final class PlayerViewModel: Identifiable {
 
         let seconds = Double(initialResumeTicks) / 10_000_000.0
         let currentSec = CMTimeGetSeconds(player?.currentTime() ?? .zero)
-
-        // For transcoded/remuxed HLS streams, Jellyfin starts the stream at StartTimeTicks, so the stream
-        // begins at the resume position. If currentTime is around 0.0, the item is already playing from the
-        // desired point and re-seeking would flush AVPlayer's buffer and force re-fetching segments.
-        if (currentPlayMethod == .transcode || currentPlayMethod == .directStream), currentSec < 2.0 {
-            currentPositionTicks = initialResumeTicks
-            AppLogger.info("Stream initialized with server-side start time at \(String(format: "%.1f", seconds))s; skipping redundant client seek", tag: "Player")
-            return
-        }
 
         if abs(currentSec - seconds) > 2.0 {
             let label = logContext.isEmpty ? "Seeking" : "Seeking \(logContext)"

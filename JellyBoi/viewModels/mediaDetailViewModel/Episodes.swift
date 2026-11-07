@@ -197,12 +197,23 @@ extension MediaDetailViewModel {
         }
         if displayItem?.type == .series {
             if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == displayItem?.id }) {
-                if let matched = episodes.first(where: { $0.id == resumeEp.id }) {
+                if var matched = episodes.first(where: { $0.id == resumeEp.id }) {
+                    if matched.resumePlaybackTicks == 0 && resumeEp.resumePlaybackTicks > 0 {
+                        matched.userData = resumeEp.userData
+                    }
                     return matched
                 }
                 return resumeEp
             }
-            return episodes.nextPlayableItem(fromBeginning: fromBeginning)
+            if var playable = episodes.nextPlayableItem(fromBeginning: fromBeginning) {
+                if !fromBeginning, playable.resumePlaybackTicks == 0,
+                   let matchingResume = libraryViewModel?.resumeShows.first(where: { $0.id == playable.id }),
+                   matchingResume.resumePlaybackTicks > 0 {
+                    playable.userData = matchingResume.userData
+                }
+                return playable
+            }
+            return nil
         }
         if displayItem?.type == .boxSet {
             let resolvedCollectionItems: [BaseItemDto] = collectionItems.map { ci in
