@@ -142,10 +142,12 @@ extension MediaDetailView {
                 )
             },
             onResetProgress: {
-                if isSeriesContainer {
-                    detailVM.seriesAlertAction = .resetProgress
-                } else {
-                    detailVM.resetProgress(serverViewModel: serverViewModel)
+                withAnimation(.smooth) {
+                    if isSeriesContainer {
+                        detailVM.seriesAlertAction = .resetProgress
+                    } else {
+                        detailVM.resetProgress(serverViewModel: serverViewModel)
+                    }
                 }
             }
         )

@@ -5,7 +5,7 @@
 //  Created by Garrett Butchko on 9/2/26.
 //
 
-import SwiftUI
+import Foundation
 import JellyfinAPI
 
 // MARK: - Playback & Progress State & Actions
@@ -219,11 +219,9 @@ extension MediaDetailViewModel {
 
     func resetSeriesProgress(serverViewModel: ServerViewModel?) {
         guard let item = displayItem, let itemID = item.id else { return }
-        withAnimation(.smooth) {
-            clearProgress(for: itemID)
-            for index in episodes.indices {
-                episodes[index].clearProgress()
-            }
+        clearProgress(for: itemID)
+        for index in episodes.indices {
+            episodes[index].clearProgress()
         }
         Task {
             await serverViewModel?.resetProgress(for: item)
@@ -270,9 +268,7 @@ extension MediaDetailViewModel {
             resetSeriesProgress(serverViewModel: serverViewModel)
             return
         }
-        withAnimation(.smooth) {
-            clearProgress(for: itemID)
-        }
+        clearProgress(for: itemID)
         Task {
             await serverViewModel?.resetProgress(for: item)
         }

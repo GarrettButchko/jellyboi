@@ -5,11 +5,11 @@
 //  Created by Garrett Butchko on 9/2/26.
 //
 
-import SwiftUI
+import Foundation
+import CoreGraphics
 import Observation
 import Get
 import JellyfinAPI
-import BaseColors
 import LoggingKit
 
 @Observable

@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import SwiftUI
 import Observation
 import Get
 import JellyfinAPI
@@ -201,9 +200,7 @@ class LibraryViewModel {
             for await notification in NotificationCenter.default.notifications(named: .mediaProgressReset) {
                 guard let self else { break }
                 if let itemID = notification.object as? String {
-                    withAnimation(.smooth(duration: 0.35)) {
-                        self.clearProgress(for: itemID)
-                    }
+                    self.clearProgress(for: itemID)
                 }
             }
         }
@@ -213,9 +210,7 @@ class LibraryViewModel {
                 if let itemID = notification.object as? String,
                    let positionTicks = notification.userInfo?["positionTicks"] as? Int {
                     let totalTicks = notification.userInfo?["durationTicks"] as? Int
-                    withAnimation(.smooth(duration: 0.35)) {
-                        self.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
-                    }
+                    self.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
                 }
             }
         }
@@ -225,9 +220,7 @@ class LibraryViewModel {
                 if let itemID = notification.object as? String,
                    let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
                     let userData = notification.userInfo?["userData"] as? UserItemDataDto
-                    withAnimation(.smooth(duration: 0.35)) {
-                        self.updateFavorite(for: itemID, isFavorite: isFavorite, userData: userData)
-                    }
+                    self.updateFavorite(for: itemID, isFavorite: isFavorite, userData: userData)
                 }
             }
         }

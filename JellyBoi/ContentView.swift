@@ -153,7 +153,9 @@ struct ContentView: View {
                                 }
                             },
                             onDismiss: {
-                                playerVM.dismissUpNextOverlay()
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    playerVM.dismissUpNextOverlay()
+                                }
                             }
                         )
                         .transition(.asymmetric(
@@ -163,10 +165,14 @@ struct ContentView: View {
                         .zIndex(100)
                     }
                 }
+                .animation(.spring(response: 0.45, dampingFraction: 0.8), value: playerVM.showUpNextOverlay)
                 .onAppear {
                     #if os(iOS)
                     OrientationHelper.lockOrientation(.allButUpsideDown)
                     #endif
+                    Task {
+                        await playerVM.startPlaybackIfNeeded()
+                    }
                 }
                 .onDisappear {
                     #if os(iOS)
@@ -204,6 +210,10 @@ struct ContentView: View {
                             isOffline = true
                         }
                     }
+                }
+            } else if newPhase == .background {
+                if playbackManager.activePlayerViewModel == nil {
+                    playbackManager.cancelPreload()
                 }
             }
         }

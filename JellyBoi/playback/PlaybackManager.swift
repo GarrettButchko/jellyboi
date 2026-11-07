@@ -5,13 +5,12 @@
 //  Created by Garrett Butchko on 10/5/26.
 //
 
-import SwiftUI
+import Foundation
 import AVKit
 import Observation
 import Get
 import JellyfinAPI
 import LoggingKit
-import StatusOverlayKit
 
 struct PlaybackErrorInfo: Identifiable {
     let id = UUID()
@@ -375,12 +374,7 @@ final class PlaybackManager {
 
             self.resetActivePlayback()
             isLoading = false
-
-            activeTask = Task { @MainActor [weak self] in
-                guard let self else { return }
-                await preloadedVM.startPlaybackFromPreload()
-                self.activePlayerViewModel = preloadedVM
-            }
+            self.activePlayerViewModel = preloadedVM
             return
         }
 
@@ -391,26 +385,19 @@ final class PlaybackManager {
             self.preloadingTask = nil
 
             self.resetActivePlayback()
-            withAnimation(statusOverlaySpring) {
-                isLoading = true
-            }
+            isLoading = true
             loadingMessage = "Loading Stream…"
 
             activeTask = Task { @MainActor [weak self] in
                 guard let self else { return }
                 let success = await ongoingPreload.value
                 guard !Task.isCancelled else {
-                    withAnimation(statusOverlaySpring) {
-                        self.isLoading = false
-                    }
+                    self.isLoading = false
                     return
                 }
                 if success, let preloadedVM = self.preloadedPlayerViewModel {
                     self.preloadedPlayerViewModel = nil
-                    await preloadedVM.startPlaybackFromPreload()
-                    withAnimation(statusOverlaySpring) {
-                        self.isLoading = false
-                    }
+                    self.isLoading = false
                     self.activePlayerViewModel = preloadedVM
                     return
                 }
@@ -437,9 +424,7 @@ final class PlaybackManager {
 
         cancelPreload()
         resetActivePlayback()
-        withAnimation(statusOverlaySpring) {
-            isLoading = true
-        }
+        isLoading = true
         loadingMessage = "Loading Stream…"
 
         startFullPlayback(
@@ -480,16 +465,12 @@ final class PlaybackManager {
                 resolvedUserID: resolvedUserID,
                 resolvedLibrary: resolvedLibrary
             ) else {
-                withAnimation(statusOverlaySpring) {
-                    self.isLoading = false
-                }
+                self.isLoading = false
                 return
             }
 
             if let errorMsg = resolved.errorMessage {
-                withAnimation(statusOverlaySpring) {
-                    self.isLoading = false
-                }
+                self.isLoading = false
                 self.currentError = PlaybackErrorInfo(
                     title: "Playback Error",
                     message: errorMsg,
@@ -533,15 +514,11 @@ final class PlaybackManager {
             let success = await vm.prepare()
             guard !Task.isCancelled else {
                 vm.cleanup()
-                withAnimation(statusOverlaySpring) {
-                    self.isLoading = false
-                }
+                self.isLoading = false
                 return
             }
 
-            withAnimation(statusOverlaySpring) {
-                self.isLoading = false
-            }
+            self.isLoading = false
 
             if success {
                 AppLogger.success("Playback prepared successfully, presenting native player", tag: "PlaybackManager")
@@ -582,9 +559,7 @@ final class PlaybackManager {
         AppLogger.info("Requesting local file playback for '\(item.name ?? "Unknown")' at \(fileURL.lastPathComponent)", tag: "PlaybackManager")
 
         resetActivePlayback()
-        withAnimation(statusOverlaySpring) {
-            isLoading = true
-        }
+        isLoading = true
         loadingMessage = "Loading Media…"
 
         activeTask = Task { @MainActor [weak self] in
@@ -606,15 +581,11 @@ final class PlaybackManager {
             let success = await vm.prepare()
             guard !Task.isCancelled else {
                 vm.cleanup()
-                withAnimation(statusOverlaySpring) {
-                    self.isLoading = false
-                }
+                self.isLoading = false
                 return
             }
 
-            withAnimation(statusOverlaySpring) {
-                self.isLoading = false
-            }
+            self.isLoading = false
 
             if success {
                 self.activePlayerViewModel = vm
@@ -644,9 +615,7 @@ final class PlaybackManager {
         #endif
         activeTask?.cancel()
         activeTask = nil
-        withAnimation(statusOverlaySpring) {
-            isLoading = false
-        }
+        isLoading = false
         if let current = activePlayerViewModel {
             AppLogger.info("Stopping playback and releasing resources for '\(current.request.item.playbackTitle)'", tag: "PlaybackManager")
             current.cleanup()

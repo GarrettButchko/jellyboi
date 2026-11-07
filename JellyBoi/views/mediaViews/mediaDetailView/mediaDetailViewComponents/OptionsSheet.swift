@@ -69,6 +69,11 @@ extension MediaDetailView {
                 ForEach(detailVM.availableQualities) { option in
                     Button {
                         detailVM.selectQuality(option)
+                        detailVM.startPreload(
+                            playbackManager: playbackManager,
+                            serverViewModel: serverViewModel,
+                            libraryViewModel: libraryViewModel
+                        )
                     } label: {
                         if isQualitySelected(option) {
                             Label(option.label, systemImage: "checkmark")
@@ -113,6 +118,11 @@ extension MediaDetailView {
                         let label = detailVM.audioStreamLabel(for: stream)
                         Button {
                             detailVM.selectAudioStream(index: stream.index)
+                            detailVM.startPreload(
+                                playbackManager: playbackManager,
+                                serverViewModel: serverViewModel,
+                                libraryViewModel: libraryViewModel
+                            )
                         } label: {
                             if isSelected {
                                 Label(label, systemImage: "checkmark")
@@ -145,6 +155,11 @@ extension MediaDetailView {
                 let isOff = (detailVM.selectedSubtitleStreamIndex == nil || detailVM.selectedSubtitleStreamIndex == -1)
                 Button {
                     detailVM.selectSubtitleStream(index: -1)
+                    detailVM.startPreload(
+                        playbackManager: playbackManager,
+                        serverViewModel: serverViewModel,
+                        libraryViewModel: libraryViewModel
+                    )
                 } label: {
                     if isOff {
                         Label("Off", systemImage: "checkmark")
@@ -158,6 +173,11 @@ extension MediaDetailView {
                     let label = detailVM.subtitleStreamLabel(for: stream)
                     Button {
                         detailVM.selectSubtitleStream(index: stream.index)
+                        detailVM.startPreload(
+                            playbackManager: playbackManager,
+                            serverViewModel: serverViewModel,
+                            libraryViewModel: libraryViewModel
+                        )
                     } label: {
                         if isSelected {
                             Label(label, systemImage: "checkmark")
@@ -209,6 +229,11 @@ extension MediaDetailView {
         Button {
             withAnimation {
                 detailVM.resetToDefaults()
+                detailVM.startPreload(
+                    playbackManager: playbackManager,
+                    serverViewModel: serverViewModel,
+                    libraryViewModel: libraryViewModel
+                )
             }
         } label: {
             HStack(spacing: 8) {

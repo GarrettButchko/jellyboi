@@ -43,21 +43,23 @@ extension MediaDetailView {
     var heroSection: some View {
         HStack(alignment: .bottom, spacing: 8) {
             heroImage
-                .background(alignment: .top) {
-                    if AppPreferences.shared.showDetailBlurredBackdrop {
-                        HeroBackdropView(
-                            url: heroBackdropURL,
-                            itemID: displayItem.id,
-                            blurRadius: 15,
-                            isFlipped: true
-                        )
-                        .offset(y: -400)
-                        .ignoresSafeArea(edges: .top)
-                    }
-                }
             buttonColumn
         }
         .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .background(alignment: .top) {
+            if AppPreferences.shared.showDetailBlurredBackdrop {
+                HeroBackdropView(
+                    url: heroBackdropURL,
+                    itemID: displayItem.id,
+                    blurRadius: 15,
+                    isFlipped: true
+                )
+                .offset(y: -400)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+            }
+        }
     }
 
     // MARK: - Hero Image

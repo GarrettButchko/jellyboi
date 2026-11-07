@@ -5,7 +5,7 @@
 //  Created by Garrett Butchko on 9/29/26.
 //
 
-import SwiftUI
+import Foundation
 import Observation
 import JellyfinAPI
 
@@ -38,9 +38,7 @@ class MediaButtonColumnViewModel {
         serverViewModel: ServerViewModel?,
         onResetProgress: (() -> Void)? = nil
     ) {
-        withAnimation(.smooth) {
-            isProgressReset = true
-        }
+        isProgressReset = true
         Task {
             await serverViewModel?.resetProgress(for: item) {
                 onResetProgress?()
@@ -64,18 +62,14 @@ class MediaButtonColumnViewModel {
 
     func handleProgressResetNotification(resetID: String) {
         if resetID == item.id || (item.seriesID != nil && resetID == item.seriesID) {
-            withAnimation(.smooth) {
-                isProgressReset = true
-            }
+            isProgressReset = true
         }
     }
 
     func handleProgressUpdatedNotification(itemID: String, positionTicks: Int, totalTicks: Int?) {
         if itemID == item.id {
-            withAnimation(.smooth) {
-                item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
-                isProgressReset = false
-            }
+            item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
+            isProgressReset = false
         }
     }
 }

@@ -111,6 +111,7 @@ extension MediaDetailView {
                     }
                 }
                 .animation(.easeInOut(duration: 0.3), value: detailVM.episodes.isEmpty)
+                .animation(.easeInOut(duration: 0.2), value: detailVM.seasons.count)
                 .task(id: detailVM.episodes.count) {
                     guard !detailVM.hasInitialEpisodeScrolled, !detailVM.episodes.isEmpty else { return }
                     let nextEp = detailVM.nextPlayableEpisode(libraryViewModel: libraryViewModel)

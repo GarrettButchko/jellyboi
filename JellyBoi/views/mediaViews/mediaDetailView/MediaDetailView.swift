@@ -85,6 +85,7 @@ struct MediaDetailView: View {
                     .padding(.top, 16)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color.bg.ignoresSafeArea())
         .toolbarVisibility(.hidden, for: .navigationBar)
@@ -139,7 +140,9 @@ struct MediaDetailView: View {
                 Button("Cancel", role: .cancel) { }
             } else {
                 Button("Reset Progress", role: .destructive) {
-                    detailVM.resetSeriesProgress(serverViewModel: serverViewModel)
+                    withAnimation(.smooth) {
+                        detailVM.resetSeriesProgress(serverViewModel: serverViewModel)
+                    }
                 }
                 Button("Cancel", role: .cancel) { }
             }
@@ -195,11 +198,6 @@ struct MediaDetailView: View {
                 libraryViewModel: libraryViewModel
             )
         }
-        .onDisappear {
-            if playbackManager.activePlayerViewModel == nil && !playbackManager.isLoading {
-                playbackManager.cancelPreload()
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .mediaProgressReset)) { notification in
             if let itemID = notification.object as? String {
                 withAnimation(.smooth(duration: 0.35)) {
@@ -222,4 +220,3 @@ struct MediaDetailView: View {
         }
     }
 }
-

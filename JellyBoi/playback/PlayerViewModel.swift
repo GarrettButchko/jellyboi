@@ -5,7 +5,8 @@
 //  Created by Garrett Butchko on 10/5/26.
 //
 
-import SwiftUI
+import Foundation
+import CoreGraphics
 import AVKit
 import CoreMedia
 import MediaPlayer
@@ -53,6 +54,7 @@ final class PlayerViewModel: Identifiable {
     private var preloadedMedia: PreparedMedia?
     private(set) var isPreloaded: Bool = false
     private var hasActivatedAudioSession: Bool = false
+    private var hasStartedPlayback: Bool = false
 
     private var timeObserverToken: Any?
     private var endObserver: NSObjectProtocol?
@@ -173,7 +175,7 @@ final class PlayerViewModel: Identifiable {
                     isCopyTimestamps: true,
                     isEstimateContentLength: false,
                     maxAudioChannels: "6",
-                    minSegments: 1,
+                    minSegments: 2,
                     segmentLength: 3,
                     transcodeSeekInfo: .auto,
                     type: .video,
@@ -191,7 +193,7 @@ final class PlayerViewModel: Identifiable {
                     isCopyTimestamps: true,
                     isEstimateContentLength: false,
                     maxAudioChannels: "6",
-                    minSegments: 1,
+                    minSegments: 2,
                     segmentLength: 3,
                     transcodeSeekInfo: .auto,
                     type: .video,
@@ -301,6 +303,18 @@ final class PlayerViewModel: Identifiable {
         if isPreload {
             avPlayer.rate = 0.0
         }
+
+        // Prime the player immediately with the resume timestamp before waiting for readiness.
+        // This instructs AVPlayer to fetch chunks directly at the resume position rather than
+        // buffering from 0:00 and then discarding that buffer on first seek.
+        if initialResumeTicks > 0 {
+            let resumeSeconds = Double(initialResumeTicks) / 10_000_000.0
+            let targetTime = CMTime(seconds: resumeSeconds, preferredTimescale: 600)
+            let tolerance = CMTime(seconds: 0.5, preferredTimescale: 600)
+            await avPlayer.seek(to: targetTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
+            AppLogger.info("Primed AVPlayer with initial resume position: \(String(format: "%.1f", resumeSeconds))s (ticks: \(initialResumeTicks))", tag: "Player")
+        }
+
         self.player = avPlayer
 
         startAsyncArtworkFetchIfNeeded()
@@ -356,17 +370,66 @@ final class PlayerViewModel: Identifiable {
             }
         }
 
-        let isReady = await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                await self.waitForReadiness(playerItem: prepared.playerItem, isPreload: isPreload)
+        var activeItem = prepared.playerItem
+        var isReady = false
+        let maxMapRetries = 2
+
+        for attempt in 0...maxMapRetries {
+            if attempt > 0 {
+                AppLogger.warning("Retrying playback after map initialization timeout (attempt \(attempt + 1)/\(maxMapRetries + 1)). Waiting for server transcode cache...", tag: "Player")
+                self.isLoading = !isPreload
+                self.errorMessage = nil
+
+                statusObserver?.invalidate()
+                statusObserver = nil
+
+                try? await Task.sleep(for: .milliseconds(800))
+
+                let newItem = AVPlayerItem(asset: prepared.playerItem.asset)
+                newItem.externalMetadata = prepared.playerItem.externalMetadata
+                if let composition = prepared.playerItem.videoComposition {
+                    newItem.videoComposition = composition
+                }
+                activeItem = newItem
+                avPlayer.replaceCurrentItem(with: newItem)
+
+                if let endObserver {
+                    NotificationCenter.default.removeObserver(endObserver)
+                }
+                endObserver = NotificationCenter.default.addObserver(
+                    forName: .AVPlayerItemDidPlayToEndTime,
+                    object: newItem,
+                    queue: .main
+                ) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        AppLogger.info("Playback reached end of media item", tag: "Player")
+                        self?.handlePlaybackFinished()
+                    }
+                }
             }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(60))
-                return false
+
+            let attemptReady = await withTaskGroup(of: Bool.self) { group in
+                group.addTask {
+                    await self.waitForReadiness(playerItem: activeItem, isPreload: isPreload)
+                }
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(60))
+                    return false
+                }
+                let firstResult = await group.next() ?? false
+                group.cancelAll()
+                return firstResult
             }
-            let firstResult = await group.next() ?? false
-            group.cancelAll()
-            return firstResult
+
+            if attemptReady {
+                isReady = true
+                break
+            }
+
+            let failedDueToMapTimeout = self.isMapTimeoutFailure(item: activeItem)
+            if !failedDueToMapTimeout || attempt == maxMapRetries {
+                break
+            }
         }
 
         if !isReady && errorMessage == nil {
@@ -526,7 +589,7 @@ final class PlayerViewModel: Identifiable {
                     let sourceID = selectedSource?.id ?? req.mediaSourceID ?? itemID
                     let sid = sessionID ?? UUID().uuidString
                     sessionID = sid
-                    var hlsPath = "/Videos/\(itemID)/master.m3u8?MediaSourceId=\(sourceID)&PlaySessionId=\(sid)&VideoCodec=h264,hevc&AudioCodec=aac,mp3,ac3,eac3&TranscodingMaxAudioChannels=6&SegmentContainer=mp4&MinSegments=1&BreakOnNonKeyFrames=True&StartTimeTicks=\(resumeTicks)"
+                    var hlsPath = "/Videos/\(itemID)/master.m3u8?MediaSourceId=\(sourceID)&PlaySessionId=\(sid)&VideoCodec=h264,hevc&AudioCodec=aac,mp3,ac3,eac3&TranscodingMaxAudioChannels=6&SegmentContainer=mp4&MinSegments=2&BreakOnNonKeyFrames=True&StartTimeTicks=\(resumeTicks)"
                     if let audioIndex = req.audioStreamIndex {
                         hlsPath += "&AudioStreamIndex=\(audioIndex)"
                     }
@@ -686,9 +749,7 @@ final class PlayerViewModel: Identifiable {
             upNextProgressFraction = max(0.0, min(1.0, (30.0 - remainingSec) / 30.0))
 
             if !isAutoPlayDismissedForCurrentItem && !showUpNextOverlay {
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
-                    showUpNextOverlay = true
-                }
+                showUpNextOverlay = true
             }
 
             if preloadedMedia == nil && !isPreloadingNext {
@@ -698,19 +759,15 @@ final class PlayerViewModel: Identifiable {
             }
         } else {
             if showUpNextOverlay {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    showUpNextOverlay = false
-                }
+                showUpNextOverlay = false
             }
         }
     }
 
     func dismissUpNextOverlay() {
-        withAnimation(.easeInOut(duration: 0.25)) {
-            showUpNextOverlay = false
-            upNextSecondsRemaining = 0
-            upNextProgressFraction = 0.0
-        }
+        showUpNextOverlay = false
+        upNextSecondsRemaining = 0
+        upNextProgressFraction = 0.0
         isAutoPlayDismissedForCurrentItem = true
     }
 
@@ -744,9 +801,7 @@ final class PlayerViewModel: Identifiable {
 
         handlePlaybackFinished(isSwitchingToNext: true)
 
-        withAnimation(.easeInOut(duration: 0.25)) {
-            showUpNextOverlay = false
-        }
+        showUpNextOverlay = false
         isAutoPlayDismissedForCurrentItem = false
 
         let mediaToPlay: PreparedMedia
@@ -788,6 +843,13 @@ final class PlayerViewModel: Identifiable {
 
         player?.replaceCurrentItem(with: mediaToPlay.playerItem)
 
+        if nextResume > 0 {
+            let resumeSeconds = Double(nextResume) / 10_000_000.0
+            let targetTime = CMTime(seconds: resumeSeconds, preferredTimescale: 600)
+            let tolerance = CMTime(seconds: 0.5, preferredTimescale: 600)
+            await player?.seek(to: targetTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
+        }
+
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
         }
@@ -810,6 +872,7 @@ final class PlayerViewModel: Identifiable {
 
         await applyInitialResumeSeekIfNeeded(logContext: "queue item")
 
+        self.hasStartedPlayback = true
         player?.play()
         isPlaying = true
         hasReportedStart = true
@@ -894,6 +957,25 @@ final class PlayerViewModel: Identifiable {
         }
     }
 
+    private func isMapTimeoutFailure(item: AVPlayerItem) -> Bool {
+        if let nsError = item.error as NSError? {
+            if nsError.domain == "CoreMediaErrorDomain" && nsError.code == -12889 {
+                return true
+            }
+        }
+        if let log = item.errorLog() {
+            for event in log.events {
+                if event.errorStatusCode == -12889 {
+                    return true
+                }
+                if let comment = event.errorComment, comment.localizedCaseInsensitiveContains("map") {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     private func applyInitialResumeSeekIfNeeded(logContext: String = "") async {
         guard !hasAppliedInitialSeek else { return }
         hasAppliedInitialSeek = true
@@ -901,6 +983,16 @@ final class PlayerViewModel: Identifiable {
 
         let seconds = Double(initialResumeTicks) / 10_000_000.0
         let currentSec = CMTimeGetSeconds(player?.currentTime() ?? .zero)
+
+        // For transcoded/remuxed HLS streams, Jellyfin starts the stream at StartTimeTicks, so the stream
+        // begins at the resume position. If currentTime is around 0.0, the item is already playing from the
+        // desired point and re-seeking would flush AVPlayer's buffer and force re-fetching segments.
+        if (currentPlayMethod == .transcode || currentPlayMethod == .directStream), currentSec < 2.0 {
+            currentPositionTicks = initialResumeTicks
+            AppLogger.info("Stream initialized with server-side start time at \(String(format: "%.1f", seconds))s; skipping redundant client seek", tag: "Player")
+            return
+        }
+
         if abs(currentSec - seconds) > 2.0 {
             let label = logContext.isEmpty ? "Seeking" : "Seeking \(logContext)"
             AppLogger.info("\(label) to resume position: \(String(format: "%.1f", seconds))s (ticks: \(initialResumeTicks))", tag: "Player")
@@ -948,16 +1040,9 @@ final class PlayerViewModel: Identifiable {
             return
         }
 
-        self.player?.play()
-        self.isPlaying = true
-        if let img = loadedArtworkImage {
-            updateNowPlayingInfo(with: img)
-        }
-        if !self.hasReportedStart {
-            self.hasReportedStart = true
-            await self.reportPlaybackStart()
-            self.startPeriodicReporting()
-        }
+        self.player?.rate = 0.0
+        self.isPlaying = false
+        AppLogger.info("Media item is prepared and paused awaiting presentation", tag: "Player")
     }
 
     private func configureAudioSession() async {
@@ -978,9 +1063,10 @@ final class PlayerViewModel: Identifiable {
         }
     }
 
-    func startPlaybackFromPreload() async {
-        guard !isCleanedUp, let player = self.player else { return }
-        AppLogger.info("Starting playback from preloaded item '\(request.item.playbackTitle)'", tag: "Player")
+    func startPlaybackIfNeeded() async {
+        guard !isCleanedUp, !hasStartedPlayback, let player = self.player else { return }
+        hasStartedPlayback = true
+        AppLogger.info("Starting playback on view appearance for '\(request.item.playbackTitle)'", tag: "Player")
 
         await configureAudioSession()
 
@@ -994,6 +1080,10 @@ final class PlayerViewModel: Identifiable {
             await self.reportPlaybackStart()
             self.startPeriodicReporting()
         }
+    }
+
+    func startPlaybackFromPreload() async {
+        await startPlaybackIfNeeded()
     }
 
     // MARK: - Subtitle Selection
@@ -1368,6 +1458,7 @@ final class PlayerViewModel: Identifiable {
     func cleanup() {
         guard !isCleanedUp else { return }
         isCleanedUp = true
+        hasStartedPlayback = false
         AppLogger.info("Cleaning up PlayerViewModel resources for '\(request.item.playbackTitle)'", tag: "Player")
 
         periodicReportTimer?.invalidate()

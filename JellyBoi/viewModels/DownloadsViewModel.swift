@@ -5,7 +5,7 @@
 //  Created by Garrett Butchko on 10/23/26.
 //
 
-import SwiftUI
+import Foundation
 import Observation
 import JellyfinAPI
 
@@ -227,16 +227,12 @@ final class DownloadsViewModel {
     // MARK: - Navigation Actions
 
     func selectGroup(_ group: ShowDownloadGroup) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-            selectedGroup = group
-        }
+        selectedGroup = group
     }
 
     func handleBack(dismiss: () -> Void) {
         if selectedGroup != nil {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                selectedGroup = nil
-            }
+            selectedGroup = nil
         } else if let onBack {
             onBack()
         } else {
@@ -247,36 +243,26 @@ final class DownloadsViewModel {
     // MARK: - Download Management Actions
 
     func cancelDownload(id: String) {
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-            downloadManager.cancelDownload(id: id)
-        }
+        downloadManager.cancelDownload(id: id)
     }
 
     func resumeDownload(id: String, client: JellyfinClient?) {
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-            downloadManager.resumeDownload(id: id, client: client)
-        }
+        downloadManager.resumeDownload(id: id, client: client)
     }
 
     func deleteDownload(id: String) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-            downloadManager.deleteDownload(id: id)
-        }
+        downloadManager.deleteDownload(id: id)
     }
 
     func cancelGroup(_ group: ShowDownloadGroup) {
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-            downloadManager.cancelDownloads(ids: group.activeDownloads.map(\.id))
-        }
+        downloadManager.cancelDownloads(ids: group.activeDownloads.map(\.id))
     }
 
     func cancelAllActive() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-            if isShowMode {
-                downloadManager.cancelDownloads(ids: showActiveEpisodes.map(\.id))
-            } else {
-                downloadManager.cancelDownloads(ids: downloadManager.activeDownloads.map(\.id))
-            }
+        if isShowMode {
+            downloadManager.cancelDownloads(ids: showActiveEpisodes.map(\.id))
+        } else {
+            downloadManager.cancelDownloads(ids: downloadManager.activeDownloads.map(\.id))
         }
     }
 

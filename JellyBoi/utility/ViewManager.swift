@@ -5,7 +5,7 @@
 //  Created by Garrett Butchko on 8/19/26.
 //
 
-import SwiftUI
+import Foundation
 import Observation
 import JellyfinAPI
 

@@ -5,7 +5,7 @@
 //  Created by Garrett Butchko on 9/2/26.
 //
 
-import SwiftUI
+import Foundation
 import JellyfinAPI
 
 // MARK: - Seasons, Episodes & Collections
@@ -73,9 +73,7 @@ extension MediaDetailViewModel {
         // Publish seasons immediately so the season picker appears without waiting for episodes
         if !sortedSeasons.isEmpty {
             Self.seasonsCache[seriesID] = sortedSeasons
-            withAnimation(.easeInOut(duration: 0.2)) {
-                self.seasons = sortedSeasons
-            }
+            self.seasons = sortedSeasons
             if !seasons.indices.contains(selectedSeasonIndex) {
                 selectedSeasonIndex = 0
             }
@@ -130,9 +128,7 @@ extension MediaDetailViewModel {
 
         Self.episodesCache[seriesID] = sortedEpisodes
 
-        withAnimation(.easeInOut(duration: 0.3)) {
-            self.episodes = sortedEpisodes
-        }
+        self.episodes = sortedEpisodes
 
         if !hasInitialEpisodeScrolled {
             if let nextEp = nextPlayableEpisode(libraryViewModel: libraryViewModel),

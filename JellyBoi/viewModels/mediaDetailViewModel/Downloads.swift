@@ -5,7 +5,7 @@
 //  Created by Garrett Butchko on 9/2/26.
 //
 
-import SwiftUI
+import Foundation
 import JellyfinAPI
 
 // MARK: - Download State & Actions

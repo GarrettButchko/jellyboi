@@ -5,7 +5,8 @@
 //  Created by Garrett Butchko on 9/29/26.
 //
 
-import SwiftUI
+import Foundation
+import CoreGraphics
 import Observation
 import JellyfinAPI
 
@@ -76,9 +77,7 @@ class MediaCardViewModel {
         serverViewModel: ServerViewModel?,
         onResetProgress: (() -> Void)? = nil
     ) {
-        withAnimation(.smooth) {
-            isProgressReset = true
-        }
+        isProgressReset = true
         Task {
             await serverViewModel?.resetProgress(for: item) {
                 onResetProgress?()
@@ -88,26 +87,14 @@ class MediaCardViewModel {
 
     func handleProgressResetNotification(resetID: String) {
         if resetID == item.id || (item.seriesID != nil && resetID == item.seriesID) {
-            withAnimation(.smooth) {
-                isProgressReset = true
-            }
+            isProgressReset = true
         }
     }
 
     func handleProgressUpdatedNotification(itemID: String, positionTicks: Int, totalTicks: Int?) {
         if itemID == item.id {
-            let total = totalTicks ?? item.runTimeTicks.map { Int($0) } ?? 0
-            let percent = total > 0 ? (Double(positionTicks) / Double(total)) * 100.0 : 0.0
-            let isZeroOrPlayed = percent < 1.0 || percent >= 85.0
-            if isZeroOrPlayed {
-                withAnimation(.smooth(duration: 0.35)) {
-                    item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
-                    isProgressReset = false
-                }
-            } else {
-                item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
-                isProgressReset = false
-            }
+            item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
+            isProgressReset = false
         }
     }
 

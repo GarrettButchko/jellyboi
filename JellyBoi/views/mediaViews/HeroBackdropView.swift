@@ -17,6 +17,7 @@ struct HeroBackdropView: View {
     var blurRadius: CGFloat = 40
     var isFlipped: Bool = false
     var gradientColors: [Color] = [.black, .black.opacity(0.5), .clear]
+    var ignoresSafeAreaEdges: Edge.Set = .all
 
     @State private var imageA: UIImage? = nil
     @State private var imageB: UIImage? = nil
@@ -57,7 +58,7 @@ struct HeroBackdropView: View {
             )
         )
         .opacity(contentOpacity)
-        .ignoresSafeArea(edges: .top)
+        .ignoresSafeArea(edges: ignoresSafeAreaEdges)
         .task(id: BackdropKey(url: url, itemID: itemID, blurRadius: blurRadius)) {
             await handleImageChange()
         }
