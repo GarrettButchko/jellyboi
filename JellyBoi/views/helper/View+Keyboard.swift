@@ -6,7 +6,9 @@
 //
 
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 enum KeyboardHelper {
     /// Immediately dismisses the software keyboard across the active window scenes.
@@ -14,6 +16,7 @@ enum KeyboardHelper {
     @discardableResult
     @MainActor
     static func hideKeyboard() -> Bool {
+        #if canImport(UIKit)
         let resigned = UIApplication.shared.sendAction(
             #selector(UIResponder.resignFirstResponder),
             to: nil,
@@ -31,6 +34,9 @@ enum KeyboardHelper {
             }
         }
         return resigned || ended
+        #else
+        return false
+        #endif
     }
 
     /// Dismisses the keyboard and, if the keyboard was active or `wasFocused` is true,

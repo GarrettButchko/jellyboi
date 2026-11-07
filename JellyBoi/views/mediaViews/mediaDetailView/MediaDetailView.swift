@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import UIKit
 import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI

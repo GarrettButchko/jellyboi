@@ -12,7 +12,9 @@ import JellyfinAPI
 import LoggingKit
 import SDWebImage
 import AVFoundation
+#if canImport(UIKit)
 import UIKit
+#endif
 import ImageIO
 
 @Observable
@@ -170,8 +172,8 @@ public final class DownloadManager: NSObject {
             url: session.serverURL,
             accessToken: session.token,
             client: "JellyBoi",
-            deviceName: UIDevice.current.name,
-            deviceID: UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString,
+            deviceName: PlatformDevice.name,
+            deviceID: PlatformDevice.identifier,
             version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
         ))
         self.client = restored
@@ -1061,6 +1063,7 @@ extension DownloadManager: URLSessionDownloadDelegate {
 
 // MARK: - UIImage Live Activity Thumbnail
 
+#if canImport(UIKit)
 extension UIImage {
     func liveActivityThumbnailData(maxDimension: CGFloat = 56) -> Data? {
         guard size.width > 0 && size.height > 0 else { return nil }
@@ -1095,3 +1098,4 @@ extension UIImage {
         return resized.jpegData(compressionQuality: 0.15)
     }
 }
+#endif

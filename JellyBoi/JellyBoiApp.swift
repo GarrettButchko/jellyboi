@@ -20,7 +20,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
-        return Self.orientationLock
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            return Self.orientationLock
+        }
+        return .all
     }
 
     func application(
@@ -35,6 +38,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
 enum OrientationHelper {
     static func lockOrientation(_ orientation: UIInterfaceOrientationMask, rotateTo: UIInterfaceOrientation? = nil) {
+        guard UIDevice.current.userInterfaceIdiom == .phone else {
+            // iPad, Mac Catalyst, and tvOS allow freeform orientation and windowing
+            return
+        }
+
         AppDelegate.orientationLock = orientation
 
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }

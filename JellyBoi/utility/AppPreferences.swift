@@ -100,6 +100,10 @@ public final class AppPreferences: @unchecked Sendable {
         }
     }
 
+    public var accentColor: Color {
+        accentColorChoice.color
+    }
+
     public init() {
         let defaults = UserDefaults.standard
 

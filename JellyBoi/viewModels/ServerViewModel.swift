@@ -7,7 +7,6 @@
 
 import Foundation
 import Observation
-import UIKit
 import Get
 import JellyfinAPI
 import LoggingKit
@@ -45,8 +44,8 @@ class ServerViewModel {
         client = JellyfinClient(configuration: .init(
             url: url,
             client: "JellyBoi",
-            deviceName: UIDevice.current.name,
-            deviceID: UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString,
+            deviceName: PlatformDevice.name,
+            deviceID: PlatformDevice.identifier,
             version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
         ))
     }
@@ -70,8 +69,8 @@ class ServerViewModel {
             url: session.serverURL,
             accessToken: session.token,
             client: "JellyBoi",
-            deviceName: UIDevice.current.name,
-            deviceID: UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString,
+            deviceName: PlatformDevice.name,
+            deviceID: PlatformDevice.identifier,
             version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
         ))
 

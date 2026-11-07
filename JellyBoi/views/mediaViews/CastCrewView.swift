@@ -10,11 +10,15 @@ import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
 
+#if canImport(UIKit)
 private var safeAreaTop: CGFloat {
     UIApplication.shared.connectedScenes
         .compactMap { $0 as? UIWindowScene }
         .first?.keyWindow?.safeAreaInsets.top ?? 0
 }
+#else
+private var safeAreaTop: CGFloat { 0 }
+#endif
 
 struct CastCrewView: View {
     @State private var viewModel: CastCrewViewModel
