@@ -12,14 +12,6 @@ import Get
 import JellyfinAPI
 import LoggingKit
 
-private struct StoredSession: Codable {
-    let token: String
-    let serverURL: URL
-    let serverName: String
-}
-
-private let sessionKey = "jellyfinSession"
-
 @Observable
 @MainActor
 class ServerViewModel {
@@ -44,7 +36,7 @@ class ServerViewModel {
     }
 
     var hasStoredSession: Bool {
-        KeychainStore.read(StoredSession.self, for: sessionKey) != nil
+        KeychainStore.read(StoredSession.self, for: storedSessionKeychainKey) != nil
     }
 
     func setServer(url: URL, name: String) {
@@ -61,7 +53,7 @@ class ServerViewModel {
 
     func saveSession(token: String) {
         guard let url = serverURL, let name = serverName else { return }
-        KeychainStore.save(StoredSession(token: token, serverURL: url, serverName: name), for: sessionKey)
+        KeychainStore.save(StoredSession(token: token, serverURL: url, serverName: name), for: storedSessionKeychainKey)
     }
 
     /// Restores a previous session from the keychain.
@@ -70,7 +62,7 @@ class ServerViewModel {
     /// and `.unauthenticated` only if no session exists or server rejected credentials (401).
     @discardableResult
     func restoreSession() async -> SessionRestoreResult {
-        guard let session = KeychainStore.read(StoredSession.self, for: sessionKey) else {
+        guard let session = KeychainStore.read(StoredSession.self, for: storedSessionKeychainKey) else {
             return .unauthenticated
         }
 

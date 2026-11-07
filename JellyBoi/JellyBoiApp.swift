@@ -22,6 +22,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> UIInterfaceOrientationMask {
         return Self.orientationLock
     }
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        AppLogger.info("AppDelegate received handleEventsForBackgroundURLSession: \(identifier)", tag: "AppDelegate")
+        DownloadManager.shared.handleEventsForBackgroundURLSession(identifier: identifier, completionHandler: completionHandler)
+    }
 }
 
 enum OrientationHelper {

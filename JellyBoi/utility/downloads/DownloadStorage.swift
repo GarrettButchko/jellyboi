@@ -15,17 +15,21 @@ public final class DownloadStorage: @unchecked Sendable {
 
     public init() {}
 
-    public var downloadsDirectory: URL {
-        let urls = fileManager.urls(for: .documentDirectory, in: .userDomainMask)
+    public static var downloadsDirectoryURL: URL {
+        let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
         let dir = urls[0].appendingPathComponent("Downloads", isDirectory: true)
-        if !fileManager.fileExists(atPath: dir.path) {
-            try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             var resourceValues = URLResourceValues()
             resourceValues.isExcludedFromBackup = true
             var mutableDir = dir
             try? mutableDir.setResourceValues(resourceValues)
         }
         return dir
+    }
+
+    public var downloadsDirectory: URL {
+        Self.downloadsDirectoryURL
     }
 
     private var indexFileURL: URL {

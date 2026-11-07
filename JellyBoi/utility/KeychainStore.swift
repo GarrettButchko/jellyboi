@@ -8,8 +8,22 @@
 import Security
 import Foundation
 
-enum KeychainStore {
-    static func save(_ value: String, for key: String) {
+public struct StoredSession: Codable, Sendable {
+    public let token: String
+    public let serverURL: URL
+    public let serverName: String
+
+    public init(token: String, serverURL: URL, serverName: String) {
+        self.token = token
+        self.serverURL = serverURL
+        self.serverName = serverName
+    }
+}
+
+public let storedSessionKeychainKey = "jellyfinSession"
+
+public enum KeychainStore {
+    public static func save(_ value: String, for key: String) {
         let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -22,7 +36,7 @@ enum KeychainStore {
         SecItemAdd(attributes as CFDictionary, nil)
     }
 
-    static func read(for key: String) -> String? {
+    public static func read(for key: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
@@ -35,7 +49,7 @@ enum KeychainStore {
         return String(data: data, encoding: .utf8)
     }
 
-    static func delete(for key: String) {
+    public static func delete(for key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key
@@ -43,13 +57,13 @@ enum KeychainStore {
         SecItemDelete(query as CFDictionary)
     }
 
-    static func save<T: Codable>(_ value: T, for key: String) {
+    public static func save<T: Codable>(_ value: T, for key: String) {
         guard let data = try? JSONEncoder().encode(value),
               let string = String(data: data, encoding: .utf8) else { return }
         save(string, for: key)
     }
 
-    static func read<T: Codable>(_ type: T.Type, for key: String) -> T? {
+    public static func read<T: Codable>(_ type: T.Type, for key: String) -> T? {
         guard let string = read(for: key),
               let data = string.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(type, from: data)

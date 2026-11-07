@@ -50,13 +50,18 @@ public final class DownloadManager: NSObject {
     @ObservationIgnored
     private var cachedPosterThumbnails: [String: Data] = [:]
 
+    @ObservationIgnored
+    private var backgroundCompletionHandlers: [String: () -> Void] = [:]
+
     public var downloadsDirectory: URL {
         storage.downloadsDirectory
     }
 
     public override init() {
         super.init()
-        let config = URLSessionConfiguration.default
+        let config = URLSessionConfiguration.background(withIdentifier: "com.jellyboi.downloadSession")
+        config.sessionSendsLaunchEvents = true
+        config.isDiscretionary = false
         config.waitsForConnectivity = true
         config.timeoutIntervalForResource = 3600 * 6 // 6 hours max for large movies
         config.timeoutIntervalForRequest = 180 // 3 minutes timeout for individual chunks
@@ -74,7 +79,25 @@ public final class DownloadManager: NSObject {
             saveIndex()
         }
 
-        if client != nil {
+        // Reconnect to any background tasks already in progress by the daemon
+        self.session.getAllTasks { [weak self] tasks in
+            Task { @MainActor in
+                guard let self else { return }
+                for task in tasks {
+                    guard let downloadTask = task as? URLSessionDownloadTask,
+                          let itemID = downloadTask.taskDescription else { continue }
+                    self.activeTasks[itemID] = downloadTask
+                    if downloadTask.state == .running || downloadTask.state == .suspended {
+                        if self.activeDownloadingID == nil {
+                            self.activeDownloadingID = itemID
+                        }
+                    }
+                }
+                self.processQueue()
+            }
+        }
+
+        if client != nil || canRestoreClientFromKeychain {
             processQueue()
         }
 
@@ -116,6 +139,44 @@ public final class DownloadManager: NSObject {
                 self.updateFavorite(for: itemID, isFavorite: isFavorite)
             }
         }
+    }
+
+    // MARK: - Background URLSession System Handling
+
+    public func handleEventsForBackgroundURLSession(identifier: String, completionHandler: @escaping () -> Void) {
+        AppLogger.info("Storing background URLSession completion handler for \(identifier)", tag: "DownloadManager")
+        backgroundCompletionHandlers[identifier] = completionHandler
+    }
+
+    public func callBackgroundCompletionHandlerIfNeeded() {
+        if let completion = backgroundCompletionHandlers.removeValue(forKey: "com.jellyboi.downloadSession") {
+            AppLogger.info("Executing background URLSession completion handler", tag: "DownloadManager")
+            completion()
+        }
+    }
+
+    private var canRestoreClientFromKeychain: Bool {
+        KeychainStore.read(StoredSession.self, for: storedSessionKeychainKey) != nil
+    }
+
+    private func getOrRestoreClient() -> JellyfinClient? {
+        if let client = self.client {
+            return client
+        }
+        guard let session = KeychainStore.read(StoredSession.self, for: storedSessionKeychainKey) else {
+            return nil
+        }
+        let restored = JellyfinClient(configuration: .init(
+            url: session.serverURL,
+            accessToken: session.token,
+            client: "JellyBoi",
+            deviceName: UIDevice.current.name,
+            deviceID: UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString,
+            version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        ))
+        self.client = restored
+        AppLogger.info("Recreated JellyfinClient from Keychain for background downloads", tag: "DownloadManager")
+        return restored
     }
 
     // MARK: - Playback Progress & Metadata Sync
@@ -432,7 +493,7 @@ public final class DownloadManager: NSObject {
                 updateLiveActivity(force: true)
                 return
             } else {
-                guard let client = self.client else {
+                guard let client = getOrRestoreClient() else {
                     AppLogger.warning("Cannot start queued download for \(nextID): No JellyfinClient available", tag: "DownloadManager")
                     downloadQueue.insert(nextID, at: 0)
                     return
@@ -603,8 +664,11 @@ public final class DownloadManager: NSObject {
         updateLiveActivity()
     }
 
-    private func handleCompleted(itemID: String, tempLocation: URL) {
-        guard var item = downloads[itemID] else { return }
+    private func handleCompleted(itemID: String, stagedLocation: URL) {
+        guard var item = downloads[itemID] else {
+            try? FileManager.default.removeItem(at: stagedLocation)
+            return
+        }
         let destinationURL = storage.downloadsDirectory.appendingPathComponent(item.fileName)
 
         let rawContainer = item.item.container?.lowercased() ?? ""
@@ -621,12 +685,30 @@ public final class DownloadManager: NSObject {
         item.estimatedTimeRemaining = nil
         downloads[itemID] = item
 
+        #if os(iOS)
+        var backgroundTaskID = UIBackgroundTaskIdentifier.invalid
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "com.jellyboi.finalize-\(itemID)") {
+            AppLogger.warning("Background task expired while post-processing '\(itemTitle)'", tag: "DownloadManager")
+            UIApplication.shared.endBackgroundTask(backgroundTaskID)
+            backgroundTaskID = .invalid
+        }
+        #endif
+
         Task.detached(priority: .utility) {
+            defer {
+                #if os(iOS)
+                if backgroundTaskID != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                    backgroundTaskID = .invalid
+                }
+                #endif
+            }
+
             do {
                 let fileSize = try await DownloadPostProcessor.processDownloadedFile(
                     itemID: itemID,
                     itemTitle: itemTitle,
-                    tempLocation: tempLocation,
+                    tempLocation: stagedLocation,
                     destinationURL: destinationURL,
                     rawContainer: rawContainer,
                     targetAspect: targetAspect,
@@ -647,7 +729,7 @@ public final class DownloadManager: NSObject {
                     DownloadManager.shared.finishItemCompleted(itemID: itemID, fileSize: fileSize)
                 }
             } catch {
-                try? FileManager.default.removeItem(at: tempLocation)
+                try? FileManager.default.removeItem(at: stagedLocation)
                 try? FileManager.default.removeItem(at: destinationURL)
                 await MainActor.run {
                     DownloadManager.shared.finishItemFailed(itemID: itemID, error: error)
@@ -933,12 +1015,22 @@ extension DownloadManager: URLSessionDownloadDelegate {
         didFinishDownloadingTo location: URL
     ) {
         guard let itemID = downloadTask.taskDescription else { return }
-        // Copy to temporary location before system removes it
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try? FileManager.default.copyItem(at: location, to: tempURL)
+        // Move to download directory staging location immediately before system deletes temp file
+        let downloadsDir = DownloadStorage.downloadsDirectoryURL
+        let stagedURL = downloadsDir.appendingPathComponent(".staging-\(UUID().uuidString)")
+        do {
+            if FileManager.default.fileExists(atPath: stagedURL.path) {
+                try FileManager.default.removeItem(at: stagedURL)
+            }
+            try FileManager.default.moveItem(at: location, to: stagedURL)
+        } catch {
+            AppLogger.error("Failed to move downloaded file to staging location: \(error.localizedDescription)", error, tag: "DownloadManager")
+            // Fallback to copy if cross-volume move fails
+            try? FileManager.default.copyItem(at: location, to: stagedURL)
+        }
 
         Task { @MainActor in
-            DownloadManager.shared.handleCompleted(itemID: itemID, tempLocation: tempURL)
+            DownloadManager.shared.handleCompleted(itemID: itemID, stagedLocation: stagedURL)
         }
     }
 
@@ -956,6 +1048,13 @@ extension DownloadManager: URLSessionDownloadDelegate {
 
         Task { @MainActor in
             DownloadManager.shared.handleError(itemID: itemID, error: error, resumeData: resumeData)
+        }
+    }
+
+    public nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        Task { @MainActor in
+            AppLogger.info("urlSessionDidFinishEventsForBackgroundURLSession called", tag: "DownloadManager")
+            DownloadManager.shared.callBackgroundCompletionHandlerIfNeeded()
         }
     }
 }
