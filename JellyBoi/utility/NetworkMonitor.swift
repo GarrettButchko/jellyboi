@@ -45,7 +45,7 @@ public final class NetworkMonitor: @unchecked Sendable {
                 self.hasReceivedFirstUpdate = true
 
                 if statusChanged {
-                    AppLogger.info("Network path changed: status=\(path.status), isConnected=\(connected)", tag: "NetworkMonitor")
+                    AppLogger.info("Network path changed: status=\(path.status), isConnected=\(connected)")
                     NotificationCenter.default.post(
                         name: .networkStatusDidChange,
                         object: self,

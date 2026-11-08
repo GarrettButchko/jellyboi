@@ -44,7 +44,7 @@ public enum DownloadPostProcessor {
                         let trackDAR = natSize.width / natSize.height
                         if abs(trackDAR - targetDAR) / targetDAR > 0.02 {
                             hasAspectMismatch = true
-                            AppLogger.info("Raw native container has aspect ratio mismatch (track: \(String(format: "%.2f", trackDAR)), target: \(String(format: "%.2f", targetDAR))); remuxing to normalize", tag: "DownloadPostProcessor")
+                            AppLogger.info("Raw native container has aspect ratio mismatch (track: \(String(format: "%.2f", trackDAR)), target: \(String(format: "%.2f", targetDAR))); remuxing to normalize")
                         }
                     }
                     if !hasAspectMismatch {
@@ -58,7 +58,7 @@ public enum DownloadPostProcessor {
                 try fileManager.moveItem(at: tempLocation, to: destinationURL)
             } else {
                 onStateChange(.converting, "Converting video...")
-                AppLogger.info("Processing downloaded container (\(rawContainer.isEmpty ? "unknown" : rawContainer)) to compliant MP4 for '\(itemTitle)'", tag: "DownloadPostProcessor")
+                AppLogger.info("Processing downloaded container (\(rawContainer.isEmpty ? "unknown" : rawContainer)) to compliant MP4 for '\(itemTitle)'")
 
                 var lastDispatchedTime: TimeInterval = 0
                 var lastDispatchedPercent: Int = -1

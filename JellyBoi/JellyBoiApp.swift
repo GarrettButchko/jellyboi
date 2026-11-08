@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         handleEventsForBackgroundURLSession identifier: String,
         completionHandler: @escaping () -> Void
     ) {
-        AppLogger.info("AppDelegate received handleEventsForBackgroundURLSession: \(identifier)", tag: "AppDelegate")
+        AppLogger.info("AppDelegate received handleEventsForBackgroundURLSession: \(identifier)")
         DownloadManager.shared.handleEventsForBackgroundURLSession(identifier: identifier, completionHandler: completionHandler)
     }
 }
@@ -66,7 +66,7 @@ enum OrientationHelper {
                 geometryOrientation = .portrait
             }
             windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: geometryOrientation)) { error in
-                AppLogger.debug("Geometry update info: \(error.localizedDescription)", tag: "Orientation")
+                AppLogger.debug("Geometry update info: \(error.localizedDescription)")
             }
         } else {
             windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { _ in }

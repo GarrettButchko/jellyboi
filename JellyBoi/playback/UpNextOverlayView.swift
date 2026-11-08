@@ -17,6 +17,37 @@ struct UpNextOverlayView: View {
     let onPlayNow: () -> Void
     var onDismiss: (() -> Void)? = nil
 
+    init(
+        nextItem: BaseItemDto? = nil,
+        state: UpNextState,
+        areControlsVisible: Bool = true,
+        onPlayNow: @escaping () -> Void,
+        onDismiss: (() -> Void)? = nil
+    ) {
+        self.nextItem = nextItem
+        self.secondsRemaining = state.secondsRemaining
+        self.progressFraction = state.progressFraction
+        self.areControlsVisible = areControlsVisible
+        self.onPlayNow = onPlayNow
+        self.onDismiss = onDismiss
+    }
+
+    init(
+        nextItem: BaseItemDto? = nil,
+        secondsRemaining: Int,
+        progressFraction: Double = 0.0,
+        areControlsVisible: Bool = true,
+        onPlayNow: @escaping () -> Void,
+        onDismiss: (() -> Void)? = nil
+    ) {
+        self.nextItem = nextItem
+        self.secondsRemaining = secondsRemaining
+        self.progressFraction = progressFraction
+        self.areControlsVisible = areControlsVisible
+        self.onPlayNow = onPlayNow
+        self.onDismiss = onDismiss
+    }
+
     private var effectiveProgressFraction: Double {
         if progressFraction > 0.0 {
             return progressFraction

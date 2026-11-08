@@ -60,7 +60,7 @@ public final class DownloadStorage: @unchecked Sendable {
             let data = try JSONEncoder().encode(items)
             try data.write(to: indexFileURL, options: .atomic)
         } catch {
-            AppLogger.error("Failed to save downloads index: \(error.localizedDescription)", error, tag: "DownloadStorage")
+            AppLogger.error("Failed to save downloads index: \(error.localizedDescription)", error)
         }
     }
 
@@ -148,10 +148,10 @@ public final class DownloadStorage: @unchecked Sendable {
                     return a.dateAdded < b.dateAdded
                 }
             let queue = uncompletedItems.map(\.id)
-            AppLogger.info("Loaded \(loaded.count) downloads from index (\(queue.count) queued)", tag: "DownloadStorage")
+            AppLogger.info("Loaded \(loaded.count) downloads from index (\(queue.count) queued)")
             return (loaded, queue, didHeal)
         } catch {
-            AppLogger.error("Failed to load downloads index: \(error.localizedDescription)", error, tag: "DownloadStorage")
+            AppLogger.error("Failed to load downloads index: \(error.localizedDescription)", error)
             return ([:], [], false)
         }
     }
@@ -174,7 +174,7 @@ public final class DownloadStorage: @unchecked Sendable {
         for file in files where file.hasPrefix(itemID) {
             let fileURL = dir.appendingPathComponent(file)
             try? fileManager.removeItem(at: fileURL)
-            AppLogger.info("Deleted download file: \(file)", tag: "DownloadStorage")
+            AppLogger.info("Deleted download file: \(file)")
         }
     }
 
@@ -187,7 +187,7 @@ public final class DownloadStorage: @unchecked Sendable {
             if !validFileNames.contains(file) {
                 let fileURL = dir.appendingPathComponent(file)
                 try? fileManager.removeItem(at: fileURL)
-                AppLogger.info("Cleaned up orphaned file: \(file)", tag: "DownloadStorage")
+                AppLogger.info("Cleaned up orphaned file: \(file)")
             }
         }
     }

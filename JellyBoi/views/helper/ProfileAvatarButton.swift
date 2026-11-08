@@ -27,7 +27,7 @@ struct ProfileAvatarButton: View {
                     fallbackIcon
                 }
                 .onFailure { error in
-                    AppLogger.error("Failed to load user avatar", error, tag: "ProfileAvatarButton")
+                    AppLogger.error("Failed to load user avatar", error)
                 }
                 .frame(width: 40, height: 40)
                 .clipShape(Circle())

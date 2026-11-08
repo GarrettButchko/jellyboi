@@ -155,7 +155,7 @@ final class AudioTranscodePipeline {
             throw RemuxError.allocateFrameFailed
         }
 
-        AppLogger.info("Mapped input audio -> output MP4 track #\(outAudioIdx) [Transcoding \(inCodecPar.sample_rate)Hz to AAC stereo 192k]", tag: "Remuxer")
+        AppLogger.info("Mapped input audio -> output MP4 track #\(outAudioIdx) [Transcoding \(inCodecPar.sample_rate)Hz to AAC stereo 192k]")
     }
 
     deinit {

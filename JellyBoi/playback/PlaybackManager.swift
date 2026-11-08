@@ -70,7 +70,18 @@ final class PlaybackManager {
     var userID: String?
     weak var libraryViewModel: LibraryViewModel?
 
-    var isLoading: Bool = false
+    // MARK: - Playback State & Presentation
+
+    var status: PlaybackStatus {
+        get {
+            activePlayerViewModel?.status ?? internalStatus
+        }
+        set {
+            internalStatus = newValue
+        }
+    }
+    private var internalStatus: PlaybackStatus = .idle
+
     var loadingMessage: String = "Loading Stream…"
     var activePlayerViewModel: PlayerViewModel?
     var currentError: PlaybackErrorInfo?
@@ -91,7 +102,8 @@ final class PlaybackManager {
         subtitleStreamIndex: Int?,
         maxBitrate: Int?
     ) -> String {
-        "\(item.id ?? "")-\(fromBeginning)-\(mediaSourceID ?? "")-\(audioStreamIndex ?? -1)-\(subtitleStreamIndex ?? -1)-\(maxBitrate ?? -1)"
+        let resumeTicks = fromBeginning ? 0 : item.resumePlaybackTicks
+        return "\(item.id ?? "")-\(resumeTicks)-\(fromBeginning)-\(mediaSourceID ?? "")-\(audioStreamIndex ?? -1)-\(subtitleStreamIndex ?? -1)-\(maxBitrate ?? -1)"
     }
 
     private func resolvePlaybackTarget(
@@ -108,7 +120,7 @@ final class PlaybackManager {
         if targetItem.type == .boxSet {
             if !activeQueue.isEmpty, let playable = activeQueue.nextPlayableItem(fromBeginning: fromBeginning) {
                 targetItem = playable
-                AppLogger.info("Selected next playable item '\(targetItem.name ?? "Unknown")' from provided queue", tag: "PlaybackManager")
+                AppLogger.info("Selected next playable item '\(targetItem.name ?? "Unknown")' from provided queue")
             } else if let resolved = await self.resolveNextItemInCollection(
                 collection: targetItem,
                 fromBeginning: fromBeginning,
@@ -118,7 +130,7 @@ final class PlaybackManager {
             ) {
                 targetItem = resolved.playable
                 activeQueue = resolved.queue
-                AppLogger.info("Resolved collection '\(item.name ?? "")' to next item '\(targetItem.name ?? "Unknown")'", tag: "PlaybackManager")
+                AppLogger.info("Resolved collection '\(item.name ?? "")' to next item '\(targetItem.name ?? "Unknown")'")
             } else {
                 return (targetItem, activeQueue, "No movies or TV shows found in this collection.")
             }
@@ -137,10 +149,10 @@ final class PlaybackManager {
                         activeQueue[matchIndex].userData = resumeEp.userData
                     }
                 }
-                AppLogger.info("Selected resume episode '\(targetItem.name ?? "Unknown")' from library resume shows", tag: "PlaybackManager")
+                AppLogger.info("Selected resume episode '\(targetItem.name ?? "Unknown")' from library resume shows")
             } else if !activeQueue.isEmpty, let playable = activeQueue.nextPlayableItem(fromBeginning: fromBeginning) {
                 targetItem = playable
-                AppLogger.info("Selected next playable episode '\(targetItem.name ?? "Unknown")' from provided queue", tag: "PlaybackManager")
+                AppLogger.info("Selected next playable episode '\(targetItem.name ?? "Unknown")' from provided queue")
             } else if let resolved = await self.resolvePlayableEpisode(
                 for: targetItem,
                 fromBeginning: fromBeginning,
@@ -150,7 +162,7 @@ final class PlaybackManager {
             ) {
                 targetItem = resolved.playable
                 activeQueue = resolved.queue
-                AppLogger.info("Resolved series '\(item.name ?? "")' to episode '\(targetItem.name ?? "Unknown")'", tag: "PlaybackManager")
+                AppLogger.info("Resolved series '\(item.name ?? "")' to episode '\(targetItem.name ?? "Unknown")'")
             } else {
                 return (targetItem, activeQueue, "No playable episodes found for this show.")
             }
@@ -189,11 +201,14 @@ final class PlaybackManager {
 
     private func resetActivePlayback() {
         activeTask?.cancel()
-        if let current = activePlayerViewModel {
-            AppLogger.info("Releasing existing player", tag: "PlaybackManager")
+        activeTask = nil
+        let current = activePlayerViewModel
+        activePlayerViewModel = nil
+        if let current {
+            AppLogger.info("Releasing existing player")
             current.cleanup()
-            activePlayerViewModel = nil
         }
+        internalStatus = .idle
         currentError = nil
         showErrorAlert = false
     }
@@ -250,7 +265,7 @@ final class PlaybackManager {
         queue: [BaseItemDto]? = nil
     ) {
         guard item.id != nil else { return }
-        if activePlayerViewModel != nil { return }
+        if activePlayerViewModel != nil || status.isPreparing { return }
 
         let key = preloadKey(
             item: item,
@@ -272,7 +287,8 @@ final class PlaybackManager {
         let resolvedLibrary = libraryViewModel ?? self.libraryViewModel
 
         preloadedRequestKey = key
-        AppLogger.info("Starting background preload for '\(item.name ?? "Unknown")'", tag: "PlaybackManager")
+        internalStatus = .preloading
+        AppLogger.info("Starting background preload for '\(item.name ?? "Unknown")'")
 
         preloadingTask = Task { @MainActor [weak self] in
             guard let self else { return false }
@@ -284,10 +300,18 @@ final class PlaybackManager {
                 resolvedUserID: resolvedUserID,
                 resolvedLibrary: resolvedLibrary
             ), resolved.errorMessage == nil else {
+                if self.internalStatus == .preloading {
+                    self.internalStatus = .idle
+                }
                 return false
             }
 
-            guard !Task.isCancelled else { return false }
+            guard !Task.isCancelled else {
+                if self.internalStatus == .preloading {
+                    self.internalStatus = .idle
+                }
+                return false
+            }
 
             let targetItem = resolved.targetItem
             let activeQueue = resolved.activeQueue
@@ -306,27 +330,34 @@ final class PlaybackManager {
                 libraryViewModel: resolvedLibrary
             )
 
-            let success = await vm.prepare(isPreload: true)
+            let success = await vm.prepare(mode: .preload)
             guard !Task.isCancelled else {
                 vm.cleanup()
+                if self.internalStatus == .preloading {
+                    self.internalStatus = .idle
+                }
                 return false
             }
 
             if success {
                 self.preloadedPlayerViewModel = vm
-                AppLogger.success("Preload ready for '\(targetItem.name ?? "Unknown")'", tag: "PlaybackManager")
+                self.internalStatus = .ready
+                AppLogger.success("Preload ready for '\(targetItem.name ?? "Unknown")'")
                 return true
             } else {
                 vm.cleanup()
                 self.preloadedPlayerViewModel = nil
                 self.preloadedRequestKey = nil
+                if self.internalStatus == .preloading {
+                    self.internalStatus = .idle
+                }
                 return false
             }
         }
     }
 
     func cancelPreload() {
-        guard !isLoading && activePlayerViewModel == nil else {
+        guard !status.isPreparing && activePlayerViewModel == nil else {
             return
         }
         if let task = preloadingTask {
@@ -334,11 +365,14 @@ final class PlaybackManager {
             preloadingTask = nil
         }
         if let vm = preloadedPlayerViewModel {
-            AppLogger.info("Cleaning up preloaded player", tag: "PlaybackManager")
+            AppLogger.info("Cleaning up preloaded player")
             vm.cleanup()
             preloadedPlayerViewModel = nil
         }
         preloadedRequestKey = nil
+        if internalStatus == .preloading || internalStatus == .ready {
+            internalStatus = .idle
+        }
     }
 
     func play(
@@ -355,7 +389,7 @@ final class PlaybackManager {
         queue: [BaseItemDto]? = nil
     ) {
         guard item.id != nil else {
-            AppLogger.warning("Cannot start playback: Item ID is missing", tag: "PlaybackManager")
+            AppLogger.warning("Cannot start playback: Item ID is missing")
             return
         }
 
@@ -363,10 +397,10 @@ final class PlaybackManager {
         let resolvedUserID = userID ?? self.userID
         let resolvedLibrary = libraryViewModel ?? self.libraryViewModel
 
-        AppLogger.info("Requesting playback for '\(item.name ?? "Unknown")' (fromBeginning: \(fromBeginning))", tag: "PlaybackManager")
+        AppLogger.info("Requesting playback for '\(item.name ?? "Unknown")' (fromBeginning: \(fromBeginning))")
 
-        if isLoading && activeTask != nil {
-            AppLogger.warning("Playback request ignored: already preparing playback", tag: "PlaybackManager")
+        if status.isPreparing && activeTask != nil {
+            AppLogger.warning("Playback request ignored: already preparing playback")
             return
         }
 
@@ -381,37 +415,35 @@ final class PlaybackManager {
 
         // Fast path 1: Matching preload is already ready
         if preloadedRequestKey == key, let preloadedVM = preloadedPlayerViewModel {
-            AppLogger.success("Instant launch from preloaded player for '\(item.name ?? "")'", tag: "PlaybackManager")
+            AppLogger.success("Instant launch from preloaded player for '\(item.name ?? "")'")
             self.preloadedPlayerViewModel = nil
             self.preloadedRequestKey = nil
             self.preloadingTask = nil
 
             self.resetActivePlayback()
-            isLoading = false
             self.activePlayerViewModel = preloadedVM
             return
         }
 
         // Fast path 2: Matching preload is currently in flight
         if preloadedRequestKey == key, let ongoingPreload = preloadingTask {
-            AppLogger.info("Awaiting in-flight preload for '\(item.name ?? "")'", tag: "PlaybackManager")
+            AppLogger.info("Awaiting in-flight preload for '\(item.name ?? "")'")
             self.preloadedRequestKey = nil
             self.preloadingTask = nil
 
             self.resetActivePlayback()
-            isLoading = true
+            self.status = .preparing
             loadingMessage = "Loading Stream…"
 
             activeTask = Task { @MainActor [weak self] in
                 guard let self else { return }
                 let success = await ongoingPreload.value
                 guard !Task.isCancelled else {
-                    self.isLoading = false
+                    self.status = .idle
                     return
                 }
                 if success, let preloadedVM = self.preloadedPlayerViewModel {
                     self.preloadedPlayerViewModel = nil
-                    self.isLoading = false
                     self.activePlayerViewModel = preloadedVM
                     return
                 }
@@ -438,7 +470,7 @@ final class PlaybackManager {
 
         cancelPreload()
         resetActivePlayback()
-        isLoading = true
+        status = .preparing
         loadingMessage = "Loading Stream…"
 
         startFullPlayback(
@@ -469,6 +501,7 @@ final class PlaybackManager {
         maxBitrate: Int?,
         queue: [BaseItemDto]?
     ) {
+        status = .preparing
         activeTask = Task { @MainActor [weak self] in
             guard let self else { return }
             guard let resolved = await self.resolvePlaybackTarget(
@@ -479,12 +512,12 @@ final class PlaybackManager {
                 resolvedUserID: resolvedUserID,
                 resolvedLibrary: resolvedLibrary
             ) else {
-                self.isLoading = false
+                self.status = .idle
                 return
             }
 
             if let errorMsg = resolved.errorMessage {
-                self.isLoading = false
+                self.status = .failed(reason: errorMsg)
                 self.currentError = PlaybackErrorInfo(
                     title: "Playback Error",
                     message: errorMsg,
@@ -525,22 +558,21 @@ final class PlaybackManager {
                 libraryViewModel: resolvedLibrary
             )
 
-            let success = await vm.prepare()
+            let success = await vm.prepare(mode: .immediate)
             guard !Task.isCancelled else {
                 vm.cleanup()
-                self.isLoading = false
+                self.status = .idle
                 return
             }
 
-            self.isLoading = false
-
             if success {
-                AppLogger.success("Playback prepared successfully, presenting native player", tag: "PlaybackManager")
+                AppLogger.success("Playback prepared successfully, presenting native player")
                 self.activePlayerViewModel = vm
             } else {
-                let err = vm.errorMessage ?? "An unknown error occurred while preparing playback."
-                AppLogger.error("Playback preparation failed: \(err)", tag: "PlaybackManager")
+                let err = vm.status.errorMessage ?? "An unknown error occurred while preparing playback."
+                AppLogger.error("Playback preparation failed: \(err)")
                 vm.cleanup()
+                self.status = .failed(reason: err)
                 self.currentError = PlaybackErrorInfo(
                     title: "Playback Error",
                     message: err,
@@ -567,10 +599,10 @@ final class PlaybackManager {
 
     func playLocal(item: BaseItemDto, fileURL: URL, fromBeginning: Bool = false, queue: [BaseItemDto]? = nil) {
         guard item.id != nil else {
-            AppLogger.warning("Cannot start local playback: Item ID is missing", tag: "PlaybackManager")
+            AppLogger.warning("Cannot start local playback: Item ID is missing")
             return
         }
-        AppLogger.info("Requesting local file playback for '\(item.name ?? "Unknown")' at \(fileURL.lastPathComponent)", tag: "PlaybackManager")
+        AppLogger.info("Requesting local file playback for '\(item.name ?? "Unknown")' at \(fileURL.lastPathComponent)")
         play(
             item: item,
             fromBeginning: fromBeginning,
@@ -585,6 +617,9 @@ final class PlaybackManager {
     func clearError() {
         currentError = nil
         showErrorAlert = false
+        if case .failed = status {
+            internalStatus = .idle
+        }
     }
 
     func stop() {
@@ -593,12 +628,13 @@ final class PlaybackManager {
         #endif
         activeTask?.cancel()
         activeTask = nil
-        isLoading = false
-        if let current = activePlayerViewModel {
-            AppLogger.info("Stopping playback and releasing resources for '\(current.request.item.playbackTitle)'", tag: "PlaybackManager")
+        let current = activePlayerViewModel
+        activePlayerViewModel = nil
+        if let current {
+            AppLogger.info("Stopping playback and releasing resources for '\(current.request.item.playbackTitle)'")
             current.cleanup()
         }
-        activePlayerViewModel = nil
+        internalStatus = .ended
     }
 
     // MARK: - Playable Item Resolution

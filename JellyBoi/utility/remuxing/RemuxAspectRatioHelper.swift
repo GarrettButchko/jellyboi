@@ -55,7 +55,7 @@ enum RemuxAspectRatioHelper {
                     let den64 = Int64(round(Double(width) * factor))
                     av_reduce(&sarNum, &sarDen, num64, den64, 1024)
                     if sarNum > 0 && sarDen > 0 {
-                        AppLogger.info("Calculated SAR \(sarNum):\(sarDen) from target aspect ratio '\(targetAspect)' (DAR: \(String(format: "%.3f", dar)), coded DAR: \(String(format: "%.3f", codedDAR)))", tag: "Remuxer")
+                        AppLogger.info("Calculated SAR \(sarNum):\(sarDen) from target aspect ratio '\(targetAspect)' (DAR: \(String(format: "%.3f", dar)), coded DAR: \(String(format: "%.3f", codedDAR)))")
                         return AVRational(num: sarNum, den: sarDen)
                     }
                 }
@@ -65,21 +65,21 @@ enum RemuxAspectRatioHelper {
         // 2. Try FFmpeg's container-level SAR detection (matroskadec DisplayWidth / DisplayHeight, etc.)
         let guessed = av_guess_sample_aspect_ratio(inCtx, inVideoStream, nil)
         if guessed.num > 0 && guessed.den > 0 && guessed.num != guessed.den {
-            AppLogger.info("Detected container SAR \(guessed.num):\(guessed.den) via av_guess_sample_aspect_ratio", tag: "Remuxer")
+            AppLogger.info("Detected container SAR \(guessed.num):\(guessed.den) via av_guess_sample_aspect_ratio")
             return guessed
         }
 
         // 3. Try stream-level SAR
         let stSAR = inVideoStream.pointee.sample_aspect_ratio
         if stSAR.num > 0 && stSAR.den > 0 && stSAR.num != stSAR.den {
-            AppLogger.info("Using stream SAR \(stSAR.num):\(stSAR.den)", tag: "Remuxer")
+            AppLogger.info("Using stream SAR \(stSAR.num):\(stSAR.den)")
             return stSAR
         }
 
         // 4. Try codecpar-level SAR
         let cpSAR = inVideoStream.pointee.codecpar.pointee.sample_aspect_ratio
         if cpSAR.num > 0 && cpSAR.den > 0 && cpSAR.num != cpSAR.den {
-            AppLogger.info("Using codecpar SAR \(cpSAR.num):\(cpSAR.den)", tag: "Remuxer")
+            AppLogger.info("Using codecpar SAR \(cpSAR.num):\(cpSAR.den)")
             return cpSAR
         }
 

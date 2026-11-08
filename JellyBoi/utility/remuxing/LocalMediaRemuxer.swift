@@ -53,10 +53,10 @@ public enum LocalMediaRemuxer {
     ) throws {
         #if DEBUG
         if Thread.isMainThread {
-            AppLogger.warning("LocalMediaRemuxer.remuxToMP4 was called directly on the main thread! Use remuxToMP4Async or a background thread to prevent UI freezing.", tag: "Remuxer")
+            AppLogger.warning("LocalMediaRemuxer.remuxToMP4 was called directly on the main thread! Use remuxToMP4Async or a background thread to prevent UI freezing.")
         }
         if DebugSettings.shared.simulateRemuxFailure {
-            AppLogger.warning("[DebugSettings] Simulating remux failure", tag: "Remuxer")
+            AppLogger.warning("[DebugSettings] Simulating remux failure")
             throw RemuxError.unsupportedVideoCodec("Simulated failure via DebugSettings")
         }
         #endif
@@ -103,7 +103,7 @@ public enum LocalMediaRemuxer {
         }
 
         let nbStreams = Int(inCtx.pointee.nb_streams)
-        AppLogger.info("Analyzing container: \(nbStreams) streams found", tag: "Remuxer")
+        AppLogger.info("Analyzing container: \(nbStreams) streams found")
 
         var videoIndices: [Int] = []
         var audioIndices: [Int] = []
@@ -117,12 +117,12 @@ public enum LocalMediaRemuxer {
 
             if isVideo {
                 videoIndices.append(i)
-                AppLogger.info("Source stream #\(i) [VIDEO]: codec=\(codecName), \(inCodecPar.width)x\(inCodecPar.height), extradata=\(inCodecPar.extradata_size)b, tb=\(inStream.time_base.num)/\(inStream.time_base.den)", tag: "Remuxer")
+                AppLogger.info("Source stream #\(i) [VIDEO]: codec=\(codecName), \(inCodecPar.width)x\(inCodecPar.height), extradata=\(inCodecPar.extradata_size)b, tb=\(inStream.time_base.num)/\(inStream.time_base.den)")
             } else if isAudio {
                 audioIndices.append(i)
-                AppLogger.info("Source stream #\(i) [AUDIO]: codec=\(codecName), \(inCodecPar.sample_rate)Hz, ch=\(inCodecPar.ch_layout.nb_channels), tb=\(inStream.time_base.num)/\(inStream.time_base.den)", tag: "Remuxer")
+                AppLogger.info("Source stream #\(i) [AUDIO]: codec=\(codecName), \(inCodecPar.sample_rate)Hz, ch=\(inCodecPar.ch_layout.nb_channels), tb=\(inStream.time_base.num)/\(inStream.time_base.den)")
             } else {
-                AppLogger.debug("Source stream #\(i) [OTHER]: type=\(inCodecPar.codec_type.rawValue), codec=\(codecName)", tag: "Remuxer")
+                AppLogger.debug("Source stream #\(i) [OTHER]: type=\(inCodecPar.codec_type.rawValue), codec=\(codecName)")
             }
         }
 
@@ -140,9 +140,9 @@ public enum LocalMediaRemuxer {
             needsVideoTranscode = !VideoTranscodePipeline.isSupportedVideoCodec(cp.codec_id)
             let codecName = String(cString: avcodec_get_name(cp.codec_id))
             if needsVideoTranscode {
-                AppLogger.info("Video codec '\(codecName)' is not natively supported in MP4 for AVPlayer; hardware transcoding to H.264 enabled", tag: "Remuxer")
+                AppLogger.info("Video codec '\(codecName)' is not natively supported in MP4 for AVPlayer; hardware transcoding to H.264 enabled")
             } else {
-                AppLogger.info("Video codec '\(codecName)' is natively supported; using fast stream copy", tag: "Remuxer")
+                AppLogger.info("Video codec '\(codecName)' is natively supported; using fast stream copy")
             }
         }
 
@@ -153,9 +153,9 @@ public enum LocalMediaRemuxer {
             needsAudioTranscode = !AudioTranscodePipeline.isSupportedAudioCodec(cp.codec_id)
             let codecName = String(cString: avcodec_get_name(cp.codec_id))
             if needsAudioTranscode {
-                AppLogger.info("Audio codec '\(codecName)' is not natively supported in MP4 for AVPlayer; transcoding to AAC enabled", tag: "Remuxer")
+                AppLogger.info("Audio codec '\(codecName)' is not natively supported in MP4 for AVPlayer; transcoding to AAC enabled")
             } else {
-                AppLogger.info("Audio codec '\(codecName)' is natively supported; using fast stream copy", tag: "Remuxer")
+                AppLogger.info("Audio codec '\(codecName)' is natively supported; using fast stream copy")
             }
         }
 
@@ -213,7 +213,7 @@ public enum LocalMediaRemuxer {
                 } else {
                     outVideoStream.pointee.codecpar.pointee.codec_tag = 0
                 }
-                AppLogger.info("Mapped input video #\(vInIdx) -> output MP4 track #\(outVideoIdx) [Direct Copy]", tag: "Remuxer")
+                AppLogger.info("Mapped input video #\(vInIdx) -> output MP4 track #\(outVideoIdx) [Direct Copy]")
             } else {
                 videoPipeline = try VideoTranscodePipeline(
                     inVideoStream: inVideoStream,
@@ -246,7 +246,7 @@ public enum LocalMediaRemuxer {
                 outAudioStream.pointee.codecpar.pointee.codec_tag = 0
 
                 let codecName = String(cString: avcodec_get_name(outAudioStream.pointee.codecpar.pointee.codec_id))
-                AppLogger.info("Mapped input audio #\(aInIdx) -> output MP4 track #\(outAudioIdx) [AUDIO: \(codecName)]", tag: "Remuxer")
+                AppLogger.info("Mapped input audio #\(aInIdx) -> output MP4 track #\(outAudioIdx) [AUDIO: \(codecName)]")
             } else {
                 audioPipeline = try AudioTranscodePipeline(
                     inAudioStream: inAudioStream,
@@ -355,7 +355,7 @@ public enum LocalMediaRemuxer {
             if needsAudioTranscode { parts.append("audio to AAC") }
             return parts.isEmpty ? "stream copy" : "transcoded " + parts.joined(separator: ", ")
         }()
-        AppLogger.success("Processing complete (\(methodLabel)): wrote \(videoPacketsWritten) video packets, \(audioPacketsWritten) audio packets", tag: "Remuxer")
+        AppLogger.success("Processing complete (\(methodLabel)): wrote \(videoPacketsWritten) video packets, \(audioPacketsWritten) audio packets")
 
         if primaryVideoInIdx != nil && videoPacketsWritten == 0 {
             throw RemuxError.videoStreamMissingInOutput

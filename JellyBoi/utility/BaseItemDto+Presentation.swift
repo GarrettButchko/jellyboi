@@ -449,6 +449,68 @@ extension BaseItemDto {
         return posterURL(client: client, parameters: .detailPoster())
     }
 
+    /// Computes the season poster URL for an episode using the given client.
+    public func seasonPosterURL(
+        client: JellyfinClient?,
+        parameters: Paths.GetItemImageParameters = .poster()
+    ) -> URL? {
+        guard let client, let seasonID else { return nil }
+        return client.itemImageURL(itemID: seasonID, parameters: parameters)
+    }
+
+    /// Computes the backdrop image URL for an item using the given client.
+    public func backdropImageURL(
+        client: JellyfinClient?,
+        parameters: Paths.GetItemImageParameters = .backdrop(maxWidth: 800, quality: 90)
+    ) -> URL? {
+        guard let client, let id else { return nil }
+        guard (backdropImageTags?.isEmpty == false) || imageTags?.keys.contains("Backdrop") == true else { return nil }
+        return client.itemImageURL(
+            itemID: id,
+            imageType: "Backdrop",
+            parameters: parameters
+        )
+    }
+
+    /// Resolves an ordered list of artwork candidate URLs for playback metadata, lock screen, and Now Playing info.
+    /// Ordered by priority: poster -> detail poster -> series poster -> season poster -> thumbnail -> backdrop.
+    public func artworkURLs(client: JellyfinClient?) -> [URL] {
+        guard let client else { return [] }
+        var urls: [URL] = []
+
+        // 1. Poster URL (matches the card / detail cache key)
+        if let poster = posterURL(client: client) {
+            urls.append(poster)
+        }
+
+        // 2. High-resolution detail poster
+        if let detailPoster = posterURL(client: client, parameters: .detailPoster()), !urls.contains(detailPoster) {
+            urls.append(detailPoster)
+        }
+
+        // 3. For episodes, fallback to series or season poster
+        if type == .episode {
+            if let seriesPoster = seriesPosterURL(client: client, parameters: .detailPoster()), !urls.contains(seriesPoster) {
+                urls.append(seriesPoster)
+            }
+            if let seasonPoster = seasonPosterURL(client: client, parameters: .detailPoster()), !urls.contains(seasonPoster) {
+                urls.append(seasonPoster)
+            }
+        }
+
+        // 4. Thumb / Wide thumbnail fallback
+        if let thumb = thumbnailURL(client: client), !urls.contains(thumb) {
+            urls.append(thumb)
+        }
+
+        // 5. Backdrop fallback
+        if let backdrop = backdropImageURL(client: client), !urls.contains(backdrop) {
+            urls.append(backdrop)
+        }
+
+        return urls
+    }
+
 
 }
 

@@ -86,16 +86,16 @@ class ServerViewModel {
             self.serverName = session.serverName
             self.client = restoredClient
             if case .unacceptableStatusCode(let code) = apiError, code == 401 {
-                AppLogger.warning("Session token rejected by server (401 Unauthorized)", tag: "ServerViewModel")
+                AppLogger.warning("Session token rejected by server (401 Unauthorized)")
                 return .unauthenticated
             }
-            AppLogger.info("Server connection error: \(apiError.localizedDescription), using offline mode", tag: "ServerViewModel")
+            AppLogger.info("Server connection error: \(apiError.localizedDescription), using offline mode")
             return .offline
         } catch {
             self.serverURL = session.serverURL
             self.serverName = session.serverName
             self.client = restoredClient
-            AppLogger.info("Network error restoring session (\(error.localizedDescription)), using offline mode", tag: "ServerViewModel")
+            AppLogger.info("Network error restoring session (\(error.localizedDescription)), using offline mode")
             return .offline
         }
     }

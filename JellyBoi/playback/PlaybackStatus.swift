@@ -1,0 +1,278 @@
+//
+//  PlaybackStatus.swift
+//  JellyBoi
+//
+//  Created by Garrett Butchko on 11/7/26.
+//
+
+import Foundation
+import CoreGraphics
+import AVFoundation
+import JellyfinAPI
+
+/// Represents the discrete lifecycle state of media playback in `PlayerViewModel` and `PlaybackManager`.
+enum PlaybackStatus: Equatable, Sendable, CustomStringConvertible {
+    /// Initialized; media preparation has not yet started.
+    case idle
+
+    /// Actively preloading media in the background (rate 0, muted/no audio session activation).
+    case preloading
+
+    /// Preparing media actively for foreground playback (buffering, fetching stream metadata).
+    case preparing
+
+    /// Media item is fully prepared and primed at its resume position, ready to be displayed.
+    case ready
+
+    /// Actively playing media.
+    case playing
+
+    /// Playback is paused.
+    case paused
+
+    /// Playback or preparation failed with a specific error message.
+    case failed(reason: String)
+
+    /// Playback finished or the player instance was dismissed/cleaned up.
+    case ended
+
+    // MARK: - Computed Properties
+
+    /// Indicates whether the player is currently preloading content in the background.
+    var isPreloading: Bool {
+        self == .preloading
+    }
+
+    /// Indicates whether the player is actively preparing or preloading content.
+    var isLoading: Bool {
+        switch self {
+        case .preloading, .preparing:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Indicates whether media is actively preparing for foreground playback.
+    var isPreparing: Bool {
+        self == .preparing
+    }
+
+    /// Indicates whether the player is currently in an active playback state.
+    var isPlaying: Bool {
+        self == .playing
+    }
+
+    /// Indicates whether media has loaded and is ready for interaction or presentation.
+    var isReady: Bool {
+        switch self {
+        case .ready, .playing, .paused:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Returns the failure error description if in the `.failed` state.
+    var errorMessage: String? {
+        if case .failed(let reason) = self {
+            return reason
+        }
+        return nil
+    }
+
+    /// Indicates whether playback has reached a terminal state (ended or failed).
+    var isTerminal: Bool {
+        switch self {
+        case .failed, .ended:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .idle:
+            return "idle"
+        case .preloading:
+            return "preloading"
+        case .preparing:
+            return "preparing"
+        case .ready:
+            return "ready"
+        case .playing:
+            return "playing"
+        case .paused:
+            return "paused"
+        case .failed(let reason):
+            return "failed(\(reason))"
+        case .ended:
+            return "ended"
+        }
+    }
+}
+
+/// Defines the mode for media item preparation.
+enum PlaybackPreparationMode: Sendable {
+    /// Foreground playback; configures the audio session and prepares the player for immediate viewing.
+    case immediate
+
+    /// Background preloading; leaves audio deactivated and player paused at rate 0 for fast switching.
+    case preload
+}
+
+/// Represents the state of the "Up Next" / auto-play overlay and countdown.
+enum UpNextState: Equatable, Sendable {
+    /// Overlay is hidden.
+    case hidden
+
+    /// Overlay is actively displaying countdown and filling progress.
+    case countdown(secondsRemaining: Int, progressFraction: Double)
+
+    /// User explicitly dismissed the overlay for the current item.
+    case dismissed
+
+    /// Whether the overlay is currently visible to the user.
+    var isVisible: Bool {
+        if case .countdown = self { return true }
+        return false
+    }
+
+    /// Number of seconds remaining before auto-play advances.
+    var secondsRemaining: Int {
+        if case .countdown(let sec, _) = self { return sec }
+        return 0
+    }
+
+    /// Progress fraction from 0.0 to 1.0 representing elapsed countdown.
+    var progressFraction: Double {
+        if case .countdown(_, let prog) = self { return prog }
+        return 0.0
+    }
+
+    /// Whether the overlay has been dismissed for the current media item.
+    var isDismissed: Bool {
+        self == .dismissed
+    }
+}
+
+/// Represents the background preloading and navigation transition state for the next media item.
+enum QueueTransitionState {
+    /// No queue transition or preloading in progress.
+    case idle
+
+    /// Actively preloading the next item in the background.
+    case preloading
+
+    /// The next media item is preloaded and ready in memory.
+    case preloaded(PlayerViewModel.PreparedMedia)
+
+    /// Actively switching to the next media item.
+    case switching
+
+    var isPreloading: Bool {
+        if case .preloading = self { return true }
+        return false
+    }
+
+    var isSwitching: Bool {
+        if case .switching = self { return true }
+        return false
+    }
+
+    var preloadedMedia: PlayerViewModel.PreparedMedia? {
+        if case .preloaded(let media) = self { return media }
+        return nil
+    }
+}
+
+/// Represents the playback timeline and position in ticks (10,000,000 ticks/sec).
+struct PlaybackTimeline: Equatable, Sendable {
+    var currentPositionTicks: Int = 0
+    var initialResumeTicks: Int = 0
+    var durationTicks: Int = 0
+
+    var currentSeconds: Double {
+        Double(currentPositionTicks) / 10_000_000.0
+    }
+
+    var initialResumeSeconds: Double {
+        Double(initialResumeTicks) / 10_000_000.0
+    }
+
+    var durationSeconds: Double {
+        Double(durationTicks) / 10_000_000.0
+    }
+
+    var progressFraction: Double {
+        durationTicks > 0 ? min(1.0, max(0.0, Double(currentPositionTicks) / Double(durationTicks))) : 0.0
+    }
+
+    var progressPercent: Double {
+        progressFraction * 100.0
+    }
+}
+
+/// Encapsulates server streaming session identifiers, active source information, and video stream attributes.
+struct ActiveStreamContext: Equatable, Sendable {
+    var playSessionID: String?
+    var mediaSourceID: String?
+    var mediaSource: MediaSourceInfo?
+    var maxBitrate: Int?
+    var videoNaturalSize: CGSize?
+    var playMethod: PlayMethod = .directStream
+}
+
+/// Manages player-related observations, timers, and background tasks for unified lifecycle cleanup.
+@MainActor
+final class PlayerSubscriptions {
+    var timeObserverToken: Any?
+    var endObserver: NSObjectProtocol?
+    var statusObserver: NSKeyValueObservation?
+    var muteObserver: NSKeyValueObservation?
+    var timeControlStatusObserver: NSKeyValueObservation?
+    var artworkTask: Task<Void, Never>?
+    var periodicReportTimer: Timer?
+
+    func cancelAll(player: AVPlayer?) {
+        cancelPeriodicReporting()
+        cancelTimeObserver(player: player)
+        cancelEndObserver()
+        cancelKVOObservers()
+        cancelArtworkTask()
+    }
+
+    func cancelPeriodicReporting() {
+        periodicReportTimer?.invalidate()
+        periodicReportTimer = nil
+    }
+
+    func cancelTimeObserver(player: AVPlayer?) {
+        if let token = timeObserverToken {
+            player?.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+    }
+
+    func cancelEndObserver() {
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
+    }
+
+    func cancelKVOObservers() {
+        statusObserver?.invalidate()
+        statusObserver = nil
+        muteObserver?.invalidate()
+        muteObserver = nil
+        timeControlStatusObserver?.invalidate()
+        timeControlStatusObserver = nil
+    }
+
+    func cancelArtworkTask() {
+        artworkTask?.cancel()
+        artworkTask = nil
+    }
+}

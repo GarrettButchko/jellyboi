@@ -203,6 +203,13 @@ struct MediaDetailView: View {
                 withAnimation(.smooth(duration: 0.35)) {
                     detailVM.clearProgress(for: itemID)
                 }
+                if playbackManager.activePlayerViewModel == nil {
+                    detailVM.startPreload(
+                        playbackManager: playbackManager,
+                        serverViewModel: serverViewModel,
+                        libraryViewModel: libraryViewModel
+                    )
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .mediaProgressUpdated)) { notification in
@@ -210,12 +217,24 @@ struct MediaDetailView: View {
                let ticks = notification.userInfo?["positionTicks"] as? Int {
                 let total = notification.userInfo?["durationTicks"] as? Int
                 detailVM.handleProgressUpdated(itemID: itemID, positionTicks: ticks, totalTicks: total)
+                if playbackManager.activePlayerViewModel == nil {
+                    detailVM.startPreload(
+                        playbackManager: playbackManager,
+                        serverViewModel: serverViewModel,
+                        libraryViewModel: libraryViewModel
+                    )
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .mediaFavoriteToggled)) { notification in
             if let itemID = notification.object as? String,
                let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
                 detailVM.handleFavoriteToggled(itemID: itemID, isFavorite: isFavorite)
+            }
+        }
+        .onDisappear {
+            if playbackManager.activePlayerViewModel == nil {
+                playbackManager.cancelPreload()
             }
         }
     }

@@ -75,14 +75,14 @@ struct ContentView: View {
         }
         .animation(.smooth, value: viewManager.showSignInFlow)
         .overlay {
-            if playbackManager.isLoading {
+            if playbackManager.status.isPreparing {
                 LoadingOverlay(message: playbackManager.loadingMessage)
             }
         }
         .statusOverlayLoadingIndicator {
             JellyBoiLoadingIndicator()
         }
-        .animation(statusOverlaySpring, value: playbackManager.isLoading)
+        .animation(statusOverlaySpring, value: playbackManager.status.isPreparing)
         .alert(
             playbackManager.currentError?.title ?? "Playback Error",
             isPresented: $bindablePlayback.showErrorAlert,
@@ -141,11 +141,10 @@ struct ContentView: View {
                     }
                     #endif
 
-                    if playerVM.showUpNextOverlay, let nextItem = playerVM.nextItem {
+                    if playerVM.upNextState.isVisible, let nextItem = playerVM.nextItem {
                         UpNextOverlayView(
                             nextItem: nextItem,
-                            secondsRemaining: playerVM.upNextSecondsRemaining,
-                            progressFraction: playerVM.upNextProgressFraction,
+                            state: playerVM.upNextState,
                             areControlsVisible: playerVM.areControlsVisible,
                             onPlayNow: {
                                 Task {
@@ -165,7 +164,7 @@ struct ContentView: View {
                         .zIndex(100)
                     }
                 }
-                .animation(.spring(response: 0.45, dampingFraction: 0.8), value: playerVM.showUpNextOverlay)
+                .animation(.spring(response: 0.45, dampingFraction: 0.8), value: playerVM.upNextState.isVisible)
                 .onAppear {
                     #if os(iOS)
                     OrientationHelper.lockOrientation(.allButUpsideDown)
@@ -190,7 +189,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .networkStatusDidChange)) { notification in
             let connected = notification.userInfo?["isConnected"] as? Bool ?? networkMonitor.isConnected
-            AppLogger.info("ContentView received networkStatusDidChange: connected=\(connected)", tag: "ContentView")
+            AppLogger.info("ContentView received networkStatusDidChange: connected=\(connected)")
             if !connected {
                 withAnimation(.smooth(duration: 0.35)) {
                     isOffline = true

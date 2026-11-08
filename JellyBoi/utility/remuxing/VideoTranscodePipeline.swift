@@ -43,19 +43,19 @@ final class VideoTranscodePipeline {
 
     static func findCompatibleVideoEncoder() -> UnsafePointer<AVCodec>? {
         if let enc = avcodec_find_encoder_by_name("h264_videotoolbox") {
-            AppLogger.info("Selected hardware video encoder: h264_videotoolbox", tag: "Remuxer")
+            AppLogger.info("Selected hardware video encoder: h264_videotoolbox")
             return enc
         }
         if let enc = avcodec_find_encoder(AV_CODEC_ID_H264) {
-            AppLogger.info("Selected video encoder: \(String(cString: enc.pointee.name))", tag: "Remuxer")
+            AppLogger.info("Selected video encoder: \(String(cString: enc.pointee.name))")
             return enc
         }
         if let enc = avcodec_find_encoder_by_name("hevc_videotoolbox") {
-            AppLogger.info("Selected hardware video encoder: hevc_videotoolbox", tag: "Remuxer")
+            AppLogger.info("Selected hardware video encoder: hevc_videotoolbox")
             return enc
         }
         if let enc = avcodec_find_encoder(AV_CODEC_ID_MPEG4) {
-            AppLogger.info("Selected video encoder: mpeg4", tag: "Remuxer")
+            AppLogger.info("Selected video encoder: mpeg4")
             return enc
         }
         return nil
@@ -201,7 +201,7 @@ final class VideoTranscodePipeline {
             throw RemuxError.allocateFrameFailed
         }
 
-        AppLogger.info("Mapped input video -> output MP4 track #\(outVideoIdx) [Transcoding \(inCodecPar.width)x\(inCodecPar.height) to \(String(cString: encoder.pointee.name))]", tag: "Remuxer")
+        AppLogger.info("Mapped input video -> output MP4 track #\(outVideoIdx) [Transcoding \(inCodecPar.width)x\(inCodecPar.height) to \(String(cString: encoder.pointee.name))]")
     }
 
     deinit {

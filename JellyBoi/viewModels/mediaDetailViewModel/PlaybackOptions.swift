@@ -277,7 +277,7 @@ extension MediaDetailViewModel {
                 configureInitialStreamSelection()
             }
         } catch {
-            AppLogger.warning("Failed to fetch playback info: \(error.localizedDescription)", tag: "MediaDetailViewModel")
+            AppLogger.warning("Failed to fetch playback info: \(error.localizedDescription)")
         }
 
         isLoadingPlaybackOptions = false

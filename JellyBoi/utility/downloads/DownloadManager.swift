@@ -146,13 +146,13 @@ public final class DownloadManager: NSObject {
     // MARK: - Background URLSession System Handling
 
     public func handleEventsForBackgroundURLSession(identifier: String, completionHandler: @escaping () -> Void) {
-        AppLogger.info("Storing background URLSession completion handler for \(identifier)", tag: "DownloadManager")
+        AppLogger.info("Storing background URLSession completion handler for \(identifier)")
         backgroundCompletionHandlers[identifier] = completionHandler
     }
 
     public func callBackgroundCompletionHandlerIfNeeded() {
         if let completion = backgroundCompletionHandlers.removeValue(forKey: "com.jellyboi.downloadSession") {
-            AppLogger.info("Executing background URLSession completion handler", tag: "DownloadManager")
+            AppLogger.info("Executing background URLSession completion handler")
             completion()
         }
     }
@@ -177,7 +177,7 @@ public final class DownloadManager: NSObject {
             version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
         ))
         self.client = restored
-        AppLogger.info("Recreated JellyfinClient from Keychain for background downloads", tag: "DownloadManager")
+        AppLogger.info("Recreated JellyfinClient from Keychain for background downloads")
         return restored
     }
 
@@ -357,17 +357,17 @@ public final class DownloadManager: NSObject {
 
     private func enqueue(item: BaseItemDto, client: JellyfinClient, group: DownloadGroupInfo? = nil) {
         guard let itemID = item.id else {
-            AppLogger.warning("Cannot download item without ID", tag: "DownloadManager")
+            AppLogger.warning("Cannot download item without ID")
             return
         }
 
         if let existing = downloads[itemID], existing.status == .completed, localFileURL(for: itemID) != nil {
-            AppLogger.info("Item '\(item.name ?? itemID)' is already downloaded", tag: "DownloadManager")
+            AppLogger.info("Item '\(item.name ?? itemID)' is already downloaded")
             return
         }
 
         if let existing = downloads[itemID], existing.status == .downloading || existing.status == .converting || existing.status == .finalizing || existing.status == .queued {
-            AppLogger.info("Item '\(item.name ?? itemID)' is already downloading or queued", tag: "DownloadManager")
+            AppLogger.info("Item '\(item.name ?? itemID)' is already downloading or queued")
             return
         }
 
@@ -491,12 +491,12 @@ public final class DownloadManager: NSObject {
                 downloads[nextID] = item
                 saveIndex()
                 task.resume()
-                AppLogger.info("Resumed sequential download for '\(item.title)' (ID: \(nextID))", tag: "DownloadManager")
+                AppLogger.info("Resumed sequential download for '\(item.title)' (ID: \(nextID))")
                 updateLiveActivity(force: true)
                 return
             } else {
                 guard let client = getOrRestoreClient() else {
-                    AppLogger.warning("Cannot start queued download for \(nextID): No JellyfinClient available", tag: "DownloadManager")
+                    AppLogger.warning("Cannot start queued download for \(nextID): No JellyfinClient available")
                     downloadQueue.insert(nextID, at: 0)
                     return
                 }
@@ -507,7 +507,7 @@ public final class DownloadManager: NSObject {
                     item.errorMessage = "Failed to construct download URL."
                     downloads[nextID] = item
                     saveIndex()
-                    AppLogger.error("Failed to construct download URL for queued item \(nextID)", tag: "DownloadManager")
+                    AppLogger.error("Failed to construct download URL for queued item \(nextID)")
                     continue
                 }
 
@@ -524,7 +524,7 @@ public final class DownloadManager: NSObject {
                 downloads[nextID] = item
                 saveIndex()
                 task.resume()
-                AppLogger.info("Started sequential download for '\(item.title)' (ID: \(nextID))", tag: "DownloadManager")
+                AppLogger.info("Started sequential download for '\(item.title)' (ID: \(nextID))")
                 updateLiveActivity(force: true)
                 return
             }
@@ -548,7 +548,7 @@ public final class DownloadManager: NSObject {
         saveIndex()
         processQueue()
         updateLiveActivity(force: true)
-        AppLogger.info("Enqueued resumed download for item \(id)", tag: "DownloadManager")
+        AppLogger.info("Enqueued resumed download for item \(id)")
     }
 
     public func cancelDownloads(ids: [String]) {
@@ -580,7 +580,7 @@ public final class DownloadManager: NSObject {
             updateLiveActivity(force: true)
         }
 
-        AppLogger.info("Cancelled \(idSet.count) download(s)", tag: "DownloadManager")
+        AppLogger.info("Cancelled \(idSet.count) download(s)")
     }
 
     public func cancelDownload(id: String) {
@@ -596,7 +596,7 @@ public final class DownloadManager: NSObject {
             storage.deleteAllFiles(for: id)
         }
         cancelDownloads(ids: ids)
-        AppLogger.info("Deleted \(idSet.count) download(s) and local files", tag: "DownloadManager")
+        AppLogger.info("Deleted \(idSet.count) download(s) and local files")
     }
 
     public func deleteDownload(id: String) {
@@ -622,7 +622,7 @@ public final class DownloadManager: NSObject {
         downloads.removeAll()
         saveIndex()
         DownloadActivityCoordinator.shared.cancel()
-        AppLogger.info("Deleted all downloads and files", tag: "DownloadManager")
+        AppLogger.info("Deleted all downloads and files")
     }
 
     // MARK: - Internal Session & Progress Handling
@@ -690,7 +690,7 @@ public final class DownloadManager: NSObject {
         #if os(iOS)
         var backgroundTaskID = UIBackgroundTaskIdentifier.invalid
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "com.jellyboi.finalize-\(itemID)") {
-            AppLogger.warning("Background task expired while post-processing '\(itemTitle)'", tag: "DownloadManager")
+            AppLogger.warning("Background task expired while post-processing '\(itemTitle)'")
             UIApplication.shared.endBackgroundTask(backgroundTaskID)
             backgroundTaskID = .invalid
         }
@@ -810,7 +810,7 @@ public final class DownloadManager: NSObject {
             updateLiveActivity(force: true)
         }
 
-        AppLogger.success("Download and processing completed successfully for '\(item.title)'", tag: "DownloadManager")
+        AppLogger.success("Download and processing completed successfully for '\(item.title)'")
         processQueue()
     }
 
@@ -836,7 +836,7 @@ public final class DownloadManager: NSObject {
         )
         updateLiveActivity(force: true)
 
-        AppLogger.error("Failed to finalize downloaded file for '\(item.title)': \(error.localizedDescription)", error, tag: "DownloadManager")
+        AppLogger.error("Failed to finalize downloaded file for '\(item.title)': \(error.localizedDescription)", error)
         processQueue()
     }
 
@@ -897,7 +897,7 @@ public final class DownloadManager: NSObject {
             downloads[itemID] = item
             saveIndex()
 
-            AppLogger.warning("Transient network error for '\(item.title)' (\(error.localizedDescription)). Retrying with resumeData in \(attempts + 1)s (attempt \(attempts + 1)/5)...", tag: "DownloadManager")
+            AppLogger.warning("Transient network error for '\(item.title)' (\(error.localizedDescription)). Retrying with resumeData in \(attempts + 1)s (attempt \(attempts + 1)/5)...")
 
             if !downloadQueue.contains(itemID) {
                 downloadQueue.insert(itemID, at: 0)
@@ -928,7 +928,7 @@ public final class DownloadManager: NSObject {
         )
         updateLiveActivity(force: true)
 
-        AppLogger.error("Download failed for '\(item.title)': \(item.errorMessage ?? "")", tag: "DownloadManager")
+        AppLogger.error("Download failed for '\(item.title)': \(item.errorMessage ?? "")")
         processQueue()
     }
 
@@ -1026,7 +1026,7 @@ extension DownloadManager: URLSessionDownloadDelegate {
             }
             try FileManager.default.moveItem(at: location, to: stagedURL)
         } catch {
-            AppLogger.error("Failed to move downloaded file to staging location: \(error.localizedDescription)", error, tag: "DownloadManager")
+            AppLogger.error("Failed to move downloaded file to staging location: \(error.localizedDescription)", error)
             // Fallback to copy if cross-volume move fails
             try? FileManager.default.copyItem(at: location, to: stagedURL)
         }
@@ -1055,7 +1055,7 @@ extension DownloadManager: URLSessionDownloadDelegate {
 
     public nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         Task { @MainActor in
-            AppLogger.info("urlSessionDidFinishEventsForBackgroundURLSession called", tag: "DownloadManager")
+            AppLogger.info("urlSessionDidFinishEventsForBackgroundURLSession called")
             DownloadManager.shared.callBackgroundCompletionHandlerIfNeeded()
         }
     }
