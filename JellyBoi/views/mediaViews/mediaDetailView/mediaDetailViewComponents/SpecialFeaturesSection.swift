@@ -77,6 +77,7 @@ extension MediaDetailView {
                                                     )
                                                 }
                                             )
+                                            .equatable()
                                             .frame(width: cardWidth, height: specialFeatureCardHeight)
 
                                             Text(feature.name ?? "Special Feature")

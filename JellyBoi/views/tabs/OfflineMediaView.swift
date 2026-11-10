@@ -161,6 +161,7 @@ struct OfflineMediaView: View {
                                     },
                                     imageAspectRatio: 2.0 / 3.0
                                 )
+                                .equatable()
                             }
                         }
                     }
@@ -182,6 +183,7 @@ struct OfflineMediaView: View {
                     },
                     imageAspectRatio: item.type == .episode ? (2.0 / 3.0) : nil
                 )
+                .equatable()
             }
         }
     }

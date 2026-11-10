@@ -142,6 +142,7 @@ struct SectionRowMediaList: View {
                         zoomID: zoomID,
                         imageAspectRatio: imageAspectRatio
                     )
+                    .equatable()
                     .frame(width: cardWidth, height: cardHeight)
                 }
             }

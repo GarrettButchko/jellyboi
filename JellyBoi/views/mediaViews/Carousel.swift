@@ -493,8 +493,7 @@ private struct CarouselCard: View {
     }
 
     var body: some View {
-        let cachedImage = shouldLoadContent ? url.flatMap { CarouselImageMemoryCache.shared.image(for: $0) } : nil
-        let currentImage = shouldLoadContent ? (displayImage ?? cachedImage) : nil
+        let currentImage: UIImage? = displayImage ?? (shouldLoadContent ? url.flatMap { CarouselImageMemoryCache.shared.image(for: $0) } : nil)
 
         ZStack(alignment: .bottomTrailing) {
             placeholder
@@ -511,6 +510,7 @@ private struct CarouselCard: View {
                             .scaledToFill()
                     }
                 }
+                .cancelOnDisappear(true)
                 .onSuccess { image, _, _ in
                     displayImage = image
                     CarouselImageMemoryCache.shared.store(image, for: url)

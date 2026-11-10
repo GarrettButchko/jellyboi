@@ -11,7 +11,7 @@ import SDWebImage
 import SDWebImageSwiftUI
 import JellyfinAPI
 
-struct MediaCard: View {
+struct MediaCard: View, Equatable {
     let item: BaseItemDto
     let posterURL: URL?
     let namespace: Namespace.ID?
@@ -31,6 +31,17 @@ struct MediaCard: View {
     @State private var isProgressReset: Bool = false
     @State private var isFavoriteOverride: Bool? = nil
 
+    static func == (lhs: MediaCard, rhs: MediaCard) -> Bool {
+        lhs.item.id == rhs.item.id &&
+        lhs.item.userData?.isPlayed == rhs.item.userData?.isPlayed &&
+        lhs.item.userData?.playbackPositionTicks == rhs.item.userData?.playbackPositionTicks &&
+        lhs.item.userData?.isFavorite == rhs.item.userData?.isFavorite &&
+        lhs.item.userData?.unplayedItemCount == rhs.item.userData?.unplayedItemCount &&
+        lhs.posterURL == rhs.posterURL &&
+        lhs.zoomID == rhs.zoomID &&
+        lhs.imageAspectRatio == rhs.imageAspectRatio
+    }
+
     private var isFavorite: Bool {
         isFavoriteOverride ?? item.isFavorite
     }
@@ -43,29 +54,32 @@ struct MediaCard: View {
         imageAspectRatio ?? item.imageAspectRatio
     }
 
-    private var isWatched: Bool {
-        guard !isProgressReset else { return false }
-        if item.type == .series {
-            return item.isSeriesWatched()
-        }
-        return item.isWatched
-    }
+    /// Single-pass calculation of watched, watching, and progress to avoid redundant calculations during scrolling.
+    private func computeWatchState() -> (isWatched: Bool, isWatching: Bool, watchProgress: Double?) {
+        guard !isProgressReset else { return (false, false, nil) }
 
-    private var isWatching: Bool {
-        guard !isProgressReset, !isWatched else { return false }
+        let watched: Bool
         if item.type == .series {
-            return item.isSeriesInProgress()
+            watched = item.isSeriesWatched()
+        } else {
+            watched = item.isWatched
         }
-        return item.isInProgress
-    }
 
-    private var watchProgress: Double? {
-        guard !isProgressReset else { return nil }
-        if isWatched { return 1.0 }
-        if item.type == .series {
-            return item.seriesWatchProgress()
+        if watched {
+            return (true, false, 1.0)
         }
-        return item.watchProgress
+
+        let watching: Bool
+        let progress: Double?
+        if item.type == .series {
+            watching = item.isSeriesInProgress()
+            progress = watching ? item.seriesWatchProgress() : nil
+        } else {
+            watching = item.isInProgress
+            progress = watching ? item.watchProgress : nil
+        }
+
+        return (false, watching, progress)
     }
 
     private func playAction(fromBeginning: Bool) {
@@ -111,7 +125,8 @@ struct MediaCard: View {
                 .aspectRatio(effectiveAspectRatio, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         } else {
-            cardButton(isWatched: isWatched, isWatching: isWatching, watchProgress: watchProgress)
+            let state = computeWatchState()
+            cardButton(isWatched: state.isWatched, isWatching: state.isWatching, watchProgress: state.watchProgress)
         }
     }
 
@@ -131,7 +146,6 @@ struct MediaCard: View {
                         }
                     }
                     .padding(8)
-                    .animation(.smooth(duration: 0.3), value: isWatching)
                 }
                 .overlay(alignment: .topTrailing) {
                     if isWatched {
@@ -180,8 +194,10 @@ struct MediaCard: View {
         }
         .scaleEffect(isHovered ? 1.04 : 1.0)
         .brightness(isHovered ? 0.06 : 0)
+        #if os(macOS)
         .animation(.easeInOut(duration: 0.2), value: isHovered)
         .onHover { isHovered = $0 }
+        #endif
 
         if let namespace {
             baseButton
@@ -208,6 +224,7 @@ struct MediaCard: View {
                                 .scaledToFill()
                         }
                     }
+                    .cancelOnDisappear(true)
                 }
             }
         }

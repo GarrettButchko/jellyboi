@@ -41,6 +41,7 @@ extension MediaDetailView {
                                     selectedCollectionItem = item
                                 }
                             )
+                            .equatable()
                         }
                     }
                     .padding(.horizontal, 16)

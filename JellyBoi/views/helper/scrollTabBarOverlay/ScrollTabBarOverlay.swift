@@ -9,7 +9,7 @@ import SwiftUI
 
 /// Floating overlay that sits over a scroll view and appears once the user
 /// has scrolled past `threshold` points. Animates in from the bottom with
-/// a blurReplace transition and passes taps through when hidden.
+/// smooth opacity/scale transitions without tearing down views mid-scroll.
 struct ScrollTabBarOverlay: View {
     let isVisible: Bool
     var threshold: CGFloat = 300
@@ -33,6 +33,7 @@ struct ScrollTabBarOverlay: View {
 
     private var singleGroup: (id: String, name: String)? {
         let active = downloadManager.activeDownloads
+        guard !active.isEmpty else { return nil }
         let groups = DownloadGrouping.groups(from: active, completed: downloadManager.completedDownloads)
         let standalone = DownloadGrouping.standaloneDownloads(from: active, groupedIDs: Set(groups.map(\.id)))
         if groups.count == 1 && standalone.isEmpty, let group = groups.first {
@@ -81,25 +82,28 @@ struct ScrollTabBarOverlay: View {
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
 
-                    if isVisible {
-                        CircleScrollToTopButton(action: action)
-                            .transition(.scale.combined(with: .opacity))
-                    }
+                    CircleScrollToTopButton(action: action)
+                        .opacity(isVisible ? 1.0 : 0.0)
+                        .scaleEffect(isVisible ? 1.0 : 0.6)
+                        .allowsHitTesting(isVisible)
                 }
                 .padding(.bottom, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.spring(response: 0.38, dampingFraction: 0.78), value: isVisible)
                 .animation(.spring(response: 0.38, dampingFraction: 0.78), value: downloadManager.activeDownloads.count > 1)
                 .animation(.spring(response: 0.38, dampingFraction: 0.78), value: downloadManager.activeDownloads.count)
-            } else if isVisible {
+            } else {
                 ScrollToTopButton(action: action)
                     .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .opacity(isVisible ? 1.0 : 0.0)
+                    .offset(y: isVisible ? 0 : 20)
+                    .scaleEffect(isVisible ? 1.0 : 0.8)
+                    .allowsHitTesting(isVisible)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .allowsHitTesting(!downloadManager.activeDownloads.isEmpty || isVisible)
-        .animation(.smooth(duration: 0.3), value: isVisible)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isVisible)
         .animation(.spring(response: 0.38, dampingFraction: 0.78), value: !downloadManager.activeDownloads.isEmpty)
         .sheet(item: $activeSheetTarget) { target in
             switch target {

@@ -117,6 +117,7 @@ struct CastCrewView: View {
                                             selectedMediaItem = item
                                         }
                                     )
+                                    .equatable()
                                 }
                             }
                             .padding(.horizontal, 16)
@@ -141,6 +142,7 @@ struct CastCrewView: View {
                                         },
                                         imageAspectRatio: 2.0 / 3.0
                                     )
+                                    .equatable()
                                 }
                             }
                             .padding(.horizontal, 16)

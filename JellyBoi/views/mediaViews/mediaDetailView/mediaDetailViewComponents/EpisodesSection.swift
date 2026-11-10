@@ -94,6 +94,7 @@ extension MediaDetailView {
                                                 playbackManager.play(item: episode, fromBeginning: true, queue: detailVM.episodes)
                                             }
                                         )
+                                        .equatable()
                                         .frame(width: cardWidth, height: episodeCardHeight)
                                         .id(episodeID)
                                     }

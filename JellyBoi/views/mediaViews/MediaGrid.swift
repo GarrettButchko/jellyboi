@@ -42,6 +42,7 @@ struct MediaGrid: View {
                     },
                     imageAspectRatio: item.type == .episode ? (2.0 / 3.0) : nil
                 )
+                .equatable()
             }
         }
         .padding(.horizontal, 16)
