@@ -70,9 +70,9 @@ public final class AppPreferences: @unchecked Sendable {
         static let accentColor = "app_pref_accent_color"
     }
 
-    public var showGlassProgressBar: Bool {
+    public var showProgressBar: Bool {
         didSet {
-            UserDefaults.standard.set(showGlassProgressBar, forKey: Keys.showGlassProgressBar)
+            UserDefaults.standard.set(showProgressBar, forKey: Keys.showGlassProgressBar)
         }
     }
 
@@ -108,9 +108,9 @@ public final class AppPreferences: @unchecked Sendable {
         let defaults = UserDefaults.standard
 
         if defaults.object(forKey: Keys.showGlassProgressBar) == nil {
-            self.showGlassProgressBar = true
+            self.showProgressBar = true
         } else {
-            self.showGlassProgressBar = defaults.bool(forKey: Keys.showGlassProgressBar)
+            self.showProgressBar = defaults.bool(forKey: Keys.showGlassProgressBar)
         }
 
         if defaults.object(forKey: Keys.showHomeCarousel) == nil {
@@ -140,7 +140,7 @@ public final class AppPreferences: @unchecked Sendable {
     }
 
     public func resetToDefaults() {
-        showGlassProgressBar = true
+        showProgressBar = true
         showHomeCarousel = true
         showHomeBlurredBackdrop = true
         showDetailBlurredBackdrop = true
@@ -149,13 +149,6 @@ public final class AppPreferences: @unchecked Sendable {
 }
 
 extension Color {
-    /// App-wide dynamic accent color based on user preferences.
-    public static var appAccent: Color {
-        AppPreferences.shared.accentColorChoice.color
-    }
-}
-
-extension ShapeStyle where Self == Color {
     /// App-wide dynamic accent color based on user preferences.
     public static var appAccent: Color {
         AppPreferences.shared.accentColorChoice.color

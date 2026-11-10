@@ -80,27 +80,27 @@ struct MediaResultsView: View {
 
     @Namespace private var zoomTransition
     @State private var selectedItem: BaseItemDto?
-    @State private var scrollOffset: CGFloat = 0
     @State private var headerHeight: CGFloat = 74
 
     var body: some View {
-        ZStack(alignment: .top) {
-            ScrollToTopScrollView(topInset: headerHeight, scrollOffset: $scrollOffset) { _ in
-                if items.isEmpty {
-                    EmptyStateView(
-                        icon: emptyIcon,
-                        title: emptyTitle,
-                        message: emptyMessage
-                    )
-                } else {
-                    MediaGrid(items: items, namespace: zoomTransition) { item in
-                        selectedItem = item
-                    }
-                    .transition(.opacity)
-                }
+        ScrollToTopScrollView(
+            topInset: headerHeight,
+            header: { isCollapsed in
+                TabPageHeader(title: title, isCollapsed: isCollapsed, headerHeight: $headerHeight, showBackButton: true)
             }
-
-            TabPageHeader(title: title, scrollOffset: scrollOffset, headerHeight: $headerHeight, showBackButton: true)
+        ) {
+            if items.isEmpty {
+                EmptyStateView(
+                    icon: emptyIcon,
+                    title: emptyTitle,
+                    message: emptyMessage
+                )
+            } else {
+                MediaGrid(items: items, namespace: zoomTransition) { item in
+                    selectedItem = item
+                }
+                .transition(.opacity)
+            }
         }
         .navigationDestination(item: $selectedItem) { item in
             MediaDetailView(item: item)

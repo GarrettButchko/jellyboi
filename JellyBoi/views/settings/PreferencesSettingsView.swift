@@ -90,7 +90,7 @@ struct PreferencesSettingsView: View {
 
             // MARK: - Progress Bar Section
             Section {
-                Toggle(isOn: $bindablePreferences.showGlassProgressBar) {
+                Toggle(isOn: $bindablePreferences.showProgressBar) {
                     HStack(spacing: 12) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)

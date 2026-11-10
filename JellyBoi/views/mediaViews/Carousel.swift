@@ -24,13 +24,22 @@ private struct CarouselLoopedItem: Identifiable {
     let isRealSection: Bool
 }
 
+private struct AutoScrollTrigger: Equatable {
+    let isActive: Bool
+    let timerID: UUID
+    let animationDisabled: Bool
+}
+
 struct Carousel: View {
     let title: String
     let namespace: Namespace.ID
     let backdropURL: (BaseItemDto) -> URL?
     let onSelect: (BaseItemDto) -> Void
     var onSnap: ((Int, BaseItemDto) -> Void)? = nil
+
     @Environment(HomeViewModel.self) private var viewModel
+    @Environment(ViewManager.self) private var viewManager: ViewManager?
+    @Environment(\.scenePhase) private var scenePhase
 
     private var indexAnimation: Animation {
         .smooth(duration: 0.3)
@@ -43,9 +52,23 @@ struct Carousel: View {
     @State private var isAutoScrolling: Bool = false
     @State private var isScrolling: Bool = false
     @State private var pendingTeleportTarget: Int? = nil
-    @State private var slideStartDate: Date = .now
-    @State private var isVisible: Bool = true
+    @State private var isScrollVisible: Bool = true
+    @State private var isViewVisible: Bool = true
     @State private var lastReportedSnappedIndex: Int? = nil
+
+    private var isTabActive: Bool {
+        viewManager?.selectedTab ?? .home == .home
+    }
+
+    private var isSceneActive: Bool {
+        scenePhase == .active
+    }
+
+    /// The carousel is only active when visible in the scroll container, on screen in the active tab,
+    /// and the application is in the foreground. This eliminates background timers across other tabs.
+    private var isEffectivelyActive: Bool {
+        isScrollVisible && isViewVisible && isTabActive && isSceneActive
+    }
 
     init(
         title: String,
@@ -111,6 +134,20 @@ struct Carousel: View {
         let loopStart = count
         let displayedItemIndex = count == 0 ? 0 : itemIndex(for: snappedIndex, count: count)
 
+        #if DEBUG
+        let autoScrollTrigger = AutoScrollTrigger(
+            isActive: isEffectivelyActive,
+            timerID: timerResetTrigger,
+            animationDisabled: DebugSettings.shared.disableCarouselTimerAnimation
+        )
+        #else
+        let autoScrollTrigger = AutoScrollTrigger(
+            isActive: isEffectivelyActive,
+            timerID: timerResetTrigger,
+            animationDisabled: false
+        )
+        #endif
+
         VStack(spacing: 12) {
             GeometryReader { geometry in
                 let cardWidth = geometry.size.width * carouselCardWidthRatio
@@ -126,6 +163,7 @@ struct Carousel: View {
                                         onSelect(looped.item)
                                     } else {
                                         isAutoScrolling = false
+                                        timerResetTrigger = UUID()
                                         withAnimation(.smooth(duration: 0.35)) {
                                             currentIndex = looped.id
                                             proxy.scrollTo(looped.id, anchor: .center)
@@ -189,7 +227,6 @@ struct Carousel: View {
                         guard count > 0 else { return }
 
                         snappedIndex = newValue
-                        slideStartDate = .now
 
                         if newValue < count {
                             pendingTeleportTarget = count + ((newValue % count) + count) % count
@@ -211,7 +248,6 @@ struct Carousel: View {
                             }
                             if oldPhase.isScrolling {
                                 timerResetTrigger = UUID()
-                                slideStartDate = .now
                             }
                         }
                         guard newPhase == .idle, let target = pendingTeleportTarget else { return }
@@ -231,24 +267,16 @@ struct Carousel: View {
                         proxy.scrollTo(start, anchor: .center)
                         timerResetTrigger = UUID()
                     }
-                    #if DEBUG
-                    .task(id: "\(timerResetTrigger)-\(DebugSettings.shared.disableCarouselTimerAnimation)") {
-                        slideStartDate = .now
+                    .task(id: autoScrollTrigger) {
+                        guard autoScrollTrigger.isActive, !autoScrollTrigger.animationDisabled else { return }
+                        guard currentItems.count > 1 else { return }
+
                         while !Task.isCancelled {
-                            if !isVisible {
-                                try? await Task.sleep(for: .milliseconds(200))
-                                continue
-                            }
-                            if DebugSettings.shared.disableCarouselTimerAnimation {
-                                try? await Task.sleep(for: .milliseconds(200))
-                                continue
-                            }
                             try? await Task.sleep(for: .seconds(carouselAutoScrollInterval))
                             guard !Task.isCancelled else { break }
-                            guard currentItems.count > 1 else { continue }
+                            guard isEffectivelyActive else { break }
                             isAutoScrolling = true
                             let nextIndex = snappedIndex + 1
-                            slideStartDate = .now
                             currentIndex = nextIndex
                             withAnimation(.smooth(duration: 0.45)) {
                                 proxy.scrollTo(nextIndex, anchor: .center)
@@ -264,36 +292,6 @@ struct Carousel: View {
                             }
                         }
                     }
-                    #else
-                    .task(id: timerResetTrigger) {
-                        slideStartDate = .now
-                        while !Task.isCancelled {
-                            if !isVisible {
-                                try? await Task.sleep(for: .milliseconds(200))
-                                continue
-                            }
-                            try? await Task.sleep(for: .seconds(carouselAutoScrollInterval))
-                            guard !Task.isCancelled else { break }
-                            guard currentItems.count > 1 else { continue }
-                            isAutoScrolling = true
-                            let nextIndex = snappedIndex + 1
-                            slideStartDate = .now
-                            currentIndex = nextIndex
-                            withAnimation(.smooth(duration: 0.45)) {
-                                proxy.scrollTo(nextIndex, anchor: .center)
-                            }
-                            // Allow scroll animation to finish before snapping backdrop
-                            try? await Task.sleep(for: .milliseconds(460))
-                            guard !Task.isCancelled else { break }
-                            isAutoScrolling = false
-                            let snappedItemIdx = itemIndex(for: nextIndex, count: count)
-                            if snappedItemIdx < currentItems.count {
-                                lastReportedSnappedIndex = snappedItemIdx
-                                onSnap?(snappedItemIdx, currentItems[snappedItemIdx])
-                            }
-                        }
-                    }
-                    #endif
                 }
             }
             .aspectRatio(16 / (9 * carouselCardWidthRatio), contentMode: .fit)
@@ -309,16 +307,19 @@ struct Carousel: View {
                 CarouselPageIndicator(
                     count: count,
                     currentIndex: displayedItemIndex,
-                    startDate: slideStartDate,
-                    isPaused: isScrolling || isAutoScrolling || !isVisible
+                    isPaused: !isEffectivelyActive || isScrolling || isAutoScrolling
                 )
             }
         }
-        .onScrollVisibilityChange(threshold: 0.5) { isVisible = $0 }
+        .onScrollVisibilityChange(threshold: 0.2) { isScrollVisible = $0 }
         .sensoryFeedback(.selection, trigger: displayedItemIndex)
         .onAppear {
+            isViewVisible = true
             let urls = currentItems.compactMap { backdropURL($0) }
             CarouselImageMemoryCache.shared.preloadImages(for: urls)
+        }
+        .onDisappear {
+            isViewVisible = false
         }
         .onChange(of: currentItems.compactMap(\.id)) { _, newIDs in
             let urls = currentItems.compactMap { backdropURL($0) }
@@ -379,16 +380,39 @@ struct Carousel: View {
 
 // MARK: - Page Indicator
 
+private struct ActiveIndicatorPill: View {
+    let startDate: Date
+    let isPaused: Bool
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: isPaused)) { context in
+            let elapsed = max(context.date.timeIntervalSince(startDate), 0)
+            let progress = min(elapsed / carouselAutoScrollInterval, 1)
+            Canvas { ctx, size in
+                guard progress > 0 else { return }
+                let trackRect = CGRect(origin: .zero, size: size)
+                let radius = size.height / 2
+                let fillRect = CGRect(x: 0, y: 0, width: size.width * progress, height: size.height)
+                ctx.clip(to: Path(roundedRect: fillRect, cornerRadius: radius))
+                ctx.fill(Path(roundedRect: trackRect, cornerRadius: radius), with: .color(Color.mainOpp))
+            }
+        }
+        .frame(width: width, height: height)
+    }
+}
+
 private struct CarouselPageIndicator: View {
     let count: Int
     let currentIndex: Int
-    let startDate: Date
     var isPaused: Bool = false
 
     private let dotSize: CGFloat = 6
     private let activePillWidth: CGFloat = 20
 
     @State private var previousIndex: Int = 0
+    @State private var startDate: Date = .now
 
     private var isWrapTransition: Bool {
         guard count > 1 else { return false }
@@ -423,19 +447,12 @@ private struct CarouselPageIndicator: View {
 
                     if isActive {
                         if showTimerAnimation {
-                            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: isPaused)) { context in
-                                let elapsed = max(context.date.timeIntervalSince(startDate), 0)
-                                let progress = min(elapsed / carouselAutoScrollInterval, 1)
-                                Canvas { ctx, size in
-                                    guard progress > 0 else { return }
-                                    let trackRect = CGRect(origin: .zero, size: size)
-                                    let radius = size.height / 2
-                                    let fillRect = CGRect(x: 0, y: 0, width: size.width * progress, height: size.height)
-                                    ctx.clip(to: Path(roundedRect: fillRect, cornerRadius: radius))
-                                    ctx.fill(Path(roundedRect: trackRect, cornerRadius: radius), with: .color(Color.mainOpp))
-                                }
-                            }
-                            .frame(width: width, height: dotSize)
+                            ActiveIndicatorPill(
+                                startDate: startDate,
+                                isPaused: isPaused,
+                                width: width,
+                                height: dotSize
+                            )
                             .transition(.opacity)
                         } else {
                             Capsule()
@@ -450,9 +467,11 @@ private struct CarouselPageIndicator: View {
         .animation(indicatorAnimation, value: currentIndex)
         .onAppear {
             previousIndex = currentIndex
+            startDate = .now
         }
         .onChange(of: currentIndex) { oldVal, _ in
             previousIndex = oldVal
+            startDate = .now
         }
     }
 }
@@ -485,15 +504,11 @@ private struct CarouselCard: View {
                     .resizable()
                     .scaledToFill()
             } else if shouldLoadContent, let url {
-                WebImage(
-                    url: url,
-                    transaction: Transaction(animation: .easeInOut(duration: 0.25))
-                ) { phase in
+                WebImage(url: url) { phase in
                     if let image = phase.image {
                         image
                             .resizable()
                             .scaledToFill()
-                            .transition(.fade(duration: 0.25))
                     }
                 }
                 .onSuccess { image, _, _ in
@@ -504,11 +519,11 @@ private struct CarouselCard: View {
 
             if shouldLoadContent {
                 VStack(alignment: .trailing, spacing: 6) {
-                    if AppPreferences.shared.showGlassProgressBar, let progress = watchProgress {
-                        GlassProgressBar(progress: progress, label: item.timeRemainingFormatted)
+                    if AppPreferences.shared.showProgressBar, let progress = watchProgress {
+                        ProgressBar(progress: progress, label: item.timeRemainingFormatted)
                     }
                     if let episodeNumber = item.formattedEpisodeNumber {
-                        episodeBadge(text: episodeNumber)
+                        EpisodeBadge(text: episodeNumber)
                     }
                 }
                 .padding(10)
@@ -535,15 +550,6 @@ private struct CarouselCard: View {
                     .foregroundStyle(Color.mainOpp.opacity(0.05))
                     .rotationEffect(.degrees(45))
             }
-    }
-
-    private func episodeBadge(text: String) -> some View {
-        Text(text)
-            .font(.system(size: 9, weight: .semibold, design: .rounded))
-            .foregroundStyle(Color.mainOpp)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
     }
 }
 

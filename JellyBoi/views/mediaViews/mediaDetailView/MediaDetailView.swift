@@ -36,7 +36,6 @@ struct MediaDetailView: View {
     @State var relatedZoomID: AnyHashable?
     @State var selectedCollectionItem: BaseItemDto?
     @Namespace var collectionTransition
-    @State var scrollOffset: CGFloat = 0
     @State var backButtonHeight: CGFloat = 0
     @State var selectedEpisode: BaseItemDto?
     @Namespace var episodeTransition
@@ -54,9 +53,8 @@ struct MediaDetailView: View {
     var body: some View {
         @Bindable var detailVM = detailVM
         ScrollToTopScrollView(
-            topInset: backButtonHeight + 8,
-            continuousScrollOffset: $scrollOffset
-        ) { _ in
+            topInset: backButtonHeight + 8
+        ) {
             VStack(alignment: .leading, spacing: 0) {
                 heroSection
 

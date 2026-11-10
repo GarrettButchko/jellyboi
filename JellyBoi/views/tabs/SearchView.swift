@@ -22,6 +22,7 @@ struct SearchView: View {
     @State private var selectedItem: BaseItemDto?
     @State private var selectedGenre: String?
     @State private var headerHeight: CGFloat = 132
+    @State private var scrollPosition = ScrollPosition()
 
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -30,6 +31,7 @@ struct SearchView: View {
         NavigationStack {
             ZStack(alignment: .top) {
                 ScrollToTopScrollView(
+                    position: $scrollPosition,
                     topInset: headerHeight,
                     header: { isCollapsed in
                         TabPageHeader(title: "Search", isCollapsed: isCollapsed, headerHeight: $headerHeight) {
@@ -55,7 +57,7 @@ struct SearchView: View {
                             .padding(.horizontal, 16)
                         }
                     }
-                ) { proxy in
+                ) {
                     Group {
                         if viewModel.searchText.isEmpty {
                             genreBrowse
@@ -64,10 +66,10 @@ struct SearchView: View {
                         }
                     }
                     .onChange(of: viewModel.searchText) { _, _ in
-                        withAnimation { proxy.scrollToTop() }
+                        withAnimation { scrollPosition.scrollToTop() }
                     }
                     .onChange(of: viewModel.showFavoritesOnly) { _, _ in
-                        withAnimation { proxy.scrollToTop() }
+                        withAnimation { scrollPosition.scrollToTop() }
                     }
                 }
                 .animation(.smooth(duration: 0.25), value: viewModel.searchText.isEmpty)

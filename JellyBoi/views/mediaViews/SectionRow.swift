@@ -152,7 +152,6 @@ struct SectionRowMediaList: View {
         .scrollClipDisabled()
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.viewAligned)
-        .animation(.smooth(duration: 0.35), value: items.map(\.id))
     }
 }
 

@@ -122,12 +122,12 @@ struct MediaCard: View {
                 .aspectRatio(effectiveAspectRatio, contentMode: .fit)
                 .overlay(alignment: .bottomTrailing) {
                     VStack(alignment: .trailing, spacing: 6) {
-                        if AppPreferences.shared.showGlassProgressBar, let progress = watchProgress, !isWatched && isWatching && Int(progress * 100) > 0 {
-                            GlassProgressBar(progress: progress, barWidth: 40)
+                        if AppPreferences.shared.showProgressBar, let progress = watchProgress, !isWatched && isWatching && Int(progress * 100) > 0 {
+                            ProgressBar(progress: progress, barWidth: 40)
                                 .transition(.scale(scale: 0.8).combined(with: .opacity))
                         }
                         if let episodeTitle = item.formattedEpisodeNumber {
-                            episodeBadge(text: episodeTitle)
+                            EpisodeBadge(text: episodeTitle)
                         }
                     }
                     .padding(8)
@@ -135,11 +135,7 @@ struct MediaCard: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     if isWatched {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color.mainOpp)
-                            .padding(6)
-                            .glassEffect(.clear.tint(Color.main.opacity(0.8)), in: Circle())
+                        CheckmarkBadge()
                             .padding(8)
                     }
                 }
@@ -195,15 +191,6 @@ struct MediaCard: View {
         }
     }
 
-    private func episodeBadge(text: String) -> some View {
-        Text(text)
-            .font(.system(size: 9, weight: .semibold, design: .rounded))
-            .foregroundStyle(Color.mainOpp)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
-    }
-
     @ViewBuilder
     private var posterImage: some View {
         ZStack {
@@ -214,15 +201,11 @@ struct MediaCard: View {
                 placeholder
 
                 if let url = posterURL {
-                    WebImage(
-                        url: url,
-                        transaction: Transaction(animation: .easeInOut(duration: 0.25))
-                    ) { phase in
+                    WebImage(url: url) { phase in
                         if let image = phase.image {
                             image
                                 .resizable()
                                 .scaledToFill()
-                                .transition(.fade(duration: 0.25))
                         }
                     }
                 }

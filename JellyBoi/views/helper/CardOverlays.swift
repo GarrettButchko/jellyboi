@@ -1,5 +1,5 @@
 //
-//  GlassProgressBar.swift
+//  ProgressBar.swift
 //  JellyBoi
 //
 //  Created by Garrett Butchko on 8/25/26.
@@ -8,7 +8,13 @@
 import SwiftUI
 import BaseColors
 
-struct GlassProgressBar: View {
+extension Color {
+    static var cardOverlay: Color {
+        Color.main.opacity(0.7)
+    }
+}
+
+struct ProgressBar: View {
     @Environment(AppPreferences.self) private var preferencesEnvironment: AppPreferences?
 
     let progress: Double
@@ -17,7 +23,7 @@ struct GlassProgressBar: View {
     var label: String? = nil
 
     private var isVisible: Bool {
-        (preferencesEnvironment ?? AppPreferences.shared).showGlassProgressBar
+        (preferencesEnvironment ?? AppPreferences.shared).showProgressBar
     }
 
     @ViewBuilder
@@ -44,7 +50,38 @@ struct GlassProgressBar: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .glassEffect(.clear.tint(Color.main.opacity(0.6)), in: Capsule())
+            .background(Color.cardOverlay, in: Capsule())
         }
+    }
+}
+
+struct EpisodeBadge: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    init(text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold, design: .rounded))
+            .foregroundStyle(Color.mainOpp)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color.cardOverlay, in: Capsule())
+    }
+}
+
+struct CheckmarkBadge: View {
+    var body: some View {
+        Image(systemName: "checkmark")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(Color.mainOpp)
+            .padding(6)
+            .background(Color.cardOverlay, in: Capsule())
     }
 }

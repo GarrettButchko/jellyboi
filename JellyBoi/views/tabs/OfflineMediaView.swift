@@ -44,7 +44,7 @@ struct OfflineMediaView: View {
                     header: { isCollapsed in
                         topHeaderOverlay(isCollapsed: isCollapsed)
                     }
-                ) { _ in
+                ) {
                     VStack(alignment: .leading, spacing: 0) {
                         switch filter {
                         case .movies:

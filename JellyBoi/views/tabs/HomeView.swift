@@ -51,7 +51,7 @@ struct HomeView: View {
                             showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact
                         )
                     }
-                ) { proxy in
+                ) {
                     LazyVStack(alignment: .leading, spacing: 24) {
                             if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
                                 EmptyStateView(

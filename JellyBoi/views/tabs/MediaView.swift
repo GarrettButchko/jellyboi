@@ -10,6 +10,7 @@ struct MediaView: View {
     @Environment(MediaViewModel.self) private var viewModel
     @State private var headerHeight: CGFloat = 132
     @State private var selectedItem: BaseItemDto?
+    @State private var scrollPosition = ScrollPosition()
     @Namespace private var zoomTransition
 
     private var pageTitle: String {
@@ -80,11 +81,12 @@ struct MediaView: View {
                     .ignoresSafeArea()
 
                 ScrollToTopScrollView(
+                    position: $scrollPosition,
                     topInset: headerHeight,
                     header: { isCollapsed in
                         topHeaderOverlay(isCollapsed: isCollapsed)
                     }
-                ) { proxy in
+                ) {
                     Group {
                         if viewModel.showDownloadsOnly {
                             downloadsContent
@@ -95,13 +97,13 @@ struct MediaView: View {
                         }
                     }
                     .onChange(of: viewModel.filter) { _, _ in
-                        withAnimation { proxy.scrollToTop() }
+                        withAnimation { scrollPosition.scrollToTop() }
                     }
                     .onChange(of: viewModel.showFavoritesOnly) { _, _ in
-                        withAnimation { proxy.scrollToTop() }
+                        withAnimation { scrollPosition.scrollToTop() }
                     }
                     .onChange(of: viewModel.showDownloadsOnly) { _, _ in
-                        withAnimation { proxy.scrollToTop() }
+                        withAnimation { scrollPosition.scrollToTop() }
                     }
                 }
                 .animation(.easeInOut(duration: 0.2), value: viewModel.filter)

@@ -45,7 +45,6 @@ struct MediaGrid: View {
             }
         }
         .padding(.horizontal, 16)
-        .animation(.smooth(duration: 0.35), value: items.map(\.id))
     }
 
     private func posterURL(for item: BaseItemDto, client: JellyfinClient?) -> URL? {
