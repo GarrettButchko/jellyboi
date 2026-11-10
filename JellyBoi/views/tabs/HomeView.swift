@@ -52,7 +52,7 @@ struct HomeView: View {
                         )
                     }
                 ) { proxy in
-                    VStack(alignment: .leading, spacing: 24) {
+                    LazyVStack(alignment: .leading, spacing: 24) {
                             if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
                                 EmptyStateView(
                                     icon: "wifi.exclamationmark",
@@ -143,6 +143,7 @@ struct HomeView: View {
                             }
                             
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .background(alignment: .top) {
                             HomeHeroBackdrop(
                                 coordinator: heroCoordinator,

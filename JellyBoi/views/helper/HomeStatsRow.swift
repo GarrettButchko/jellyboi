@@ -36,7 +36,7 @@ struct HomeStatsRow: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 10) {
+            LazyHStack(spacing: 10) {
                 HomeStatBubble(label: "Movies", value: moviesCount, icon: "film") {
                     onSelectStat?(.movies)
                 }
