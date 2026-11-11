@@ -135,6 +135,8 @@ extension PlayerViewModel {
             AppLogger.warning("Aborted player preparation: already cleaned up")
             return false
         }
+        guard !Task.isCancelled else { return false }
+
         status = (mode == .preload) ? .preloading : .preparing
         hasAppliedInitialSeek = false
         AppLogger.info("Starting player preparation for '\(request.item.playbackTitle)' (mode: \(mode))")
@@ -144,8 +146,12 @@ extension PlayerViewModel {
         }
 
         await resolveQueueIfNeeded()
+        guard !Task.isCancelled else { return false }
 
         guard let prepared = await prepareMediaItem(for: request) else {
+            if Task.isCancelled {
+                return false
+            }
             if case .failed = status {
                 // Keep the specific failure reason already set
             } else {
@@ -153,6 +159,8 @@ extension PlayerViewModel {
             }
             return false
         }
+
+        guard !Task.isCancelled else { return false }
 
         applyPreparedMedia(prepared)
 
@@ -167,6 +175,8 @@ extension PlayerViewModel {
             player: avPlayer,
             prepared: prepared
         )
+
+        guard !Task.isCancelled else { return false }
 
         if isReady {
             status = .ready
@@ -262,6 +272,8 @@ extension PlayerViewModel {
         let wasPreloading = status.isPreloading
 
         for attempt in 0...maxMapRetries {
+            guard !Task.isCancelled else { return false }
+
             if attempt > 0 {
                 AppLogger.warning("Retrying playback after map initialization timeout (attempt \(attempt + 1)/\(maxMapRetries + 1)). Waiting for server transcode cache...")
                 self.status = wasPreloading ? .preloading : .preparing
@@ -270,6 +282,7 @@ extension PlayerViewModel {
                 subscriptions.statusObserver = nil
 
                 try? await Task.sleep(for: .milliseconds(800))
+                guard !Task.isCancelled else { return false }
 
                 let newItem = AVPlayerItem(asset: prepared.playerItem.asset)
                 newItem.externalMetadata = prepared.playerItem.externalMetadata
@@ -281,6 +294,8 @@ extension PlayerViewModel {
             }
 
             let isReady = await waitForReadiness(playerItem: activeItem)
+            guard !Task.isCancelled else { return false }
+
             if isReady {
                 if attempt > 0 {
                     AppLogger.success("Playback recovered after retry attempt \(attempt + 1)")
@@ -298,7 +313,9 @@ extension PlayerViewModel {
             }
         }
 
-        AppLogger.error("Failed to achieve readiness after \(maxMapRetries + 1) attempts")
+        if !Task.isCancelled {
+            AppLogger.error("Failed to achieve readiness after \(maxMapRetries + 1) attempts")
+        }
         return false
     }
 
@@ -308,6 +325,7 @@ extension PlayerViewModel {
             AppLogger.error("Failed to prepare playback: Item ID is nil")
             return nil
         }
+        guard !Task.isCancelled else { return nil }
 
         let resumeTicks: Int = {
             if req.startFromBeginning { return 0 }
@@ -436,15 +454,24 @@ extension PlayerViewModel {
                         AppLogger.info("Using server-provided transcoding URL: \(streamURL?.absoluteString ?? fullTransURL)")
                     }
                 }
+            } catch is CancellationError {
+                AppLogger.debug("Player preparation cancelled during getPostedPlaybackInfo")
+                return nil
             } catch {
+                if Task.isCancelled {
+                    return nil
+                }
                 AppLogger.warning("Failed to get posted playback info: \(error.localizedDescription)")
             }
 
+            guard !Task.isCancelled else { return nil }
+
             if streamURL == nil {
-                let container = selectedSource?.container?.lowercased() ?? ""
+                let source = selectedSource ?? req.item.mediaSources?.first
+                let container = source?.container?.lowercased() ?? ""
                 let isAppleNativeContainer = ["mp4", "m4v", "mov"].contains(container)
                 let hasCustomStreams = req.audioStreamIndex != nil || (req.subtitleStreamIndex != nil && req.subtitleStreamIndex! >= 0) || req.maxBitrate != nil
-                let canDirectPlay = selectedSource?.isSupportsDirectPlay == true && isAppleNativeContainer && !hasCustomStreams
+                let canDirectPlay = source?.isSupportsDirectPlay == true && isAppleNativeContainer && !hasCustomStreams
 
                 if canDirectPlay {
                     resolvedPlayMethod = .directPlay
@@ -452,12 +479,12 @@ extension PlayerViewModel {
                     streamURL = client.directVideoStreamURL(
                         itemID: itemID,
                         sessionID: sessionID,
-                        mediaSourceID: selectedSource?.id
+                        mediaSourceID: source?.id
                     )
-                } else {
+                } else if let validSource = source {
                     resolvedPlayMethod = (req.maxBitrate != nil) ? .transcode : .directStream
                     AppLogger.info("Container '\(container)' requires HLS remuxing/transcoding for AVPlayer; requesting master.m3u8")
-                    let sourceID = selectedSource?.id ?? req.mediaSourceID ?? itemID
+                    let sourceID = validSource.id ?? req.mediaSourceID ?? itemID
                     let sid = sessionID ?? UUID().uuidString
                     sessionID = sid
                     var hlsPath = "/Videos/\(itemID)/master.m3u8?MediaSourceId=\(sourceID)&PlaySessionId=\(sid)&VideoCodec=h264,hevc&AudioCodec=aac,mp3,ac3,eac3&TranscodingMaxAudioChannels=6&SegmentContainer=mp4&MinSegments=1&BreakOnNonKeyFrames=True&StartTimeTicks=\(resumeTicks)"
@@ -471,6 +498,10 @@ extension PlayerViewModel {
                         hlsPath += "&VideoBitRate=\(maxBitrate)&MaxStreamingBitrate=\(maxBitrate)"
                     }
                     streamURL = resolveServerURL(path: hlsPath, client: client)
+                } else {
+                    status = .failed(reason: "No compatible media source found.")
+                    AppLogger.error("Cannot resolve stream URL: no media source available")
+                    return nil
                 }
             }
 
@@ -587,7 +618,7 @@ extension PlayerViewModel {
 
                 subscriptions.statusObserver = playerItem.observe(\.status, options: [.initial, .new]) { [weak self] currentItem, _ in
                     Task { @MainActor [weak self] in
-                        guard let self else { return }
+                        guard let self, !Task.isCancelled else { return }
                         switch currentItem.status {
                         case .readyToPlay:
                             AppLogger.success("PlayerItem is readyToPlay.")
@@ -595,6 +626,10 @@ extension PlayerViewModel {
                             _ = box.resume(returning: true)
 
                         case .failed:
+                            guard !Task.isCancelled else {
+                                _ = box.resume(returning: false)
+                                return
+                            }
                             if box.resume(returning: false) {
                                 let err = currentItem.error?.localizedDescription ?? "Playback failed."
                                 AppLogger.error("PlayerItem failed with error: \(err)")

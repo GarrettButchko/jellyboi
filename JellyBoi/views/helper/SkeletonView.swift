@@ -7,30 +7,7 @@
 
 import SwiftUI
 import BaseColors
-
-// MARK: - Skeleton Modifier
-
-public struct SkeletonModifier: ViewModifier {
-    let isActive: Bool
-
-    public func body(content: Content) -> some View {
-        if isActive {
-            content
-                .redacted(reason: .placeholder)
-                .disabled(true)
-                .transaction { $0.animation = nil }
-        } else {
-            content
-        }
-    }
-}
-
-public extension View {
-    /// Masks the view into a static skeleton placeholder matching its exact shape and layout.
-    func skeleton(isActive: Bool = true) -> some View {
-        modifier(SkeletonModifier(isActive: isActive))
-    }
-}
+@_exported import SkeletonKit
 
 // MARK: - Skeleton Primitives
 
@@ -74,12 +51,22 @@ struct SkeletonZone<Content: View, Placeholder: View>: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: showsContent)
+        .animation(.easeInOut(duration: 0.35), value: showsContent)
         .transaction { transaction in
             if !showsContent {
                 transaction.animation = nil
             }
         }
+    }
+}
+
+// MARK: - Backward Compatibility Extension
+
+public extension View {
+    /// Masks the view into a static skeleton placeholder while `isActive` is true,
+    /// smoothly animating in when `isActive` becomes false.
+    func skeleton(isActive: Bool = true) -> some View {
+        self.skeleton(when: isActive)
     }
 }
 
@@ -99,6 +86,5 @@ struct SkeletonZone<Content: View, Placeholder: View>: View {
             )
             .skeleton()
         }
-        .padding(.top, 24)
     }
 }

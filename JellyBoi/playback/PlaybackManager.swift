@@ -93,6 +93,7 @@ final class PlaybackManager {
     private(set) var preloadedPlayerViewModel: PlayerViewModel?
     private(set) var preloadingTask: Task<Bool, Never>?
     private(set) var preloadedRequestKey: String?
+    private(set) var inFlightPreloadVM: PlayerViewModel?
 
     func preloadKey(
         item: BaseItemDto,
@@ -104,6 +105,43 @@ final class PlaybackManager {
     ) -> String {
         let resumeTicks = fromBeginning ? 0 : item.resumePlaybackTicks
         return "\(item.id ?? "")-\(resumeTicks)-\(fromBeginning)-\(mediaSourceID ?? "")-\(audioStreamIndex ?? -1)-\(subtitleStreamIndex ?? -1)-\(maxBitrate ?? -1)"
+    }
+
+    func isPreloadCompatible(
+        vm: PlayerViewModel,
+        item: BaseItemDto,
+        fromBeginning: Bool,
+        mediaSourceID: String?,
+        audioStreamIndex: Int?,
+        subtitleStreamIndex: Int?,
+        maxBitrate: Int?
+    ) -> Bool {
+        if vm.status == .ended { return false }
+        if case .failed = vm.status { return false }
+
+        guard let vmItemID = vm.request.item.id, let itemID = item.id else { return false }
+        let matchesID = (vmItemID == itemID) || (item.type == .series && vm.request.item.seriesID == itemID)
+        guard matchesID else { return false }
+
+        guard vm.request.startFromBeginning == fromBeginning else { return false }
+        if maxBitrate != vm.request.maxBitrate { return false }
+
+        let vmSource = vm.request.mediaSourceID ?? vm.streamContext.mediaSourceID
+        if let mediaSourceID, let vmSource, mediaSourceID != vmSource {
+            return false
+        }
+
+        if let audioStreamIndex, let vmAudio = vm.request.audioStreamIndex, audioStreamIndex != vmAudio {
+            return false
+        }
+
+        let reqSub = subtitleStreamIndex ?? -1
+        let vmSub = vm.request.subtitleStreamIndex ?? -1
+        if reqSub != vmSub && subtitleStreamIndex != nil && vm.request.subtitleStreamIndex != nil {
+            return false
+        }
+
+        return true
     }
 
     private func resolvePlaybackTarget(
@@ -149,10 +187,7 @@ final class PlaybackManager {
                         activeQueue[matchIndex].userData = resumeEp.userData
                     }
                 }
-                AppLogger.info("Selected resume episode '\(targetItem.name ?? "Unknown")' from library resume shows")
-            } else if !activeQueue.isEmpty, let playable = activeQueue.nextPlayableItem(fromBeginning: fromBeginning) {
-                targetItem = playable
-                AppLogger.info("Selected next playable episode '\(targetItem.name ?? "Unknown")' from provided queue")
+                AppLogger.info("Resolved series '\(item.name ?? "")' to resume episode '\(targetItem.name ?? "Unknown")'")
             } else if let resolved = await self.resolvePlayableEpisode(
                 for: targetItem,
                 fromBeginning: fromBeginning,
@@ -162,9 +197,9 @@ final class PlaybackManager {
             ) {
                 targetItem = resolved.playable
                 activeQueue = resolved.queue
-                AppLogger.info("Resolved series '\(item.name ?? "")' to episode '\(targetItem.name ?? "Unknown")'")
+                AppLogger.info("Resolved series '\(item.name ?? "")' to playable episode '\(targetItem.name ?? "Unknown")'")
             } else {
-                return (targetItem, activeQueue, "No playable episodes found for this show.")
+                return (targetItem, activeQueue, "No episodes found for this TV show.")
             }
         }
 
@@ -174,25 +209,9 @@ final class PlaybackManager {
                 .sortedBySeasonAndEpisode()
             if !cached.isEmpty {
                 activeQueue = cached
-            } else if let resolved = await self.resolvePlayableEpisode(
-                for: BaseItemDto(id: seriesID),
-                fromBeginning: false,
-                client: resolvedClient,
-                userID: resolvedUserID,
-                libraryViewModel: resolvedLibrary
-            ) {
-                activeQueue = resolved.queue
-            }
-        }
-
-        if !fromBeginning && targetItem.resumePlaybackTicks == 0 {
-            if let id = targetItem.id,
-               let match = resolvedLibrary?.movies.first(where: { $0.id == id })
-                        ?? resolvedLibrary?.resumeShows.first(where: { $0.id == id })
-                        ?? (targetItem.seriesID.flatMap { sID in resolvedLibrary?.resumeShows.first(where: { $0.seriesID == sID }) })
-                        ?? resolvedLibrary?.episodes.first(where: { $0.id == id }),
-               match.resumePlaybackTicks > 0 {
-                targetItem = match
+            } else if let client = resolvedClient {
+                let fetched = await client.fetchEpisodesOrEmpty(seriesID: seriesID, userID: resolvedUserID)
+                activeQueue = fetched.sortedBySeasonAndEpisode()
             }
         }
 
@@ -280,6 +299,36 @@ final class PlaybackManager {
             return
         }
 
+        if let existingVM = preloadedPlayerViewModel,
+           isPreloadCompatible(
+               vm: existingVM,
+               item: item,
+               fromBeginning: fromBeginning,
+               mediaSourceID: mediaSourceID,
+               audioStreamIndex: audioStreamIndex,
+               subtitleStreamIndex: subtitleStreamIndex,
+               maxBitrate: maxBitrate
+           ) {
+            preloadedRequestKey = key
+            AppLogger.info("Existing preloaded player for '\(item.name ?? "")' is compatible; preserving")
+            return
+        }
+
+        if let inFlightVM = inFlightPreloadVM,
+           isPreloadCompatible(
+               vm: inFlightVM,
+               item: item,
+               fromBeginning: fromBeginning,
+               mediaSourceID: mediaSourceID,
+               audioStreamIndex: audioStreamIndex,
+               subtitleStreamIndex: subtitleStreamIndex,
+               maxBitrate: maxBitrate
+           ) {
+            preloadedRequestKey = key
+            AppLogger.info("In-flight preload for '\(item.name ?? "")' is compatible; preserving")
+            return
+        }
+
         cancelPreload()
 
         let resolvedClient = client ?? self.client
@@ -292,6 +341,9 @@ final class PlaybackManager {
 
         preloadingTask = Task { @MainActor [weak self] in
             guard let self else { return false }
+            defer {
+                self.inFlightPreloadVM = nil
+            }
             guard let resolved = await self.resolvePlaybackTarget(
                 item: item,
                 fromBeginning: fromBeginning,
@@ -329,6 +381,7 @@ final class PlaybackManager {
                 userID: resolvedUserID,
                 libraryViewModel: resolvedLibrary
             )
+            self.inFlightPreloadVM = vm
 
             let success = await vm.prepare(mode: .preload)
             guard !Task.isCancelled else {
@@ -363,6 +416,10 @@ final class PlaybackManager {
         if let task = preloadingTask {
             task.cancel()
             preloadingTask = nil
+        }
+        if let vm = inFlightPreloadVM {
+            vm.cleanup()
+            inFlightPreloadVM = nil
         }
         if let vm = preloadedPlayerViewModel {
             AppLogger.info("Cleaning up preloaded player")
@@ -414,11 +471,21 @@ final class PlaybackManager {
         )
 
         // Fast path 1: Matching preload is already ready
-        if preloadedRequestKey == key, let preloadedVM = preloadedPlayerViewModel {
+        if let preloadedVM = preloadedPlayerViewModel,
+           (preloadedRequestKey == key || isPreloadCompatible(
+               vm: preloadedVM,
+               item: item,
+               fromBeginning: fromBeginning,
+               mediaSourceID: mediaSourceID,
+               audioStreamIndex: audioStreamIndex,
+               subtitleStreamIndex: subtitleStreamIndex,
+               maxBitrate: maxBitrate
+           )) {
             AppLogger.success("Instant launch from preloaded player for '\(item.name ?? "")'")
             self.preloadedPlayerViewModel = nil
             self.preloadedRequestKey = nil
             self.preloadingTask = nil
+            self.inFlightPreloadVM = nil
 
             self.resetActivePlayback()
             self.activePlayerViewModel = preloadedVM
@@ -426,7 +493,19 @@ final class PlaybackManager {
         }
 
         // Fast path 2: Matching preload is currently in flight
-        if preloadedRequestKey == key, let ongoingPreload = preloadingTask {
+        let isInFlightCompatible = inFlightPreloadVM.map {
+            isPreloadCompatible(
+                vm: $0,
+                item: item,
+                fromBeginning: fromBeginning,
+                mediaSourceID: mediaSourceID,
+                audioStreamIndex: audioStreamIndex,
+                subtitleStreamIndex: subtitleStreamIndex,
+                maxBitrate: maxBitrate
+            )
+        } ?? false
+
+        if (preloadedRequestKey == key || isInFlightCompatible), let ongoingPreload = preloadingTask {
             AppLogger.info("Awaiting in-flight preload for '\(item.name ?? "")'")
             self.preloadedRequestKey = nil
             self.preloadingTask = nil

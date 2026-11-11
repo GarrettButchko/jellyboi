@@ -74,9 +74,9 @@ extension PlayerViewModel {
     }
 
     func sendPlaybackStopped(positionTicks: Int) {
-        updateLocalProgress(positionTicks: positionTicks)
         guard hasReportedStart, let client, let itemID = request.item.id else { return }
         hasReportedStart = false
+        updateLocalProgress(positionTicks: positionTicks)
         let sessionID = streamContext.playSessionID
         let sourceID = streamContext.mediaSourceID
         AppLogger.info("Reporting playback stopped to Jellyfin (positionTicks: \(positionTicks))")

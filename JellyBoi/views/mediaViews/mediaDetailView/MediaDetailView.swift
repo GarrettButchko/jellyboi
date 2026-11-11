@@ -215,13 +215,6 @@ struct MediaDetailView: View {
                let ticks = notification.userInfo?["positionTicks"] as? Int {
                 let total = notification.userInfo?["durationTicks"] as? Int
                 detailVM.handleProgressUpdated(itemID: itemID, positionTicks: ticks, totalTicks: total)
-                if playbackManager.activePlayerViewModel == nil {
-                    detailVM.startPreload(
-                        playbackManager: playbackManager,
-                        serverViewModel: serverViewModel,
-                        libraryViewModel: libraryViewModel
-                    )
-                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .mediaFavoriteToggled)) { notification in

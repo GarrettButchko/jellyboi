@@ -36,6 +36,7 @@ class MediaDetailViewModel {
     var isLoadingCollectionItems = false
     var isLoadingEpisodes = false
     var isLoadingSpecialFeatures = false
+    var isLoadingSimilarItems = false
     var client: JellyfinClient?
     weak var libraryViewModel: LibraryViewModel?
     static var collectionItemsCache: [String: [BaseItemDto]] = [:]
@@ -234,10 +235,16 @@ class MediaDetailViewModel {
             }
             if let cachedSimilar = lvm.cachedSimilarItems(for: id) {
                 self.similarItems = cachedSimilar
+                self.isLoadingSimilarItems = false
+            } else {
+                self.similarItems = []
+                self.isLoadingSimilarItems = true
             }
         } else {
             self.specialFeatures = []
             self.isLoadingSpecialFeatures = true
+            self.similarItems = []
+            self.isLoadingSimilarItems = true
         }
         if item.type == .series {
             self.isLoadingEpisodes = true
@@ -306,6 +313,8 @@ class MediaDetailViewModel {
                 }
             }
             isLoadingEpisodes = false
+            isLoadingSpecialFeatures = false
+            isLoadingSimilarItems = false
             return
         }
 
@@ -350,6 +359,7 @@ class MediaDetailViewModel {
         // STAGE 3: Secondary below-the-fold content (Similar items & Special features)
         guard !Task.isCancelled else { return }
         similarItems = await libraryViewModel.similarItems(for: itemID, client: client, userID: userID)
+        isLoadingSimilarItems = false
         guard !Task.isCancelled else { return }
         specialFeatures = await libraryViewModel.specialFeatures(for: itemID, client: client, userID: userID)
         isLoadingSpecialFeatures = false

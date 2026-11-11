@@ -8,6 +8,7 @@
 import Foundation
 import CoreGraphics
 import JellyfinAPI
+import SkeletonKit
 
 extension BaseItemDto {
 
@@ -610,10 +611,25 @@ extension Array where Element == BaseItemDto {
     }
 }
 
-// MARK: - Placeholder Factories
+// MARK: - Placeholder Factories & PlaceholderRepresentable
 
-extension BaseItemDto {
-    /// Generates a placeholder `BaseItemDto` for skeleton loading states.
+extension BaseItemDto: PlaceholderRepresentable {
+    /// Generates a placeholder `BaseItemDto` with text sized for skeleton loading states.
+    public static func placeholder(seed: Int) -> BaseItemDto {
+        let titleLengths = [12, 18, 8, 22, 14, 10]
+        let titleLen = titleLengths[abs(seed) % titleLengths.count]
+        let title = PlaceholderText.ofLength(titleLen)
+        let overview = PlaceholderText.words([6, 8, 4, 10, 5, 7, 9, 4, 8, 6, 7, 5, 8, 9, 6])
+
+        return BaseItemDto(
+            id: "placeholder-\(seed)",
+            name: title,
+            overview: overview,
+            type: seed % 3 == 0 ? .series : .movie
+        )
+    }
+
+    /// Generates a placeholder `BaseItemDto` with custom parameters.
     public static func placeholder(
         id: String = UUID().uuidString,
         type: BaseItemKind = .movie,
@@ -633,9 +649,7 @@ extension BaseItemDto {
         count: Int = 10,
         type: BaseItemKind = .movie
     ) -> [BaseItemDto] {
-        (0..<count).map {
-            placeholder(id: "placeholder-\($0)", type: type)
-        }
+        (0..<count).map { placeholder(seed: $0) }
     }
 }
 
@@ -649,7 +663,22 @@ extension Array where Element == BaseItemDto {
     }
 }
 
-extension BaseItemPerson {
+extension BaseItemPerson: PlaceholderRepresentable {
+    /// Generates a placeholder `BaseItemPerson` with text sized for skeleton loading states.
+    public static func placeholder(seed: Int) -> BaseItemPerson {
+        let nameLengths = [14, 8, 16, 12, 10]
+        let roleLengths = [11, 15, 8, 9, 13]
+        let name = PlaceholderText.ofLength(nameLengths[abs(seed) % nameLengths.count])
+        let role = PlaceholderText.ofLength(roleLengths[abs(seed) % roleLengths.count])
+
+        return BaseItemPerson(
+            id: "person-placeholder-\(seed)",
+            name: name,
+            role: role,
+            type: .actor
+        )
+    }
+
     /// Generates a placeholder `BaseItemPerson` for skeleton loading states.
     public static func placeholder(
         id: String = UUID().uuidString,
@@ -666,9 +695,7 @@ extension BaseItemPerson {
 
     /// Generates an array of placeholder `BaseItemPerson` objects for skeleton loading states.
     public static func placeholders(count: Int = 8) -> [BaseItemPerson] {
-        (0..<count).map {
-            placeholder(id: "person-placeholder-\($0)", name: "Actor \($0 + 1)", role: "Character")
-        }
+        (0..<count).map { placeholder(seed: $0) }
     }
 }
 

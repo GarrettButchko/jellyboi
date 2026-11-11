@@ -10,6 +10,7 @@ import BaseColors
 import JellyfinAPI
 import SDWebImageSwiftUI
 import MarqueeText
+import SkeletonKit
 
 // MARK: - SearchView
 
@@ -129,11 +130,8 @@ struct SearchView: View {
 
     private var genreBrowse: some View {
         Group {
-            if viewModel.isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 40)
-            } else if viewModel.genres.isEmpty {
+            let displayGenres = viewModel.genres.orPlaceholders(when: viewModel.isLoading, count: 12)
+            if displayGenres.isEmpty && !viewModel.isLoading {
                 if viewModel.showFavoritesOnly {
                     EmptyStateView(
                         icon: "star",
@@ -154,13 +152,14 @@ struct SearchView: View {
                     columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)],
                     spacing: 12
                 ) {
-                    ForEach(viewModel.genres) { genre in
+                    ForEach(displayGenres) { genre in
                         GenreChip(genre: genre) {
                             selectedGenre = genre.name
                         }
                     }
                 }
                 .padding(.horizontal, 16)
+                .skeleton(when: viewModel.isLoading)
                 .transition(.opacity)
             }
         }

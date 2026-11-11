@@ -18,21 +18,25 @@ extension MediaDetailView {
     private var specialFeatureItemHeight: CGFloat {
         specialFeatureCardHeight + 46
     }
+    
+    private var showPlaceholder: Bool {
+        detailVM.specialFeatures.isEmpty && detailVM.isLoadingSpecialFeatures && (displayItem.specialFeatureCount ?? 0) > 0
+    }
 
     @ViewBuilder
     var specialFeaturesSection: some View {
         if !detailVM.isSpecialFeaturesHidden {
             Group {
-                if detailVM.specialFeatures.isEmpty {
-                    if detailVM.isLoadingSpecialFeatures && (displayItem.specialFeatureCount ?? 0) > 0 {
-                        SectionRow.placeholder(
-                            title: "Special Features",
-                            count: 4,
-                            imageAspectRatio: 16.0 / 9.0
-                        )
-                        .transition(.opacity)
-                    }
-                } else {
+                if showPlaceholder {
+                    SectionRow.placeholder(
+                        title: "Special Features",
+                        count: 4,
+                        imageAspectRatio: 9.0 / 6.0,
+                        cardHeight: specialFeatureCardHeight
+                    )
+                    .id("placeholder")
+                    .transition(.opacity)
+                } else if !detailVM.specialFeatures.isEmpty {
                     SectionRow(title: "Special Features") {
                         ScrollView(.horizontal) {
                             LazyHStack(alignment: .top, spacing: 14) {
@@ -99,10 +103,11 @@ extension MediaDetailView {
                         .scrollIndicators(.hidden)
                         .scrollTargetBehavior(.viewAligned)
                     }
+                    .id("content")
                     .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.3), value: detailVM.specialFeatures.isEmpty)
+            .animation(.easeInOut(duration: 0.3), value: showPlaceholder)
         }
     }
 }

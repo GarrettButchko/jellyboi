@@ -89,6 +89,7 @@ extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == Em
         namespace: Namespace.ID? = nil,
         rowKey: String? = nil,
         imageAspectRatio: CGFloat? = 2.0 / 3.0,
+        cardHeight: CGFloat? = nil,
         onTitleTap: (() -> Void)? = nil,
         onSelect: ((BaseItemDto, AnyHashable) -> Void)? = nil,
         posterURL: ((BaseItemDto) -> URL?)? = nil
@@ -103,6 +104,7 @@ extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == Em
                     namespace: namespace,
                     rowKey: rowKey,
                     imageAspectRatio: imageAspectRatio,
+                    cardHeight: cardHeight,
                     onSelect: onSelect,
                     posterURL: posterURL
                 )
@@ -119,13 +121,24 @@ struct SectionRowMediaList: View {
     var namespace: Namespace.ID? = nil
     var rowKey: String? = nil
     var imageAspectRatio: CGFloat? = 2.0 / 3.0
+    var cardHeight: CGFloat? = nil
     var onSelect: ((BaseItemDto, AnyHashable) -> Void)? = nil
     var posterURL: ((BaseItemDto) -> URL?)? = nil
 
     @Environment(\.horizontalSizeClass) private var sizeClass
 
-    private var cardWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
-    private var cardHeight: CGFloat { cardWidth / (imageAspectRatio ?? (2.0 / 3.0)) }
+    private var defaultCardWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
+
+    private var resolvedCardWidth: CGFloat {
+        if let cardHeight {
+            return cardHeight * (imageAspectRatio ?? (2.0 / 3.0))
+        }
+        return defaultCardWidth
+    }
+
+    private var resolvedCardHeight: CGFloat {
+        cardHeight ?? (defaultCardWidth / (imageAspectRatio ?? (2.0 / 3.0)))
+    }
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -143,13 +156,13 @@ struct SectionRowMediaList: View {
                         imageAspectRatio: imageAspectRatio
                     )
                     .equatable()
-                    .frame(width: cardWidth, height: cardHeight)
+                    .frame(width: resolvedCardWidth, height: resolvedCardHeight)
                 }
             }
             .padding(.horizontal, 16)
             .scrollTargetLayout()
         }
-        .frame(height: cardHeight)
+        .frame(height: resolvedCardHeight)
         .scrollClipDisabled()
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.viewAligned)
@@ -164,13 +177,15 @@ extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == Em
         title: String = "Movies & Shows",
         count: Int = 8,
         imageAspectRatio: CGFloat? = 2.0 / 3.0,
+        cardHeight: CGFloat? = nil,
         namespace: Namespace.ID? = nil
     ) -> some View {
         SectionRow(
             title: title,
             items: .placeholders(count: count),
             namespace: namespace,
-            imageAspectRatio: imageAspectRatio
+            imageAspectRatio: imageAspectRatio,
+            cardHeight: cardHeight
         )
         .skeleton()
     }
