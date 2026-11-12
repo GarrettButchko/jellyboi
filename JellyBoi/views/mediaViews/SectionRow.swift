@@ -169,24 +169,3 @@ struct SectionRowMediaList: View {
     }
 }
 
-// MARK: - Skeleton Placeholder Factory
-
-extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == EmptyView {
-    /// Convenience factory rendering a static skeleton placeholder shelf.
-    static func placeholder(
-        title: String = "Movies & Shows",
-        count: Int = 8,
-        imageAspectRatio: CGFloat? = 2.0 / 3.0,
-        cardHeight: CGFloat? = nil,
-        namespace: Namespace.ID? = nil
-    ) -> some View {
-        SectionRow(
-            title: title,
-            items: .placeholders(count: count),
-            namespace: namespace,
-            imageAspectRatio: imageAspectRatio,
-            cardHeight: cardHeight
-        )
-        .skeleton()
-    }
-}

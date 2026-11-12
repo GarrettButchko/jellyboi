@@ -15,9 +15,35 @@ extension MediaDetailView {
     @ViewBuilder
     var castSection: some View {
         let actors = (displayItem.people ?? []).filter { $0.type == .actor }
-        if !detailVM.isCastHidden && !actors.isEmpty {
-            castContent(actors)
+        if !detailVM.isCastHidden {
+            Group{
+                if !actors.isEmpty {
+                    castContent(actors)
+                        .transition(.opacity)
+                } else if detailVM.isLoading {
+                    castPlaceholderContent
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: actors.isEmpty)
         }
+    }
+    
+    private var castPlaceholderContent: some View {
+        SectionRow(title: "Cast & Crew") {
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 16) {
+                    ForEach(BaseItemPerson.placeholders(count: 8), id: \.id) { person in
+                        CastCircle(person: person, imageURL: nil)
+                            .frame(width: 74, alignment: .top)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .scrollClipDisabled()
+            .scrollIndicators(.hidden)
+        }
+        .skeleton()
     }
 
     private func castContent(_ people: [BaseItemPerson]) -> some View {
@@ -103,51 +129,24 @@ struct CastCircle: View {
     private var avatarView: some View {
         if isRedacted {
             Circle()
-                .fill(Color.mainOpp.opacity(0.08))
-                .frame(width: 70, height: 70)
+                .fill(Color.mainOpp.opacity(0.12))
+                .frame(width: 72, height: 72)
+        } else if let imageURL {
+            WebImage(url: imageURL)
+                .resizable()
+                .indicator(.activity)
+                .scaledToFill()
+                .frame(width: 72, height: 72)
+                .clipShape(Circle())
         } else {
-            let circleContent = ZStack {
-                Circle()
-                    .fill(Color.sub)
-                    .frame(width: 70, height: 70)
-
-                if let url = imageURL {
-                    WebImage(
-                        url: url,
-                        transaction: Transaction(animation: .easeInOut(duration: 0.3))
-                    ) { phase in
-                        if let image = phase.image {
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .transition(.fade(duration: 0.3))
-                        } else {
-                            placeholderIcon
-                        }
-                    }
-                    .frame(width: 70, height: 70)
-                    .clipShape(Circle())
-                } else {
-                    placeholderIcon
+            Circle()
+                .fill(Color.mainOpp.opacity(0.08))
+                .frame(width: 72, height: 72)
+                .overlay {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(Color.mainOpp.opacity(0.3))
                 }
-            }
-            .frame(width: 70, height: 70)
-
-            if let namespace {
-                circleContent
-                    .matchedTransitionSource(
-                        id: person.id ?? person.name ?? "",
-                        in: namespace
-                    )
-            } else {
-                circleContent
-            }
         }
-    }
-
-    private var placeholderIcon: some View {
-        Image(systemName: "person.fill")
-            .font(.system(size: 40))
-            .foregroundStyle(Color.subFour)
     }
 }

@@ -55,20 +55,44 @@ extension MediaDetailView {
     var infoChipsScrollView: some View {
         let chips = infoChipData
         if !chips.isEmpty {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(chips.indices, id: \.self) { index in
-                        InfoCapsule(
-                            icon: chips[index].icon,
-                            emoji: chips[index].emoji,
-                            text: chips[index].text
-                        )
-                    }
-                }
-                .padding(.horizontal, 20)
-            }
-            .scrollIndicators(.hidden)
+            content(chips: chips)
+                .transition(.opacity)
+        } else if detailVM.isLoading {
+           skeleton
+                .transition(.opacity)
         }
+    }
+
+    @ViewBuilder
+    func content(chips: [InfoChipItem]) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(chips.indices, id: \.self) { index in
+                    InfoCapsule(
+                        icon: chips[index].icon,
+                        emoji: chips[index].emoji,
+                        text: chips[index].text
+                    )
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .scrollIndicators(.hidden)
+        
+    }
+
+    @ViewBuilder
+    var skeleton: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach([70, 90, 50, 80, 60] as [CGFloat], id: \.self) { w in
+                    SkeletonBlock(cornerRadius: 14).frame(width: w, height: 32)
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .scrollIndicators(.hidden)
+        .skeleton()
     }
 }
 
@@ -98,9 +122,8 @@ struct InfoCapsule: View {
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .lineLimit(1)
         }
-        .foregroundStyle(Color.mainOpp)
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.mainOpp.opacity(0.08), in: Capsule())
+        .padding(.vertical, 5)
+        .glassEffect(.regular.interactive(), in: Capsule())
     }
 }

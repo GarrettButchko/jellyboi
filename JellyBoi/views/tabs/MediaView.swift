@@ -193,91 +193,99 @@ struct MediaView: View {
 
     @ViewBuilder
     private var favoritesContent: some View {
-        if viewModel.isLoading && viewModel.currentFavoriteItems.isEmpty {
-            MediaGrid.placeholder(namespace: zoomTransition)
-                .transition(.opacity)
-        } else if viewModel.currentFavoriteItems.isEmpty {
-            let message: String = {
-                switch viewModel.filter {
-                case .movies: return "You haven't starred any movies yet."
-                case .tvShows: return "You haven't starred any TV shows or episodes yet."
-                }
-            }()
-            EmptyStateView(
-                icon: "star",
-                title: "No Favorite \(viewModel.filter.title)",
-                message: message
-            )
-        } else {
-            Group {
-                switch viewModel.filter {
-                case .movies:
-                    mediaGrid(for: viewModel.favoriteMovies)
+        Group {
+            if viewModel.isLoading && viewModel.currentFavoriteItems.isEmpty {
+                MediaGrid(items: .placeholders(count: 18), namespace: zoomTransition)
+                    .skeleton()
+                    .transition(.opacity)
+            } else if viewModel.currentFavoriteItems.isEmpty {
+                let message: String = {
+                    switch viewModel.filter {
+                    case .movies: return "You haven't starred any movies yet."
+                    case .tvShows: return "You haven't starred any TV shows or episodes yet."
+                    }
+                }()
+                EmptyStateView(
+                    icon: "star",
+                    title: "No Favorite \(viewModel.filter.title)",
+                    message: message
+                )
+            } else {
+                Group {
+                    switch viewModel.filter {
+                    case .movies:
+                        mediaGrid(for: viewModel.favoriteMovies)
 
-                case .tvShows:
-                    if !viewModel.favoriteShows.isEmpty && !viewModel.favoriteEpisodes.isEmpty {
-                        VStack(alignment: .leading, spacing: 28) {
+                    case .tvShows:
+                        if !viewModel.favoriteShows.isEmpty && !viewModel.favoriteEpisodes.isEmpty {
+                            VStack(alignment: .leading, spacing: 28) {
+                                favoriteSection(title: "Shows", items: viewModel.favoriteShows)
+                                favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
+                            }
+                        } else if !viewModel.favoriteShows.isEmpty {
                             favoriteSection(title: "Shows", items: viewModel.favoriteShows)
+                        } else {
                             favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
                         }
-                    } else if !viewModel.favoriteShows.isEmpty {
-                        favoriteSection(title: "Shows", items: viewModel.favoriteShows)
-                    } else {
-                        favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
                     }
                 }
+                .id(viewModel.filter)
+                .transition(.opacity)
             }
-            .id(viewModel.filter)
-            .transition(.opacity)
         }
+        .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
     }
 
     // MARK: - Regular Library Content
 
     @ViewBuilder
     private var regularContent: some View {
-        if viewModel.regularItems.isEmpty {
-            if viewModel.isLoading {
-                MediaGrid.placeholder(namespace: zoomTransition)
-                    .transition(.opacity)
-            } else if let error = viewModel.errorMessage {
-                EmptyStateView(
-                    icon: "wifi.exclamationmark",
-                    title: "Couldn't load library",
-                    message: error,
-                    buttonTitle: "Try Again"
-                ) {
-                    Task {
-                        if let client = serverViewModel.client {
-                            await viewModel.refresh(using: client)
+        Group {
+            if viewModel.regularItems.isEmpty {
+                if viewModel.isLoading {
+                    MediaGrid(items: .placeholders(count: 18), namespace: zoomTransition)
+                        .skeleton()
+                        .transition(.opacity)
+                } else if let error = viewModel.errorMessage {
+                    EmptyStateView(
+                        icon: "wifi.exclamationmark",
+                        title: "Couldn't load library",
+                        message: error,
+                        buttonTitle: "Try Again"
+                    ) {
+                        Task {
+                            if let client = serverViewModel.client {
+                                await viewModel.refresh(using: client)
+                            }
+                        }
+                    }
+                } else {
+                    let emptyIcon: String = {
+                        switch viewModel.filter {
+                        case .movies: return "film"
+                        case .tvShows: return "tv"
+                        }
+                    }()
+                    EmptyStateView(
+                        icon: emptyIcon,
+                        title: "No \(viewModel.filter.title)",
+                        message: "Nothing here yet. Pull to refresh or add media to your Jellyfin server.",
+                        buttonTitle: "Refresh"
+                    ) {
+                        Task {
+                            if let client = serverViewModel.client {
+                                await viewModel.refresh(using: client)
+                            }
                         }
                     }
                 }
             } else {
-                let emptyIcon: String = {
-                    switch viewModel.filter {
-                    case .movies: return "film"
-                    case .tvShows: return "tv"
-                    }
-                }()
-                EmptyStateView(
-                    icon: emptyIcon,
-                    title: "No \(viewModel.filter.title)",
-                    message: "Nothing here yet. Pull to refresh or add media to your Jellyfin server.",
-                    buttonTitle: "Refresh"
-                ) {
-                    Task {
-                        if let client = serverViewModel.client {
-                            await viewModel.refresh(using: client)
-                        }
-                    }
-                }
+                mediaGrid(for: viewModel.regularItems)
+                    .id(viewModel.filter)
+                    .transition(.opacity)
             }
-        } else {
-            mediaGrid(for: viewModel.regularItems)
-                .id(viewModel.filter)
-                .transition(.opacity)
         }
+        .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
     }
 
     // MARK: - Reusable Components

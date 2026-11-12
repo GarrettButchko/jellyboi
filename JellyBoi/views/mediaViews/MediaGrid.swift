@@ -56,16 +56,3 @@ struct MediaGrid: View {
         return item.posterURL(client: client)
     }
 }
-
-// MARK: - Skeleton Placeholder Factory
-
-extension MediaGrid {
-    /// Convenience factory rendering a static skeleton placeholder grid.
-    static func placeholder(
-        count: Int = 18,
-        namespace: Namespace.ID? = nil
-    ) -> some View {
-        MediaGrid(items: .placeholders(count: count), namespace: namespace)
-            .skeleton()
-    }
-}

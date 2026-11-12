@@ -2,7 +2,7 @@
 //  MediaDetailView.swift
 //  JellyBoi
 //
-//  Created by Garrett Butchko on 8/23/26.
+//  Created by Garrett Butchko on 8/19/26.
 //
 
 import SwiftUI
@@ -10,41 +10,46 @@ import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
 
+// MARK: - MediaDetailView
+
 struct MediaDetailView: View {
     let item: BaseItemDto
     var cameFromShow: Bool = false
+
+    @Environment(ServerViewModel.self) var serverViewModel
+    @Environment(LibraryViewModel.self) var libraryViewModel
+    @Environment(PlaybackManager.self) var playbackManager
+    @Environment(DownloadManager.self) var downloadManager
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
+
+    @State var detailVM: MediaDetailViewModel
+    @State var selectedPerson: BaseItemPerson?
+    @State var selectedEpisode: BaseItemDto?
+    @State var selectedSpecialFeature: BaseItemDto?
+    @State var selectedRelatedItem: BaseItemDto?
+    @State var selectedCollectionItem: BaseItemDto?
+    @State var selectedSeries: BaseItemDto?
+    @State var showOptionsSheet: Bool = false
+    @State var optionsSheetHeight: CGFloat = 0
+    @State var heroArtworkHeight: CGFloat = 0
+    @State var backButtonHeight: CGFloat = 0
+
+    // Zoom transitions
+    @Namespace var episodeTransition
+    @Namespace var specialFeatureTransition
+    @Namespace var relatedTransition
+    @Namespace var collectionTransition
+    @Namespace var glassNamespace
+    @State var episodeZoomID: AnyHashable?
+    @State var specialFeatureZoomID: AnyHashable?
+    @State var relatedZoomID: AnyHashable?
 
     init(item: BaseItemDto, cameFromShow: Bool = false) {
         self.item = item
         self.cameFromShow = cameFromShow
         _detailVM = State(initialValue: MediaDetailViewModel(item: item))
     }
-
-    @Environment(ServerViewModel.self) var serverViewModel
-    @Environment(LibraryViewModel.self) var libraryViewModel
-    @Environment(PlaybackManager.self) var playbackManager
-    @Environment(DownloadManager.self) var downloadManager
-    @Environment(AppPreferences.self) var preferences: AppPreferences?
-    @Environment(\.verticalSizeClass) var verticalSizeClass
-    @Environment(\.horizontalSizeClass) var horizontalSizeClass
-
-    @State var detailVM = MediaDetailViewModel()
-    @State var showOptionsSheet = false
-    @State var optionsSheetHeight: CGFloat = 0
-    @State var selectedRelatedItem: BaseItemDto?
-    @Namespace var relatedTransition
-    @State var relatedZoomID: AnyHashable?
-    @State var selectedCollectionItem: BaseItemDto?
-    @Namespace var collectionTransition
-    @State var backButtonHeight: CGFloat = 0
-    @State var selectedEpisode: BaseItemDto?
-    @Namespace var episodeTransition
-    @State var episodeZoomID: AnyHashable?
-    @State var selectedPerson: BaseItemPerson?
-    @State var selectedSeries: BaseItemDto?
-    @Namespace var specialFeatureTransition
-    @Namespace var glassNamespace
-    @Namespace var trailingButtonsNamespace
 
     var displayItem: BaseItemDto {
         detailVM.displayItem ?? item
@@ -58,30 +63,22 @@ struct MediaDetailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 heroSection
 
-                SkeletonZone(showsContent: detailVM.detailedItem != nil) {
-                    MediaDetailPlaceholderContent(
-                        isSeries: displayItem.type == .series,
-                        isCollection: displayItem.type == .boxSet,
-                        hasSpecialFeatures: (displayItem.specialFeatureCount ?? 0) > 0
-                    )
-                } content: {
-                    VStack(alignment: .leading, spacing: 24) {
-                        overviewSection
+                VStack(alignment: .leading, spacing: 24) {
+                    overviewSection
 
-                        if displayItem.type == .series {
-                            episodesSection
-                        }
-                        castSection
-                        specialFeaturesSection
-                        if displayItem.type == .boxSet {
-                            collectionSection
-                        }
-                        similarItemsSection
-                        tagsSection
-                        extraInfoSection
+                    if displayItem.type == .series {
+                        episodesSection
                     }
-                    .padding(.top, 16)
+                    castSection
+                    specialFeaturesSection
+                    if displayItem.type == .boxSet {
+                        collectionSection
+                    }
+                    similarItemsSection
+                    tagsSection
+                    extraInfoSection
                 }
+                .padding(.top, 16)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -118,114 +115,41 @@ struct MediaDetailView: View {
         } message: {
             let itemName = detailVM.downloadAlertItemName(libraryViewModel: libraryViewModel)
             if detailVM.downloadAlertAction == .cancel {
-                Text("Are you sure you want to stop downloading '\(itemName)'?")
+                Text("Are you sure you want to cancel the download for \"\(itemName)\"? Any progress will be lost.")
             } else {
-                Text("Are you sure you want to remove '\(itemName)' from your downloads?")
+                Text("Are you sure you want to remove \"\(itemName)\" from your downloads? This cannot be undone.")
             }
-        }
-        .alert(
-            detailVM.seriesAlertAction == .startFromBeginning ? "Start from Beginning?" : "Reset Progress?",
-            isPresented: Binding($detailVM.seriesAlertAction)
-        ) {
-            if detailVM.seriesAlertAction == .startFromBeginning {
-                Button("Start from Beginning", role: .destructive) {
-                    detailVM.startSeriesFromBeginning(
-                        playbackManager: playbackManager,
-                        serverViewModel: serverViewModel,
-                        libraryViewModel: libraryViewModel
-                    )
-                }
-                Button("Cancel", role: .cancel) { }
-            } else {
-                Button("Reset Progress", role: .destructive) {
-                    withAnimation(.smooth) {
-                        detailVM.resetSeriesProgress(serverViewModel: serverViewModel)
-                    }
-                }
-                Button("Cancel", role: .cancel) { }
-            }
-        } message: {
-            let showName = detailVM.displayItem?.name ?? "this show"
-            if detailVM.seriesAlertAction == .startFromBeginning {
-                Text("This will reset all watch progress for '\(showName)' and start Episode 1 from the beginning.")
-            } else {
-                Text("Are you sure you want to reset all watch progress for '\(showName)'?")
-            }
-        }
-        .navigationDestination(item: $selectedSeries) { series in
-            MediaDetailView(item: series)
-        }
-        .navigationDestination(item: $selectedRelatedItem) { relatedItem in
-            MediaDetailView(item: relatedItem)
-                .navigationTransition(.zoom(
-                    sourceID: relatedZoomID ?? relatedItem.zoomTransitionID(rowKey: "related"),
-                    in: relatedTransition
-                ))
-        }
-        .navigationDestination(item: $selectedEpisode) { episode in
-            MediaDetailView(item: episode, cameFromShow: true)
-                .navigationTransition(.zoom(
-                    sourceID: episodeZoomID ?? episode.zoomTransitionID(rowKey: "episode"),
-                    in: episodeTransition
-                ))
-        }
-        .navigationDestination(item: $selectedCollectionItem) { collectionItem in
-            MediaDetailView(item: collectionItem)
-                .navigationTransition(.zoom(
-                    sourceID: collectionItem.zoomTransitionID(),
-                    in: collectionTransition
-                ))
         }
         .navigationDestination(item: $selectedPerson) { person in
             CastCrewView(person: person)
         }
-        .onAppear {
-            detailVM.prepare(item: item, client: serverViewModel.client, libraryViewModel: libraryViewModel)
+        .navigationDestination(item: $selectedSeries) { series in
+            MediaDetailView(item: series)
+        }
+        .navigationDestination(item: $selectedEpisode) { ep in
+            MediaDetailView(item: ep, cameFromShow: true)
+                .navigationTransition(.zoom(sourceID: episodeZoomID ?? AnyHashable(ep), in: episodeTransition))
+        }
+        .navigationDestination(item: $selectedSpecialFeature) { feat in
+            MediaDetailView(item: feat)
+                .navigationTransition(.zoom(sourceID: specialFeatureZoomID ?? AnyHashable(feat), in: specialFeatureTransition))
+        }
+        .navigationDestination(item: $selectedRelatedItem) { rel in
+            MediaDetailView(item: rel)
+                .navigationTransition(.zoom(sourceID: relatedZoomID ?? AnyHashable(rel), in: relatedTransition))
+        }
+        .navigationDestination(item: $selectedCollectionItem) { col in
+            MediaDetailView(item: col)
+                .navigationTransition(.zoom(sourceID: AnyHashable(col), in: collectionTransition))
         }
         .task(id: item.id) {
-            guard let client = serverViewModel.client, item.id != nil else { return }
-            await detailVM.load(
-                item: item,
-                client: client,
-                userID: serverViewModel.currentUser?.id,
-                libraryViewModel: libraryViewModel
-            )
-            detailVM.startPreload(
-                playbackManager: playbackManager,
-                serverViewModel: serverViewModel,
-                libraryViewModel: libraryViewModel
-            )
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .mediaProgressReset)) { notification in
-            if let itemID = notification.object as? String {
-                withAnimation(.smooth(duration: 0.35)) {
-                    detailVM.clearProgress(for: itemID)
-                }
-                if playbackManager.activePlayerViewModel == nil {
-                    detailVM.startPreload(
-                        playbackManager: playbackManager,
-                        serverViewModel: serverViewModel,
-                        libraryViewModel: libraryViewModel
-                    )
-                }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .mediaProgressUpdated)) { notification in
-            if let itemID = notification.object as? String,
-               let ticks = notification.userInfo?["positionTicks"] as? Int {
-                let total = notification.userInfo?["durationTicks"] as? Int
-                detailVM.handleProgressUpdated(itemID: itemID, positionTicks: ticks, totalTicks: total)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .mediaFavoriteToggled)) { notification in
-            if let itemID = notification.object as? String,
-               let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
-                detailVM.handleFavoriteToggled(itemID: itemID, isFavorite: isFavorite)
-            }
-        }
-        .onDisappear {
-            if playbackManager.activePlayerViewModel == nil {
-                playbackManager.cancelPreload()
+            if let client = serverViewModel.client {
+                await detailVM.load(
+                    item: item,
+                    client: client,
+                    userID: serverViewModel.currentUser?.id,
+                    libraryViewModel: libraryViewModel
+                )
             }
         }
     }

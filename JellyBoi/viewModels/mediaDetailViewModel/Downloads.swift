@@ -183,10 +183,10 @@ extension MediaDetailViewModel {
                 if collectionItems.isEmpty {
                     Task {
                         await self.loadCollectionItems(client: client, userID: nil)
-                        startItems(self.collectionItems)
+                        startItems(self.collectionItems.elements)
                     }
                 } else {
-                    startItems(collectionItems)
+                    startItems(collectionItems.elements)
                 }
                 action = nil
             } else {

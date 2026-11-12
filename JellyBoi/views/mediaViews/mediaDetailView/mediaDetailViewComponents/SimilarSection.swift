@@ -12,7 +12,7 @@ import JellyfinAPI
 extension MediaDetailView {
 
     private var showSimilarPlaceholder: Bool {
-        detailVM.similarItems.isEmpty && detailVM.isLoadingSimilarItems
+        detailVM.similarItems.isLoading
     }
 
     @ViewBuilder
@@ -20,15 +20,16 @@ extension MediaDetailView {
         if !detailVM.areSimilarItemsHidden {
             Group {
                 if showSimilarPlaceholder {
-                    SectionRow.placeholder(
-                        title: "More Like This",
-                        count: 4
-                    )
-                    .transition(.opacity)
-                } else if !detailVM.similarItems.isEmpty {
                     SectionRow(
                         title: "More Like This",
-                        items: detailVM.similarItems,
+                        items: .placeholders(count: 4)
+                    )
+                    .skeleton()
+                    .transition(.opacity)
+                } else if case .full(let items) = detailVM.similarItems {
+                    SectionRow(
+                        title: "More Like This",
+                        items: items,
                         namespace: relatedTransition,
                         rowKey: "related",
                         onSelect: { relatedItem, zoomID in
@@ -43,9 +44,10 @@ extension MediaDetailView {
                         }
                         return relatedItem.posterURL(client: client)
                     }
+                    .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.3), value: detailVM.isLoadingSimilarItems)
+            .animation(.easeInOut(duration: 0.35), value: detailVM.similarItems)
         }
     }
 }

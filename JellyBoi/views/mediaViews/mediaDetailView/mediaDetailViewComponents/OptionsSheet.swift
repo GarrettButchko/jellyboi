@@ -14,29 +14,42 @@ extension MediaDetailView {
     var optionsSheet: some View {
         VStack(alignment: .leading, spacing: 18) {
             if detailVM.isLoadingPlaybackOptions {
-                HStack(spacing: 12) {
-                    ProgressView()
-                        .tint(Color.mainOpp)
-                    Text("Loading media streams…")
-                        .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(Color.mainOpp.opacity(0.7))
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        SkeletonBlock(cornerRadius: 4).frame(width: 80, height: 14)
+                        SkeletonBlock(cornerRadius: 12).frame(maxWidth: .infinity).frame(height: 48)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        SkeletonBlock(cornerRadius: 4).frame(width: 90, height: 14)
+                        SkeletonBlock(cornerRadius: 12).frame(maxWidth: .infinity).frame(height: 48)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        SkeletonBlock(cornerRadius: 4).frame(width: 70, height: 14)
+                        SkeletonBlock(cornerRadius: 12).frame(maxWidth: .infinity).frame(height: 48)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 36)
+                .skeleton()
+                .padding(.vertical, 8)
+                .transition(.opacity)
             } else {
                 // Dropdown 1: Video Quality / Bitrate
                 qualityDropdown
+                    .transition(.opacity)
 
                 // Dropdown 2: Audio Track
                 audioDropdown
+                    .transition(.opacity)
 
                 // Dropdown 3: Subtitles
                 subtitlesDropdown
+                    .transition(.opacity)
 
                 // Reset Button
                 resetButton
+                    .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.35), value: detailVM.isLoadingPlaybackOptions)
         .padding(.horizontal, 20)
         .padding(.top, 24)
         .onGeometryChange(for: CGFloat.self) { proxy in

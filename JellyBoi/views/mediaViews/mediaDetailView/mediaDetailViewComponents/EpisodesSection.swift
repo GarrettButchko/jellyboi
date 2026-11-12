@@ -43,7 +43,7 @@ extension MediaDetailView {
             #endif
             return true
         }()
-        if showEpisodes, displayItem.type == .series, (!detailVM.seasons.isEmpty || detailVM.isLoadingEpisodes) {
+        if showEpisodes, displayItem.type == .series, (!detailVM.seasons.isEmpty || detailVM.episodes.isLoading) {
             ScrollViewReader { proxy in
                 SectionRow(
                     title: "Episodes",
@@ -53,26 +53,25 @@ extension MediaDetailView {
                         }
                     }
                 ) {
-                    if detailVM.episodes.isEmpty {
-                        if detailVM.isLoadingEpisodes {
-                            ScrollView(.horizontal) {
-                                HStack(alignment: .top, spacing: 12) {
-                                    ForEach(0..<5, id: \.self) { _ in
-                                        SkeletonBlock(cornerRadius: 16)
-                                            .frame(width: episodeCardHeight * (16.0 / 9.0), height: episodeCardHeight)
-                                    }
+                    switch detailVM.episodes {
+                    case .loading:
+                        ScrollView(.horizontal) {
+                            HStack(alignment: .top, spacing: 12) {
+                                ForEach(0..<5, id: \.self) { _ in
+                                    SkeletonBlock(cornerRadius: 16)
+                                        .frame(width: episodeCardHeight * (16.0 / 9.0), height: episodeCardHeight)
                                 }
-                                .padding(.horizontal, 16)
                             }
-                            .scrollClipDisabled()
-                            .scrollIndicators(.hidden)
-                            .skeleton()
-                            .transition(.opacity)
+                            .padding(.horizontal, 16)
                         }
-                    } else {
+                        .scrollClipDisabled()
+                        .scrollIndicators(.hidden)
+                        .skeleton()
+                        .transition(.opacity)
+                    case .full(let episodes):
                         ScrollView(.horizontal) {
                             LazyHStack(alignment: .top, spacing: 12) {
-                                ForEach(detailVM.episodes, id: \.id) { episode in
+                                ForEach(episodes, id: \.id) { episode in
                                     if let episodeID = episode.id {
                                         let cardWidth = episodeCardHeight * episode.imageAspectRatio
                                         let zoomID = episode.zoomTransitionID(rowKey: "episode")
@@ -88,10 +87,10 @@ extension MediaDetailView {
                                             zoomID: zoomID,
                                             imageAspectRatio: episode.imageAspectRatio,
                                             onContinueWatching: {
-                                                playbackManager.play(item: episode, fromBeginning: false, queue: detailVM.episodes)
+                                                playbackManager.play(item: episode, fromBeginning: false, queue: episodes)
                                             },
                                             onStartFromBeginning: {
-                                                playbackManager.play(item: episode, fromBeginning: true, queue: detailVM.episodes)
+                                                playbackManager.play(item: episode, fromBeginning: true, queue: episodes)
                                             }
                                         )
                                         .equatable()
@@ -109,8 +108,11 @@ extension MediaDetailView {
                         .scrollTargetBehavior(.viewAligned)
                         .scrollPosition(id: $detailVM.scrolledEpisodeID, anchor: .leading)
                         .transition(.opacity)
+                    case .empty:
+                        EmptyView()
                     }
                 }
+                .animation(.easeInOut(duration: 0.2), value: detailVM.episodes.isEmpty)
                 .animation(.easeInOut(duration: 0.2), value: detailVM.seasons.count)
                 .task(id: detailVM.episodes.count) {
                     guard !detailVM.hasInitialEpisodeScrolled, !detailVM.episodes.isEmpty else { return }

@@ -21,11 +21,11 @@ class MediaDetailViewModel {
     var detailedItem: BaseItemDto?
     var sourceItem: BaseItemDto?
     var seriesItem: BaseItemDto?
-    var similarItems: [BaseItemDto] = []
-    var specialFeatures: [BaseItemDto] = []
+    var similarItems: LoadingState<BaseItemDto> = .empty
+    var specialFeatures: LoadingState<BaseItemDto> = .empty
     var seasons: [BaseItemDto] = []
-    var episodes: [BaseItemDto] = []
-    var collectionItems: [BaseItemDto] = []
+    var episodes: LoadingState<BaseItemDto> = .empty
+    var collectionItems: LoadingState<BaseItemDto> = .empty
     var selectedSeasonIndex: Int = 0
     var scrolledEpisodeID: String?
     var hasInitialEpisodeScrolled: Bool = false
@@ -33,10 +33,12 @@ class MediaDetailViewModel {
     var hasDetectedBitmapRatio = false
     var heroReady = false
     var isLoading = false
-    var isLoadingCollectionItems = false
-    var isLoadingEpisodes = false
-    var isLoadingSpecialFeatures = false
-    var isLoadingSimilarItems = false
+
+    var isLoadingCollectionItems: Bool { collectionItems.isLoading }
+    var isLoadingEpisodes: Bool { episodes.isLoading }
+    var isLoadingSpecialFeatures: Bool { specialFeatures.isLoading }
+    var isLoadingSimilarItems: Bool { similarItems.isLoading }
+
     var client: JellyfinClient?
     weak var libraryViewModel: LibraryViewModel?
     static var collectionItemsCache: [String: [BaseItemDto]] = [:]
@@ -63,21 +65,21 @@ class MediaDetailViewModel {
         if let item {
             self.sourceItem = item
             if item.type == .boxSet, let id = item.id, let cached = Self.collectionItemsCache[id] {
-                self.collectionItems = cached
+                self.collectionItems = cached.isEmpty ? .empty : .full(cached)
             }
             if item.type == .series, let id = item.id {
                 if let cachedSeasons = Self.seasonsCache[id] {
                     self.seasons = cachedSeasons
                 }
-                if let cachedEpisodes = Self.episodesCache[id] {
-                    self.episodes = cachedEpisodes
+                if let cachedEpisodes = Self.episodesCache[id], !cachedEpisodes.isEmpty {
+                    self.episodes = .full(cachedEpisodes)
                 }
                 if self.seasons.isEmpty && !self.episodes.isEmpty {
-                    self.seasons = Self.deriveSeasons(from: self.episodes, seriesID: id)
+                    self.seasons = Self.deriveSeasons(from: self.episodes.elements, seriesID: id)
                 }
             }
-            if item.type == .series {
-                self.isLoadingEpisodes = true
+            if item.type == .series && self.episodes.isEmpty {
+                self.episodes = .loading
             }
             if let ratio = item.primaryImageAspectRatio, ratio > 0 {
                 self.heroAspectRatio = CGFloat(ratio)
@@ -105,7 +107,7 @@ class MediaDetailViewModel {
     var isOptionsDisabled: Bool {
         guard let currentItem = displayItem else { return false }
         if currentItem.type == .boxSet {
-            return isLoadingCollectionItems || collectionItems.isEmpty
+            return collectionItems.isLoading || collectionItems.isEmpty
         }
         return false
     }
@@ -113,7 +115,7 @@ class MediaDetailViewModel {
     var isPlayDisabled: Bool {
         guard let currentItem = displayItem else { return false }
         if currentItem.type == .boxSet {
-            return isLoadingCollectionItems || collectionItems.isEmpty
+            return collectionItems.isLoading || collectionItems.isEmpty
         }
         return false
     }
@@ -225,58 +227,59 @@ class MediaDetailViewModel {
         self.libraryViewModel = libraryViewModel
         self.hasInitialEpisodeScrolled = false
         self.scrolledEpisodeID = nil
+
         if let id = item.id, let lvm = libraryViewModel {
             if let cached = lvm.cachedSpecialFeatures(for: id) {
-                self.specialFeatures = cached
-                self.isLoadingSpecialFeatures = false
+                self.specialFeatures = cached.isEmpty ? .empty : .full(cached)
             } else {
-                self.specialFeatures = []
-                self.isLoadingSpecialFeatures = true
+                self.specialFeatures = .loading
             }
             if let cachedSimilar = lvm.cachedSimilarItems(for: id) {
-                self.similarItems = cachedSimilar
-                self.isLoadingSimilarItems = false
+                self.similarItems = cachedSimilar.isEmpty ? .empty : .full(cachedSimilar)
             } else {
-                self.similarItems = []
-                self.isLoadingSimilarItems = true
+                self.similarItems = .loading
             }
         } else {
-            self.specialFeatures = []
-            self.isLoadingSpecialFeatures = true
-            self.similarItems = []
-            self.isLoadingSimilarItems = true
+            self.specialFeatures = .loading
+            self.similarItems = .loading
         }
+
         if item.type == .series {
-            self.isLoadingEpisodes = true
             if let seriesID = item.id {
                 if let cached = Self.episodesCache[seriesID], !cached.isEmpty && self.episodes.isEmpty {
-                    self.episodes = cached
+                    self.episodes = .full(cached)
                 } else if let lvm = libraryViewModel {
                     let cached = lvm.episodes(forSeriesID: seriesID)
                     if !cached.isEmpty && self.episodes.isEmpty {
-                        self.episodes = cached
+                        self.episodes = .full(cached)
                     }
                 }
                 if let cached = Self.seasonsCache[seriesID], !cached.isEmpty && self.seasons.isEmpty {
                     self.seasons = cached
                 }
                 if self.seasons.isEmpty && !self.episodes.isEmpty {
-                    self.seasons = Self.deriveSeasons(from: self.episodes, seriesID: seriesID)
+                    self.seasons = Self.deriveSeasons(from: self.episodes.elements, seriesID: seriesID)
                 }
             }
-        }
-        if item.type == .boxSet, let collectionID = item.id {
-            if let cached = Self.collectionItemsCache[collectionID], !cached.isEmpty && self.collectionItems.isEmpty {
-                self.collectionItems = cached
-            } else if self.collectionItems.isEmpty {
-                self.isLoadingCollectionItems = true
+            if self.episodes.isEmpty {
+                self.episodes = .loading
             }
         }
+
+        if item.type == .boxSet, let collectionID = item.id {
+            if let cached = Self.collectionItemsCache[collectionID], !cached.isEmpty && self.collectionItems.isEmpty {
+                self.collectionItems = .full(cached)
+            } else if self.collectionItems.isEmpty {
+                self.collectionItems = .loading
+            }
+        }
+
         if let ratio = item.primaryImageAspectRatio, ratio > 0 {
             self.heroAspectRatio = CGFloat(ratio)
         } else if item.type == .episode {
             self.heroAspectRatio = 16.0 / 9.0
         }
+
         if let sources = item.mediaSources, !sources.isEmpty {
             self.mediaSources = sources
             configureInitialStreamSelection()
@@ -306,15 +309,20 @@ class MediaDetailViewModel {
                 let downloadedEps = DownloadManager.shared.downloadedEpisodes
                     .filter { ($0.seriesID ?? $0.parentBackdropItemID) == itemID }
                     .sorted { ($0.indexNumber ?? 0) < ($1.indexNumber ?? 0) }
-                self.episodes = downloadedEps
+                self.episodes = downloadedEps.isEmpty ? .empty : .full(downloadedEps)
                 let seasonNumbers = Set(downloadedEps.compactMap(\.parentIndexNumber))
                 self.seasons = seasonNumbers.sorted().map { sNum in
                     BaseItemDto(id: "\(itemID)-season-\(sNum)", indexNumber: sNum, name: "Season \(sNum)", type: .season)
                 }
+            } else if episodes.isLoading {
+                episodes = .empty
             }
-            isLoadingEpisodes = false
-            isLoadingSpecialFeatures = false
-            isLoadingSimilarItems = false
+            if specialFeatures.isLoading {
+                specialFeatures = .empty
+            }
+            if similarItems.isLoading {
+                similarItems = .empty
+            }
             return
         }
 
@@ -328,7 +336,7 @@ class MediaDetailViewModel {
             if isSeries {
                 await loadSeasonsAndEpisodes(client: client, userID: userID)
             } else {
-                isLoadingEpisodes = false
+                episodes = .empty
                 if isBoxSet {
                     await loadCollectionItems(client: client, userID: userID, libraryViewModel: libraryViewModel)
                 } else if isEpisode {
@@ -358,11 +366,12 @@ class MediaDetailViewModel {
 
         // STAGE 3: Secondary below-the-fold content (Similar items & Special features)
         guard !Task.isCancelled else { return }
-        similarItems = await libraryViewModel.similarItems(for: itemID, client: client, userID: userID)
-        isLoadingSimilarItems = false
+        let similar = await libraryViewModel.similarItems(for: itemID, client: client, userID: userID)
+        similarItems = similar.isEmpty ? .empty : .full(similar)
+
         guard !Task.isCancelled else { return }
-        specialFeatures = await libraryViewModel.specialFeatures(for: itemID, client: client, userID: userID)
-        isLoadingSpecialFeatures = false
+        let features = await libraryViewModel.specialFeatures(for: itemID, client: client, userID: userID)
+        specialFeatures = features.isEmpty ? .empty : .full(features)
     }
 
     // MARK: - Parent Series

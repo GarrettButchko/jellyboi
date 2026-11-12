@@ -44,11 +44,10 @@ extension MediaDetailViewModel {
 
     func loadSeasonsAndEpisodes(client: JellyfinClient, userID: String?) async {
         guard let seriesID = sourceItem?.id else {
-            isLoadingEpisodes = false
+            episodes = .empty
             return
         }
-        isLoadingEpisodes = true
-        defer { isLoadingEpisodes = false }
+        episodes = .loading
 
         // 1. Fetch seasons and sort them off the main actor
         let sortedSeasons = await Task.detached(priority: .userInitiated) { () -> [BaseItemDto] in
@@ -128,7 +127,7 @@ extension MediaDetailViewModel {
 
         Self.episodesCache[seriesID] = sortedEpisodes
 
-        self.episodes = sortedEpisodes
+        self.episodes = sortedEpisodes.isEmpty ? .empty : .full(sortedEpisodes)
 
         if !hasInitialEpisodeScrolled {
             if let nextEp = nextPlayableEpisode(libraryViewModel: libraryViewModel),
@@ -243,8 +242,7 @@ extension MediaDetailViewModel {
 
     func loadCollectionItems(client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel? = nil) async {
         guard let collectionID = sourceItem?.id ?? detailedItem?.id else { return }
-        isLoadingCollectionItems = true
-        defer { isLoadingCollectionItems = false }
+        collectionItems = .loading
 
         let sorted = await Task.detached(priority: .userInitiated) { () -> [BaseItemDto] in
             let items = await client.fetchItemsOrEmpty(
@@ -263,12 +261,13 @@ extension MediaDetailViewModel {
 
         guard !Task.isCancelled else { return }
 
-        collectionItems = sorted.map { item in
+        let mapped = sorted.map { item in
             guard let id = item.id else { return item }
             return libraryViewModel?.item(for: id) ?? item
         }
+        collectionItems = mapped.isEmpty ? .empty : .full(mapped)
         if let collectionID = sourceItem?.id ?? detailedItem?.id {
-            Self.collectionItemsCache[collectionID] = collectionItems
+            Self.collectionItemsCache[collectionID] = mapped
         }
     }
 }

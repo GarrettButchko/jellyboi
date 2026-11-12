@@ -69,7 +69,7 @@ extension MediaDetailView {
     // MARK: - Progress Ring Button
 
     private var progressRingButton: some View {
-        let accent = preferences?.accentColor ?? Color.appAccent
+        let accent = Color.appAccent
         return Menu {
             playbackMenuContent
         } label: {

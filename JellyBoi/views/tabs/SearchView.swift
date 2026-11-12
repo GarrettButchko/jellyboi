@@ -10,7 +10,6 @@ import BaseColors
 import JellyfinAPI
 import SDWebImageSwiftUI
 import MarqueeText
-import SkeletonKit
 
 // MARK: - SearchView
 
@@ -130,8 +129,19 @@ struct SearchView: View {
 
     private var genreBrowse: some View {
         Group {
-            let displayGenres = viewModel.genres.orPlaceholders(when: viewModel.isLoading, count: 12)
-            if displayGenres.isEmpty && !viewModel.isLoading {
+            if viewModel.isLoading {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)],
+                    spacing: 12
+                ) {
+                    ForEach(GenreCount.placeholders(count: 12)) { genre in
+                        GenreChip(genre: genre) {}
+                    }
+                }
+                .padding(.horizontal, 16)
+                .skeleton()
+                .transition(.opacity)
+            } else if viewModel.genres.isEmpty {
                 if viewModel.showFavoritesOnly {
                     EmptyStateView(
                         icon: "star",
@@ -152,17 +162,17 @@ struct SearchView: View {
                     columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)],
                     spacing: 12
                 ) {
-                    ForEach(displayGenres) { genre in
+                    ForEach(viewModel.genres) { genre in
                         GenreChip(genre: genre) {
                             selectedGenre = genre.name
                         }
                     }
                 }
                 .padding(.horizontal, 16)
-                .skeleton(when: viewModel.isLoading)
                 .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
     }
 
     // MARK: - Search results (active state)

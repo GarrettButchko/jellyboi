@@ -8,11 +8,10 @@
 import Foundation
 import Observation
 import JellyfinAPI
-import SkeletonKit
 
 // MARK: - Supporting types
 
-public struct GenreCount: Identifiable, Hashable, Sendable, PlaceholderRepresentable {
+public struct GenreCount: Identifiable, Hashable, Sendable {
     public let name: String
     public let count: Int
     public var id: String { name }
@@ -22,10 +21,15 @@ public struct GenreCount: Identifiable, Hashable, Sendable, PlaceholderRepresent
         self.count = count
     }
 
-    public static func placeholder(seed: Int) -> GenreCount {
-        let lengths = [8, 12, 6, 14, 10, 7]
-        let length = lengths[abs(seed) % lengths.count]
-        return GenreCount(name: PlaceholderText.ofLength(length), count: 99)
+    /// Generates placeholder genre counts with realistic text lengths for skeleton views.
+    public static func placeholders(count: Int = 12) -> [GenreCount] {
+        let lengths = [8, 12, 6, 14, 10, 7, 11, 9]
+        return (0..<count).map { i in
+            GenreCount(
+                name: String(repeating: "█", count: lengths[i % lengths.count]),
+                count: 99
+            )
+        }
     }
 }
 

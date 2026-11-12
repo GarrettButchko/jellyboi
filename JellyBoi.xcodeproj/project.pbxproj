@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		2186F9093039459C009D8CCA /* SkeletonKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2186F9083039459C009D8CCA /* SkeletonKit */; };
 		2114B68D303BDCEF006F4D0E /* ScalingHeaderScrollView in Frameworks */ = {isa = PBXBuildFile; productRef = 2114B68C303BDCEF006F4D0E /* ScalingHeaderScrollView */; };
 		2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */ = {isa = PBXBuildFile; productRef = 2153AEA63038FAE600DBE264 /* BaseColors */; };
 		2161FFC33087D4CD00196CDF /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2161FFC23087D4CD00196CDF /* WidgetKit.framework */; };
@@ -116,7 +115,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				2186F9093039459C009D8CCA /* SkeletonKit in Frameworks */,
 				2186FE37303B5B5A009D8CCA /* MarqueeText in Frameworks */,
 				2153AEA73038FAE600DBE264 /* BaseColors in Frameworks */,
 				21904C653080539400A60304 /* Libavformat in Frameworks */,
@@ -210,7 +208,6 @@
 			);
 			name = JellyBoi;
 			packageProductDependencies = (
-				2186F9083039459C009D8CCA /* SkeletonKit */,
 				2170780F303647640055889C /* JellyfinAPI */,
 				217079C53036C0750055889C /* SDWebImageSwiftUI */,
 				2153AEA63038FAE600DBE264 /* BaseColors */,
@@ -258,7 +255,6 @@
 			mainGroup = 217077F1303646DD0055889C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				2186F9073039459C009D8CCA /* XCLocalSwiftPackageReference "../../Packages/SkeletonKit" */,
 				2170780E303647640055889C /* XCRemoteSwiftPackageReference "jellyfin-sdk-swift" */,
 				217079C43036C0750055889C /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */,
 				2186FE35303B5B5A009D8CCA /* XCRemoteSwiftPackageReference "MarqueeText" */,
@@ -671,10 +667,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		2186F9073039459C009D8CCA /* XCLocalSwiftPackageReference "../../Packages/SkeletonKit" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../Packages/SkeletonKit;
-		};
 		2153AEA8303928CA00DBE264 /* XCLocalSwiftPackageReference "../../Packages/BaseColors" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../Packages/BaseColors;
@@ -741,10 +733,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		2186F9083039459C009D8CCA /* SkeletonKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = SkeletonKit;
-		};
 		2114B68C303BDCEF006F4D0E /* ScalingHeaderScrollView */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 2114B68B303BDCEF006F4D0E /* XCRemoteSwiftPackageReference "ScalingHeaderScrollView" */;

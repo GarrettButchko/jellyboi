@@ -8,7 +8,6 @@
 import Foundation
 import CoreGraphics
 import JellyfinAPI
-import SkeletonKit
 
 extension BaseItemDto {
 
@@ -611,45 +610,40 @@ extension Array where Element == BaseItemDto {
     }
 }
 
-// MARK: - Placeholder Factories & PlaceholderRepresentable
+// MARK: - Placeholder Factories
 
-extension BaseItemDto: PlaceholderRepresentable {
-    /// Generates a placeholder `BaseItemDto` with text sized for skeleton loading states.
-    public static func placeholder(seed: Int) -> BaseItemDto {
-        let titleLengths = [12, 18, 8, 22, 14, 10]
-        let titleLen = titleLengths[abs(seed) % titleLengths.count]
-        let title = PlaceholderText.ofLength(titleLen)
-        let overview = PlaceholderText.words([6, 8, 4, 10, 5, 7, 9, 4, 8, 6, 7, 5, 8, 9, 6])
-
-        return BaseItemDto(
-            id: "placeholder-\(seed)",
-            name: title,
-            overview: overview,
-            type: seed % 3 == 0 ? .series : .movie
-        )
-    }
-
-    /// Generates a placeholder `BaseItemDto` with custom parameters.
+extension BaseItemDto {
+    /// Generates a placeholder `BaseItemDto` with realistic character lengths for skeleton loading states.
     public static func placeholder(
         id: String = UUID().uuidString,
         type: BaseItemKind = .movie,
-        name: String = "Placeholder Title",
-        overview: String? = "Placeholder description text for previewing layout and skeletons."
+        titleLength: Int = 14,
+        overviewLength: Int = 80
     ) -> BaseItemDto {
-        BaseItemDto(
+        let title = String(repeating: "█", count: max(1, titleLength))
+        let overview = String(repeating: "█", count: max(1, overviewLength))
+        return BaseItemDto(
             id: id,
-            name: name,
+            name: title,
             overview: overview,
             type: type
         )
     }
 
-    /// Generates an array of placeholder `BaseItemDto` objects for skeleton loading states.
+    /// Generates an array of placeholder `BaseItemDto` objects with varied title lengths for skeleton loading states.
     public static func placeholders(
         count: Int = 10,
         type: BaseItemKind = .movie
     ) -> [BaseItemDto] {
-        (0..<count).map { placeholder(seed: $0) }
+        let lengths = [12, 18, 8, 22, 14, 10, 16]
+        return (0..<count).map { i in
+            placeholder(
+                id: "placeholder-\(i)",
+                type: type,
+                titleLength: lengths[i % lengths.count],
+                overviewLength: 60 + (i % 4) * 20
+            )
+        }
     }
 }
 
@@ -663,39 +657,32 @@ extension Array where Element == BaseItemDto {
     }
 }
 
-extension BaseItemPerson: PlaceholderRepresentable {
-    /// Generates a placeholder `BaseItemPerson` with text sized for skeleton loading states.
-    public static func placeholder(seed: Int) -> BaseItemPerson {
-        let nameLengths = [14, 8, 16, 12, 10]
-        let roleLengths = [11, 15, 8, 9, 13]
-        let name = PlaceholderText.ofLength(nameLengths[abs(seed) % nameLengths.count])
-        let role = PlaceholderText.ofLength(roleLengths[abs(seed) % roleLengths.count])
-
-        return BaseItemPerson(
-            id: "person-placeholder-\(seed)",
-            name: name,
-            role: role,
-            type: .actor
-        )
-    }
-
-    /// Generates a placeholder `BaseItemPerson` for skeleton loading states.
+extension BaseItemPerson {
+    /// Generates a placeholder `BaseItemPerson` with text lengths for skeleton loading states.
     public static func placeholder(
         id: String = UUID().uuidString,
-        name: String = "Actor Name",
-        role: String = "Character Role"
+        nameLength: Int = 12,
+        roleLength: Int = 10
     ) -> BaseItemPerson {
         BaseItemPerson(
             id: id,
-            name: name,
-            role: role,
+            name: String(repeating: "█", count: max(1, nameLength)),
+            role: String(repeating: "█", count: max(1, roleLength)),
             type: .actor
         )
     }
 
     /// Generates an array of placeholder `BaseItemPerson` objects for skeleton loading states.
     public static func placeholders(count: Int = 8) -> [BaseItemPerson] {
-        (0..<count).map { placeholder(seed: $0) }
+        let nameLengths = [14, 8, 16, 12, 10]
+        let roleLengths = [11, 15, 8, 9, 13]
+        return (0..<count).map { i in
+            placeholder(
+                id: "person-placeholder-\(i)",
+                nameLength: nameLengths[i % nameLengths.count],
+                roleLength: roleLengths[i % roleLengths.count]
+            )
+        }
     }
 }
 

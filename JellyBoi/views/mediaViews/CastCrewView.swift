@@ -83,8 +83,10 @@ struct CastCrewView: View {
                             .foregroundStyle(Color.mainOpp)
                             .padding(.horizontal, 16)
 
-                        MediaGrid.placeholder(namespace: mediaZoomTransition)
+                        MediaGrid(items: .placeholders(count: 18), namespace: mediaZoomTransition)
+                            .skeleton()
                     }
+                    .transition(.opacity)
                 } else if viewModel.mediaItems.isEmpty && viewModel.episodeItems.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Movies & Shows")
@@ -100,7 +102,8 @@ struct CastCrewView: View {
                         .padding(.top, 20)
                     }
                 } else {
-                    if !viewModel.mediaItems.isEmpty {
+                    Group {
+                        if !viewModel.mediaItems.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Movies & Shows")
                                 .font(.system(size: 20, weight: .bold))
@@ -148,8 +151,11 @@ struct CastCrewView: View {
                             .padding(.horizontal, 16)
                         }
                     }
+                    }
+                    .transition(.opacity)
                 }
             }
+            .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
             .padding(.top, safeAreaTop)
             .padding(.bottom, 24)
         }

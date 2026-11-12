@@ -74,10 +74,27 @@ struct HomeView: View {
                                 #endif
                                 if preferences.showHomeCarousel && !isCarouselHidden {
                                     Carousel.Placeholder()
+                                        .transition(.opacity)
                                 }
-                                HomeStatsRow.placeholder
+                                HomeStatsRow(
+                                    moviesCount: 999,
+                                    tvSeriesCount: 99,
+                                    episodeCount: 999,
+                                    inProgressCount: 99,
+                                    favoritesCount: 99,
+                                    completedCount: 99,
+                                    watchedHours: 99
+                                )
+                                .skeleton()
+                                .transition(.opacity)
                                 ForEach(0..<3, id: \.self) { _ in
-                                    SectionRow.placeholder(namespace: zoomTransition)
+                                    SectionRow(
+                                        title: "Movies & Shows",
+                                        items: .placeholders(count: 8),
+                                        namespace: zoomTransition
+                                    )
+                                    .skeleton()
+                                    .transition(.opacity)
                                 }
                             } else {
                                 if preferences.showHomeCarousel && !viewModel.carouselItems.isEmpty {
@@ -141,8 +158,8 @@ struct HomeView: View {
                                     .transition(.opacity)
                                 }
                             }
-                            
                         }
+                        .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(alignment: .top) {
                             HomeHeroBackdrop(

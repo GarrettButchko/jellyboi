@@ -65,19 +65,6 @@ struct HomeStatsRow: View {
         .scrollIndicators(.hidden)
     }
 
-    /// Convenience factory rendering a static skeleton placeholder stats row.
-    static var placeholder: some View {
-        HomeStatsRow(
-            moviesCount: 999,
-            tvSeriesCount: 99,
-            episodeCount: 999,
-            inProgressCount: 99,
-            favoritesCount: 99,
-            completedCount: 99,
-            watchedHours: 99
-        )
-        .skeleton()
-    }
 }
 
 // MARK: - Stat Bubbles
@@ -193,7 +180,16 @@ private struct StatPressButtonStyle: ButtonStyle {
             watchedHours: 412
         )
 
-        HomeStatsRow.placeholder
+        HomeStatsRow(
+            moviesCount: 999,
+            tvSeriesCount: 99,
+            episodeCount: 999,
+            inProgressCount: 99,
+            favoritesCount: 99,
+            completedCount: 99,
+            watchedHours: 99
+        )
+        .skeleton()
     }
     .background(Color.bg)
 }

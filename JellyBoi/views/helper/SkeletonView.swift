@@ -7,66 +7,77 @@
 
 import SwiftUI
 import BaseColors
-@_exported import SkeletonKit
+
+// MARK: - Skeleton Animation
+
+public extension Animation {
+    /// The global animation used for skeleton transitions throughout the app.
+    static let skeleton: Animation = .easeInOut(duration: 0.2)
+    /// The global animation used for skeleton transitions throughout the app.
+    static let skeletonTransition: Animation = .skeleton
+}
+
+public extension AnyTransition {
+    /// The global transition used for skeleton content fading in or out.
+    static var skeleton: AnyTransition {
+        .opacity.animation(.skeleton)
+    }
+}
+
+// MARK: - Skeleton Modifier
+
+public struct SkeletonModifier: ViewModifier {
+    let isActive: Bool
+
+    public init(
+        isActive: Bool = true
+    ) {
+        self.isActive = isActive
+    }
+
+    public func body(content: Content) -> some View {
+        content
+            .redacted(reason: isActive ? .placeholder : [])
+            .disabled(isActive)
+            .transaction { transaction in
+                if isActive {
+                    // Skeletons remain completely static while active (no continuous shimmer or pulsing)
+                    transaction.animation = nil
+                }
+            }
+    }
+}
+
+public extension View {
+    /// Masks the view into a static skeleton placeholder while `isLoading` is true,
+    /// smoothly animating in when `isLoading` becomes false.
+    func skeleton(
+        when isLoading: Bool
+    ) -> some View {
+        modifier(SkeletonModifier(isActive: isLoading))
+    }
+
+    /// Masks the view into a static skeleton placeholder while `isActive` is true,
+    /// smoothly animating in when `isActive` becomes false.
+    func skeleton(
+        isActive: Bool = true
+    ) -> some View {
+        modifier(SkeletonModifier(isActive: isActive))
+    }
+}
 
 // MARK: - Skeleton Primitives
 
-/// The foundational static placeholder shape used across all skeleton components.
-struct SkeletonBlock: View {
+public struct SkeletonBlock: View {
     let cornerRadius: CGFloat
 
-    init(cornerRadius: CGFloat = 8) {
+    public init(cornerRadius: CGFloat = 8) {
         self.cornerRadius = cornerRadius
     }
 
-    var body: some View {
+    public var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(Color.mainOpp.opacity(0.08))
-    }
-}
-
-/// Swaps between a static placeholder block and actual content with a smooth fade animation.
-struct SkeletonZone<Content: View, Placeholder: View>: View {
-    let showsContent: Bool
-    let placeholder: () -> Placeholder
-    let content: () -> Content
-
-    init(
-        showsContent: Bool,
-        @ViewBuilder placeholder: @escaping () -> Placeholder,
-        @ViewBuilder content: @escaping () -> Content
-    ) {
-        self.showsContent = showsContent
-        self.placeholder = placeholder
-        self.content = content
-    }
-
-    var body: some View {
-        ZStack {
-            if showsContent {
-                content()
-                    .transition(.opacity)
-            } else {
-                placeholder()
-                    .transition(.opacity)
-            }
-        }
-        .animation(.easeInOut(duration: 0.35), value: showsContent)
-        .transaction { transaction in
-            if !showsContent {
-                transaction.animation = nil
-            }
-        }
-    }
-}
-
-// MARK: - Backward Compatibility Extension
-
-public extension View {
-    /// Masks the view into a static skeleton placeholder while `isActive` is true,
-    /// smoothly animating in when `isActive` becomes false.
-    func skeleton(isActive: Bool = true) -> some View {
-        self.skeleton(when: isActive)
     }
 }
 

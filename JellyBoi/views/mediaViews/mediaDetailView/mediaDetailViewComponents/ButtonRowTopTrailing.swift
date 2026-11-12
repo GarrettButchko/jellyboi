@@ -51,9 +51,26 @@ extension MediaDetailView {
     // MARK: - Top Trailing Buttons
 
     var topTrailingButtons: some View {
+        MediaDetailTopTrailingButtons(
+            detailVM: detailVM,
+            item: item
+        )
+    }
+}
+
+// MARK: - MediaDetailTopTrailingButtons
+
+struct MediaDetailTopTrailingButtons: View {
+    @Bindable var detailVM: MediaDetailViewModel
+    let item: BaseItemDto
+
+    @Environment(ServerViewModel.self) private var serverViewModel
+    @Namespace private var trailingButtonsNamespace
+
+    var body: some View {
         let isFavorited = detailVM.isFavorite(fallback: item)
 
-        return GlassEffectContainer(spacing: 8) {
+        GlassEffectContainer(spacing: 8) {
             HStack(spacing: 8) {
                 Button {
                     Task {

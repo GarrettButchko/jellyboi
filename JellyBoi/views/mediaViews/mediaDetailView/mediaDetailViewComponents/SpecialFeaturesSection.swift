@@ -20,7 +20,7 @@ extension MediaDetailView {
     }
     
     private var showPlaceholder: Bool {
-        detailVM.specialFeatures.isEmpty && detailVM.isLoadingSpecialFeatures && (displayItem.specialFeatureCount ?? 0) > 0
+        detailVM.specialFeatures.isLoading && (displayItem.specialFeatureCount ?? 0) > 0
     }
 
     @ViewBuilder
@@ -28,19 +28,20 @@ extension MediaDetailView {
         if !detailVM.isSpecialFeaturesHidden {
             Group {
                 if showPlaceholder {
-                    SectionRow.placeholder(
+                    SectionRow(
                         title: "Special Features",
-                        count: 4,
+                        items: .placeholders(count: 4),
                         imageAspectRatio: 9.0 / 6.0,
                         cardHeight: specialFeatureCardHeight
                     )
+                    .skeleton()
                     .id("placeholder")
                     .transition(.opacity)
-                } else if !detailVM.specialFeatures.isEmpty {
+                } else if case .full(let features) = detailVM.specialFeatures {
                     SectionRow(title: "Special Features") {
                         ScrollView(.horizontal) {
                             LazyHStack(alignment: .top, spacing: 14) {
-                                ForEach(detailVM.specialFeatures, id: \.id) { feature in
+                                ForEach(features, id: \.id) { feature in
                                     if let featureID = feature.id {
                                         let ratio = feature.imageAspectRatio
                                         let cardWidth = specialFeatureCardHeight * ratio
@@ -49,48 +50,32 @@ extension MediaDetailView {
                                         VStack(alignment: .leading, spacing: 6) {
                                             MediaCard(
                                                 item: feature,
-                                                posterURL: feature.thumbnailURL(client: serverViewModel.client),
+                                                posterURL: feature.backdropURL(client: serverViewModel.client)
+                                                    ?? feature.thumbnailURL(client: serverViewModel.client),
                                                 namespace: specialFeatureTransition,
                                                 onSelect: {
-                                                    playbackManager.play(
-                                                        item: feature,
-                                                        fromBeginning: false,
-                                                        client: serverViewModel.client,
-                                                        userID: serverViewModel.currentUser?.id,
-                                                        libraryViewModel: libraryViewModel
-                                                    )
+                                                    specialFeatureZoomID = zoomID
+                                                    selectedSpecialFeature = feature
                                                 },
                                                 zoomID: zoomID,
                                                 imageAspectRatio: ratio,
                                                 onContinueWatching: {
-                                                    playbackManager.play(
-                                                        item: feature,
-                                                        fromBeginning: false,
-                                                        client: serverViewModel.client,
-                                                        userID: serverViewModel.currentUser?.id,
-                                                        libraryViewModel: libraryViewModel
-                                                    )
+                                                    playbackManager.play(item: feature, fromBeginning: false, queue: features)
                                                 },
                                                 onStartFromBeginning: {
-                                                    playbackManager.play(
-                                                        item: feature,
-                                                        fromBeginning: true,
-                                                        client: serverViewModel.client,
-                                                        userID: serverViewModel.currentUser?.id,
-                                                        libraryViewModel: libraryViewModel
-                                                    )
+                                                    playbackManager.play(item: feature, fromBeginning: true, queue: features)
                                                 }
                                             )
                                             .equatable()
                                             .frame(width: cardWidth, height: specialFeatureCardHeight)
 
-                                            Text(feature.name ?? "Special Feature")
+                                            Text(feature.name ?? "")
                                                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                                                 .foregroundStyle(Color.mainOpp)
                                                 .lineLimit(2)
-                                                .fixedSize(horizontal: false, vertical: true)
+                                                .frame(width: cardWidth, alignment: .leading)
                                         }
-                                        .frame(width: cardWidth, height: specialFeatureItemHeight, alignment: .top)
+                                        .frame(width: cardWidth)
                                         .id(featureID)
                                     }
                                 }
@@ -103,11 +88,10 @@ extension MediaDetailView {
                         .scrollIndicators(.hidden)
                         .scrollTargetBehavior(.viewAligned)
                     }
-                    .id("content")
                     .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.3), value: showPlaceholder)
+            .animation(.easeInOut(duration: 0.35), value: detailVM.specialFeatures)
         }
     }
 }
