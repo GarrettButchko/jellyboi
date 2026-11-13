@@ -9,6 +9,22 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 
+// MARK: - Skeleton Default Items
+
+private let defaultSpecialFeature = BaseItemDto(
+    id: "default-feature",
+    name: "Special Feature Title",
+    type: .video
+)
+
+private let defaultSpecialFeatures: [BaseItemDto] = (0..<4).map { index in
+    BaseItemDto(
+        id: "default-feature-\(index)",
+        name: defaultSpecialFeature.name,
+        type: defaultSpecialFeature.type
+    )
+}
+
 extension MediaDetailView {
 
     private var specialFeatureCardHeight: CGFloat {
@@ -27,34 +43,44 @@ extension MediaDetailView {
             #endif
             return true
         }()
-        if showSpecialFeatures, (!detailVM.specialFeatures.isEmpty || (detailVM.specialFeatures.isLoading && (displayItem.specialFeatureCount ?? 0) > 0)) {
+        if showSpecialFeatures, detailVM.secondaryStatus.isLoading || !detailVM.specialFeatures.isEmpty {
             SectionRow(title: "Special Features") {
-                switch detailVM.specialFeatures {
-                case .loading:
-                    specialFeaturesSkeleton
-                        .transition(.opacity)
-                case .full(let features):
-                    specialFeaturesContent(features)
-                        .transition(.opacity)
-                case .empty:
-                    EmptyView()
+                ZStack(alignment: .topLeading) {
+                    if detailVM.secondaryStatus.isLoading {
+                        specialFeaturesSkeleton
+                            .transition(.skeleton)
+                    } else {
+                        specialFeaturesContent(detailVM.specialFeatures)
+                            .transition(.skeleton)
+                    }
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: detailVM.specialFeatures.isEmpty)
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .top)),
+                removal: .opacity
+            ))
+            .animation(.skeleton, value: detailVM.secondaryStatus)
         }
     }
 
     private var specialFeaturesSkeleton: some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 14) {
-                ForEach(0..<4, id: \.self) { _ in
+                ForEach(defaultSpecialFeatures, id: \.id) { feature in
                     let cardWidth = specialFeatureCardHeight * (16.0 / 9.0)
                     VStack(alignment: .leading, spacing: 6) {
-                        SkeletonBlock(cornerRadius: 16)
-                            .frame(width: cardWidth, height: specialFeatureCardHeight)
+                        MediaCard(
+                            item: feature,
+                            posterURL: nil,
+                            imageAspectRatio: 16.0 / 9.0
+                        )
+                        .frame(width: cardWidth, height: specialFeatureCardHeight)
 
-                        SkeletonBlock(cornerRadius: 4)
-                            .frame(width: cardWidth * 0.7, height: 13)
+                        Text(feature.name ?? "")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.mainOpp)
+                            .lineLimit(2)
+                            .frame(width: cardWidth, alignment: .leading)
                     }
                     .frame(width: cardWidth)
                 }

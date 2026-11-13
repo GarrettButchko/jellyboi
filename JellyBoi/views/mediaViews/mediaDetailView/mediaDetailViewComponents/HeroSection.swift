@@ -74,13 +74,13 @@ extension MediaDetailView {
 
                 WebImage(
                     url: url,
-                    transaction: Transaction(animation: .easeInOut(duration: 0.25))
+                    transaction: Transaction(animation: .skeleton)
                 ) { phase in
                     if let image = phase.image {
                         image
                             .resizable()
                             .scaledToFill()
-                            .transition(.fade(duration: 0.25))
+                            .transition(.skeleton)
                     }
                 }
                 .onSuccess { image, _, _ in

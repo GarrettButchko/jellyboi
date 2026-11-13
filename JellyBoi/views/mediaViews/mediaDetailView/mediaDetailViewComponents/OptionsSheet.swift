@@ -14,23 +14,7 @@ extension MediaDetailView {
     var optionsSheet: some View {
         VStack(alignment: .leading, spacing: 18) {
             if detailVM.isLoadingPlaybackOptions {
-                VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        SkeletonBlock(cornerRadius: 4).frame(width: 80, height: 14)
-                        SkeletonBlock(cornerRadius: 12).frame(maxWidth: .infinity).frame(height: 48)
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        SkeletonBlock(cornerRadius: 4).frame(width: 90, height: 14)
-                        SkeletonBlock(cornerRadius: 12).frame(maxWidth: .infinity).frame(height: 48)
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        SkeletonBlock(cornerRadius: 4).frame(width: 70, height: 14)
-                        SkeletonBlock(cornerRadius: 12).frame(maxWidth: .infinity).frame(height: 48)
-                    }
-                }
-                .skeleton()
-                .padding(.vertical, 8)
-                .transition(.opacity)
+                optionsSkeleton
             } else {
                 // Dropdown 1: Video Quality / Bitrate
                 qualityDropdown
@@ -49,7 +33,7 @@ extension MediaDetailView {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: detailVM.isLoadingPlaybackOptions)
+        .animation(.skeleton, value: detailVM.isLoadingPlaybackOptions)
         .padding(.horizontal, 20)
         .padding(.top, 24)
         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -66,6 +50,29 @@ extension MediaDetailView {
                 client: serverViewModel.client,
                 userID: serverViewModel.currentUser?.id
             )
+        }
+    }
+
+    // MARK: - Skeleton View
+
+    private var optionsSkeleton: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            dropdownSkeletonRow(label: "Quality", icon: "film", value: "Auto (1080p)")
+            dropdownSkeletonRow(label: "Audio", icon: "speaker.wave.2", value: "English (Default)")
+            dropdownSkeletonRow(label: "Subtitles", icon: "captions.bubble", value: "None")
+        }
+        .skeleton()
+        .transition(.opacity)
+    }
+
+    private func dropdownSkeletonRow(label: String, icon: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(.footnote, design: .rounded, weight: .semibold))
+                .foregroundStyle(Color.mainOpp.opacity(0.55))
+                .padding(.horizontal, 4)
+
+            dropdownLabel(icon: icon, value: value)
         }
     }
 

@@ -24,12 +24,14 @@ struct MediaDetailView: View {
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
 
     @State var detailVM: MediaDetailViewModel
+    
     @State var selectedPerson: BaseItemPerson?
     @State var selectedEpisode: BaseItemDto?
     @State var selectedSpecialFeature: BaseItemDto?
     @State var selectedRelatedItem: BaseItemDto?
     @State var selectedCollectionItem: BaseItemDto?
     @State var selectedSeries: BaseItemDto?
+    
     @State var showOptionsSheet: Bool = false
     @State var optionsSheetHeight: CGFloat = 0
     @State var heroArtworkHeight: CGFloat = 0
@@ -81,6 +83,11 @@ struct MediaDetailView: View {
                 .padding(.top, 16)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.skeleton, value: detailVM.primaryDetailsStatus)
+            .animation(.skeleton, value: detailVM.episodesStatus)
+            .animation(.skeleton, value: detailVM.collectionStatus)
+            .animation(.skeleton, value: detailVM.secondaryStatus)
+            .animation(.skeleton, value: detailVM.heroAspectRatio)
         }
         .background(Color.bg.ignoresSafeArea())
         .toolbarVisibility(.hidden, for: .navigationBar)
@@ -99,14 +106,14 @@ struct MediaDetailView: View {
         ) {
             if detailVM.downloadAlertAction == .cancel {
                 Button("Cancel Download", role: .destructive) {
-                    withAnimation(.smooth(duration: 0.25)) {
+                    withAnimation(.skeleton) {
                         detailVM.cancelDownload(downloadManager: downloadManager)
                     }
                 }
                 Button("Keep Downloading", role: .cancel) { }
             } else {
                 Button("Remove", role: .destructive) {
-                    withAnimation(.smooth(duration: 0.25)) {
+                    withAnimation(.skeleton) {
                         detailVM.deleteDownload(downloadManager: downloadManager)
                     }
                 }

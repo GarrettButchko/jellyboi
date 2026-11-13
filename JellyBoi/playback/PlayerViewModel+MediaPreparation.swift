@@ -22,7 +22,7 @@ extension PlayerViewModel {
             directPlayProfiles: [
                 DirectPlayProfile(
                     audioCodec: "aac,mp3,ac3,eac3,alac,flac",
-                    container: "mp4,m4v,mov",
+                    container: ApplePlayableContainer.jellyfinContainerList,
                     type: .video,
                     videoCodec: "h264,hevc"
                 ),
@@ -103,13 +103,6 @@ extension PlayerViewModel {
 
     // MARK: - Server Networking Helpers
 
-    func resolveServerURL(path: String, client: JellyfinClient) -> URL? {
-        if path.hasPrefix("http://") || path.hasPrefix("https://") {
-            return URL(string: path)
-        }
-        return client.url(path: path)
-    }
-
     func authorizationHeader(for client: JellyfinClient) -> String {
         var rawFields = [
             "DeviceId": client.configuration.deviceID,
@@ -156,9 +149,9 @@ extension PlayerViewModel {
         var selectedSource: MediaSourceInfo?
         var natSize: CGSize?
 
-        let isLocalPlayable = isLocalPlaybackPlayable(url: req.localFileURL)
-
-        if let localURL = req.localFileURL, isLocalPlayable {
+        // A local file only ever arrives here already vetted as a natively playable container by
+        // `DownloadManager.playableLocalFileURL`; `prepareLocalPlayback` then does the real check.
+        if let localURL = req.localFileURL {
             if let localResult = await prepareLocalPlayback(from: localURL) {
                 preparedItem = localResult.playerItem
                 natSize = localResult.naturalSize
@@ -186,7 +179,7 @@ extension PlayerViewModel {
             sessionID = serverResult.sessionID
             selectedSource = serverResult.selectedSource
         } else if !usedLocal {
-            handlePlaybackPreparationFailure(req: req, isLocalPlayable: isLocalPlayable)
+            handlePlaybackPreparationFailure(req: req)
             return nil
         }
 
@@ -225,12 +218,6 @@ extension PlayerViewModel {
     }
 
     // MARK: - Local File Playback Preparation
-
-    private func isLocalPlaybackPlayable(url: URL?) -> Bool {
-        guard let url else { return false }
-        let ext = url.pathExtension.lowercased()
-        return ["mp4", "m4v", "mov"].contains(ext)
-    }
 
     private func prepareLocalPlayback(from localURL: URL) async -> LocalPreparationResult? {
         let asset = AVURLAsset(url: localURL)
@@ -335,7 +322,7 @@ extension PlayerViewModel {
             return nil
         }
 
-        let authenticatedURL = appendAuthenticationIfNeeded(to: finalURL, token: client.configuration.accessToken)
+        let authenticatedURL = PlaybackURL.appendingAuthentication(finalURL, token: client.configuration.accessToken)
         AppLogger.info("Resolved streaming URL: \(authenticatedURL.absoluteString)")
 
         let asset = makeAuthenticatedAsset(url: authenticatedURL, client: client)
@@ -349,15 +336,35 @@ extension PlayerViewModel {
         )
     }
 
+    /// Asks the server how this item should be delivered and converts the answer into a stream URL.
+    ///
+    /// The server is the only authority on delivery method (direct play vs. remux vs. transcode), so
+    /// this runs before every non-local playback attempt. Two outcomes are normal:
+    ///   - A `transcodingURL` comes back: the server already decided to remux/transcode, and that URL
+    ///     is used as-is.
+    ///   - No `transcodingURL` comes back: the file is directly playable, so `url` stays nil and the
+    ///     caller resolves the stream itself via `resolveFallbackStream`.
+    /// `source` is returned whenever the server reports one, even if no URL was produced, because the
+    /// fallback path needs it to pick between direct play and an HLS remux.
     private func requestPostedPlaybackInfo(
         for req: PlaybackRequest,
         itemID: String,
         resumeTicks: Int,
         client: JellyfinClient
     ) async -> (url: URL?, sessionID: String?, source: MediaSourceInfo?, playMethod: PlayMethod) {
+        // A user-selected bitrate is an explicit quality request, which cannot be satisfied by direct
+        // play or direct stream: the server has to transcode to hit that target. Choosing "Original"
+        // leaves `maxBitrate` nil, which is what permits direct play.
         let targetBitrate: Int? = req.maxBitrate
         let allowDirect = req.maxBitrate == nil
+
+        // Deliberately high ceiling for the "Original" case so the server never throttles on its own;
+        // the real cap only matters when the user picked a preset.
         let effectiveMaxBitrate = targetBitrate ?? 140_000_000
+
+        // Negotiation payload. The device profile advertises which containers/codecs AVPlayer can
+        // handle, while the stream indices, source ID, and resume ticks tell the server exactly which
+        // variant of the file to prepare.
         let playbackDto = PlaybackInfoDto(
             allowAudioStreamCopy: true,
             allowVideoStreamCopy: allowDirect,
@@ -373,12 +380,15 @@ extension PlayerViewModel {
             userID: userID
         )
 
-        var streamURL: URL?
-        var sessionID: String?
-        var selectedSource: MediaSourceInfo?
-        var playMethod: PlayMethod = .directStream
+        // Outputs, filled in from the server response below. Remaining nil means "server offered no
+        // instructions for this", which the caller treats as a direct-play request.
+        var streamURL: URL?                 // Set only when the server returned a transcoding URL.
+        var sessionID: String?              // Session ID used by the server to track this stream.
+        var selectedSource: MediaSourceInfo? // Authoritative source info: container, bitrate, streams.
+        var playMethod: PlayMethod = .directStream // Overwritten only when transcoding is involved.
 
         do {
+            // POST /Items/{itemID}/PlaybackInfo: the negotiation itself.
             let playbackInfo = try await client.send(
                 Paths.getPostedPlaybackInfo(
                     itemID: itemID,
@@ -386,14 +396,23 @@ extension PlayerViewModel {
                     playbackDto
                 )
             ).value
+
+            // Keep the server's session ID so later start/progress/stop reports match this stream.
             sessionID = playbackInfo.playSessionID
 
+            // Honour the source the user picked when one exists; otherwise take the server's first
+            // entry, which is its "Auto" choice for the item.
             let matchingSource = playbackInfo.mediaSources?.first(where: { $0.id == req.mediaSourceID })
                 ?? playbackInfo.mediaSources?.first
 
             if let first = matchingSource {
                 selectedSource = first
+
+                // The server attaches a transcoding URL only when it decided the file cannot be sent
+                // as-is. No URL means "direct play is fine", so leave `streamURL` nil for the fallback.
                 if let transURL = first.transcodingURL, !transURL.isEmpty {
+                    // Record which of the two server-side options was chosen so the player and the UI
+                    // can report it accurately.
                     if req.maxBitrate != nil {
                         playMethod = .transcode
                     } else if first.isSupportsDirectStream == true {
@@ -401,23 +420,30 @@ extension PlayerViewModel {
                     } else {
                         playMethod = .transcode
                     }
-                    var fullTransURL = transURL
-                    if let maxBitrate = req.maxBitrate, !fullTransURL.contains("MaxStreamingBitrate=") {
-                        let sep = fullTransURL.contains("?") ? "&" : "?"
-                        fullTransURL += "\(sep)VideoBitRate=\(maxBitrate)&MaxStreamingBitrate=\(maxBitrate)"
-                    }
-                    streamURL = resolveServerURL(path: fullTransURL, client: client)
-                    AppLogger.info("Using server-provided transcoding URL: \(streamURL?.absoluteString ?? fullTransURL)")
+
+                    // The server's URL does not always carry the requested bitrate cap, and when it
+                    // does carry one it may not be the value the user picked. Force it so the quality
+                    // selection is actually honoured instead of best-effort.
+                    let cappedURL = PlaybackURL.applyingBitrateCap(req.maxBitrate, to: transURL)
+
+                    // Convert the server-relative path into an absolute URL on this server.
+                    streamURL = PlaybackURL.resolved(cappedURL, client: client)
+                    AppLogger.info("Using server-provided transcoding URL: \(streamURL?.absoluteString ?? cappedURL)")
                 }
             }
         } catch is CancellationError {
+            // Preparation was abandoned (item changed or view dismissed), so this is expected and
+            // should not surface as a playback failure.
             AppLogger.debug("Player preparation cancelled during getPostedPlaybackInfo")
         } catch {
+            // Any other failure leaves the outputs untouched, so the caller falls back to
+            // `resolveFallbackStream`. Logged at warning level because that path is less reliable.
             if !Task.isCancelled {
                 AppLogger.warning("Failed to get posted playback info: \(error.localizedDescription)")
             }
         }
 
+        // `url` may legitimately be nil on success (direct play); `source` is what the caller needs then.
         return (streamURL, sessionID, selectedSource, playMethod)
     }
 
@@ -431,7 +457,7 @@ extension PlayerViewModel {
     ) -> (url: URL, playMethod: PlayMethod, sessionID: String)? {
         let source = selectedSource ?? req.item.mediaSources?.first
         let container = source?.container?.lowercased() ?? ""
-        let isAppleNativeContainer = ["mp4", "m4v", "mov"].contains(container)
+        let isAppleNativeContainer = ApplePlayableContainer.contains(container)
         let hasCustomStreams = req.audioStreamIndex != nil || (req.subtitleStreamIndex != nil && req.subtitleStreamIndex! >= 0) || req.maxBitrate != nil
         let canDirectPlay = source?.isSupportsDirectPlay == true && isAppleNativeContainer && !hasCustomStreams
 
@@ -459,10 +485,9 @@ extension PlayerViewModel {
             if let subtitleIndex = req.subtitleStreamIndex {
                 hlsPath += "&SubtitleStreamIndex=\(subtitleIndex)"
             }
-            if let maxBitrate = req.maxBitrate {
-                hlsPath += "&VideoBitRate=\(maxBitrate)&MaxStreamingBitrate=\(maxBitrate)"
-            }
-            guard let hlsURL = resolveServerURL(path: hlsPath, client: client) else {
+            // Same cap logic as the server-provided URL path, kept in one place.
+            hlsPath = PlaybackURL.applyingBitrateCap(req.maxBitrate, to: hlsPath)
+            guard let hlsURL = PlaybackURL.resolved(hlsPath, client: client) else {
                 now = .failed(reason: "Unable to construct stream URL.")
                 AppLogger.error("Failed to construct HLS stream URL for item \(itemID)")
                 return nil
@@ -473,21 +498,6 @@ extension PlayerViewModel {
             AppLogger.error("Cannot resolve stream URL: no media source available")
             return nil
         }
-    }
-
-    private func appendAuthenticationIfNeeded(to url: URL, token: String?) -> URL {
-        guard let token, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            return url
-        }
-        var queryItems = components.queryItems ?? []
-        if !queryItems.contains(where: { $0.name == "api_key" }) {
-            queryItems.append(URLQueryItem(name: "api_key", value: token))
-            components.queryItems = queryItems
-            if let updatedURL = components.url {
-                return updatedURL
-            }
-        }
-        return url
     }
 
     private func makeAuthenticatedAsset(url: URL, client: JellyfinClient) -> AVURLAsset {
@@ -502,11 +512,9 @@ extension PlayerViewModel {
 
     // MARK: - Error Handling
 
-    private func handlePlaybackPreparationFailure(req: PlaybackRequest, isLocalPlayable: Bool) {
+    private func handlePlaybackPreparationFailure(req: PlaybackRequest) {
         let reason: String
-        if let localURL = req.localFileURL, !isLocalPlayable {
-            reason = "This video is downloaded in .\(localURL.pathExtension.uppercased()) format, which iOS cannot play offline. Please connect to your server to stream or re-download as MP4."
-        } else if req.localFileURL != nil {
+        if req.localFileURL != nil {
             reason = "The downloaded file could not be opened and server connection is unavailable."
         } else {
             reason = "Server connection is unavailable."

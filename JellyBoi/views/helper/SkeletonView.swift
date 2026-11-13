@@ -7,12 +7,13 @@
 
 import SwiftUI
 import BaseColors
+import JellyfinAPI
 
 // MARK: - Skeleton Animation
 
 public extension Animation {
     /// The global animation used for skeleton transitions throughout the app.
-    static let skeleton: Animation = .easeInOut(duration: 0.2)
+    static let skeleton: Animation = .easeInOut(duration: 0.35)
     /// The global animation used for skeleton transitions throughout the app.
     static let skeletonTransition: Animation = .skeleton
 }
@@ -83,6 +84,14 @@ public struct SkeletonBlock: View {
 
 // MARK: - Preview
 
+private let previewSkeletonItems: [BaseItemDto] = (0..<6).map { index in
+    BaseItemDto(
+        id: "preview-skeleton-\(index)",
+        name: "Preview Movie",
+        type: .movie
+    )
+}
+
 #Preview {
     ZStack {
         Color.bg.ignoresSafeArea()
@@ -93,7 +102,7 @@ public struct SkeletonBlock: View {
 
             SectionRow(
                 title: "Popular Movies",
-                items: .placeholders
+                items: previewSkeletonItems
             )
             .skeleton()
         }

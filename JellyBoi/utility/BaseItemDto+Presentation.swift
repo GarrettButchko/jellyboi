@@ -610,45 +610,6 @@ extension Array where Element == BaseItemDto {
     }
 }
 
-// MARK: - Placeholder Static Items
-
-extension BaseItemDto {
-    /// A static placeholder `BaseItemDto` for skeleton loading states.
-    public static let placeholder = BaseItemDto(
-        id: "placeholder",
-        name: "Placeholder",
-        type: .movie
-    )
-
-    /// A static array containing the placeholder `BaseItemDto` for skeleton loading states.
-    public static let placeholders: [BaseItemDto] = [placeholder]
-}
-
-extension Array where Element == BaseItemDto {
-    /// A static array containing the placeholder `BaseItemDto` for skeleton loading states.
-    public static let placeholders: [BaseItemDto] = BaseItemDto.placeholders
-    public static let placeholder: [BaseItemDto] = BaseItemDto.placeholders
-}
-
-extension BaseItemPerson {
-    /// A static placeholder `BaseItemPerson` for skeleton loading states.
-    public static let placeholder = BaseItemPerson(
-        id: "placeholder",
-        name: "Placeholder",
-        role: "Role",
-        type: .actor
-    )
-
-    /// A static array containing the placeholder `BaseItemPerson` for skeleton loading states.
-    public static let placeholders: [BaseItemPerson] = [placeholder]
-}
-
-extension Array where Element == BaseItemPerson {
-    /// A static array containing the placeholder `BaseItemPerson` for skeleton loading states.
-    public static let placeholders: [BaseItemPerson] = BaseItemPerson.placeholders
-    public static let placeholder: [BaseItemPerson] = BaseItemPerson.placeholders
-}
-
 // MARK: - Navigation Transition Helpers
 
 extension BaseItemDto {

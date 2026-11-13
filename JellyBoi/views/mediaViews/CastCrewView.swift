@@ -20,6 +20,22 @@ private var safeAreaTop: CGFloat {
 private var safeAreaTop: CGFloat { 0 }
 #endif
 
+// MARK: - Skeleton Default Items
+
+private let defaultCastCrewMediaItem = BaseItemDto(
+    id: "default-cast-crew-media-item",
+    name: "Media Title",
+    type: .movie
+)
+
+private let defaultCastCrewMediaItems: [BaseItemDto] = (0..<12).map { index in
+    BaseItemDto(
+        id: "default-cast-crew-media-\(index)",
+        name: defaultCastCrewMediaItem.name,
+        type: defaultCastCrewMediaItem.type
+    )
+}
+
 struct CastCrewView: View {
     @State private var viewModel: CastCrewViewModel
 
@@ -83,7 +99,7 @@ struct CastCrewView: View {
                             .foregroundStyle(Color.mainOpp)
                             .padding(.horizontal, 16)
 
-                        MediaGrid(items: .placeholders, namespace: mediaZoomTransition)
+                        MediaGrid(items: defaultCastCrewMediaItems, namespace: mediaZoomTransition)
                             .skeleton()
                     }
                     .transition(.opacity)
@@ -155,7 +171,7 @@ struct CastCrewView: View {
                     .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
+            .animation(.skeleton, value: viewModel.isLoading)
             .padding(.top, safeAreaTop)
             .padding(.bottom, 24)
         }

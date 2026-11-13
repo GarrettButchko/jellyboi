@@ -33,10 +33,10 @@ extension MediaDetailViewModel {
 
     var playbackQueue: [BaseItemDto]? {
         if displayItem?.type == .series, !episodes.isEmpty {
-            return episodes.elements
+            return episodes
         }
         if displayItem?.type == .boxSet, !collectionItems.isEmpty {
-            return collectionItems.elements
+            return collectionItems
         }
         return nil
     }
@@ -87,7 +87,7 @@ extension MediaDetailViewModel {
     // MARK: - Server-derived Playback State
 
     private var seriesEpisodes: [BaseItemDto] {
-        if !episodes.isEmpty { return episodes.elements }
+        if !episodes.isEmpty { return episodes }
         guard let id = displayItem?.id else { return [] }
         return libraryViewModel?.episodes(forSeriesID: id) ?? []
     }
@@ -149,7 +149,7 @@ extension MediaDetailViewModel {
         if isWatched { return 1.0 }
         if displayItem?.type == .boxSet {
             if !collectionItems.isEmpty {
-                return cumulativeProgress(for: collectionItems.elements)
+                return cumulativeProgress(for: collectionItems)
             }
             return 0.0
         }
@@ -258,7 +258,7 @@ extension MediaDetailViewModel {
             audioStreamIndex: selectedAudioStreamIndex,
             subtitleStreamIndex: selectedSubtitleStreamIndex,
             maxBitrate: selectedMaxBitrate,
-            queue: !episodes.isEmpty ? episodes.elements : nil
+            queue: !episodes.isEmpty ? episodes : nil
         )
     }
 

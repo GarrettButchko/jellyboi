@@ -320,17 +320,17 @@ public final class DownloadManager: NSObject {
         return storage.localFileURL(for: record.fileName)
     }
 
-    public func isLocallyPlayable(id: String) -> Bool {
-        guard let record = downloads[id], record.status == .completed else { return false }
-        return storage.isLocallyPlayable(fileName: record.fileName)
-    }
-
     public func playableLocalFileURL(for id: String) -> URL? {
         #if DEBUG
         if DebugSettings.shared.forceStreamFallback { return nil }
         #endif
-        guard isLocallyPlayable(id: id) else { return nil }
-        return localFileURL(for: id)
+        // Only a finished download in a container AVPlayer opens natively is worth attempting
+        // offline; anything else would just fail and fall back to streaming.
+        guard let record = downloads[id],
+              record.status == .completed,
+              let url = localFileURL(for: id),
+              ApplePlayableContainer.canPlay(url: url) else { return nil }
+        return url
     }
 
     // MARK: - Actions
@@ -373,7 +373,7 @@ public final class DownloadManager: NSObject {
 
         let container = item.container?.lowercased() ?? "mp4"
         let safeContainer = container.isEmpty ? "mp4" : container
-        let isNativePlayable = safeContainer == "mp4" || safeContainer == "m4v" || safeContainer == "mov"
+        let isNativePlayable = ApplePlayableContainer.contains(safeContainer)
         let finalContainer = isNativePlayable ? safeContainer : "mp4"
         let fileName = "\(itemID).\(finalContainer)"
 
@@ -674,7 +674,7 @@ public final class DownloadManager: NSObject {
         let destinationURL = storage.downloadsDirectory.appendingPathComponent(item.fileName)
 
         let rawContainer = item.item.container?.lowercased() ?? ""
-        let isRawNative = rawContainer == "mp4" || rawContainer == "m4v" || rawContainer == "mov"
+        let isRawNative = ApplePlayableContainer.contains(rawContainer)
         let itemTitle = item.title
         let itemBytesDownloaded = item.bytesDownloaded
         let targetAspect = item.item.mediaStreams?.first(where: { $0.type == .video })?.aspectRatio

@@ -10,6 +10,7 @@ import CoreGraphics
 import UIKit
 import AVFoundation
 import JellyfinAPI
+import LoggingKit
 
 // MARK: - Playback Status & State
 
@@ -257,6 +258,19 @@ struct ActiveStreamContext: Equatable, Sendable {
     var mediaSource: MediaSourceInfo?
     var maxBitrate: Int?
     var videoNaturalSize: CGSize?
+
+    /// How the server is delivering this stream, as reported back in playback start/progress reports.
+    ///
+    /// `PlayMethod` comes from the JellyfinAPI package, so the three cases are documented here:
+    /// - `.directPlay`: the server sends the original file untouched and AVPlayer reads it natively.
+    ///   Cheapest option — no server CPU work and no transcoding delay. Requires an Apple-native
+    ///   container (MP4/M4V/MOV) plus compatible video and audio codecs.
+    /// - `.directStream`: the container is repackaged (remuxed) but the video and audio are copied
+    ///   without re-encoding — e.g. MKV to HLS/fMP4. Small CPU cost on the server, no quality loss.
+    ///   Used when the codecs are fine but the container is not something AVPlayer can open directly.
+    /// - `.transcode`: the server decodes and re-encodes at least one stream. Required when the codec
+    ///   is unsupported, when the user picks a lower bitrate/quality, or when burning in subtitles.
+    ///   Most expensive option — highest server CPU and the slowest start.
     var playMethod: PlayMethod = .directStream
 }
 
@@ -387,5 +401,63 @@ final class PlayerSubscriptions {
     func cancelArtworkTask() {
         artworkTask?.cancel()
         artworkTask = nil
+    }
+}
+
+// MARK: - Preload Session
+
+extension PlaybackManager {
+    /// Encapsulates the background preloading lifecycle in `PlaybackManager`.
+    enum PreloadSession {
+        case idle
+        case inFlight(key: String, vm: PlayerViewModel?, task: Task<Bool, Never>, startedAt: Date)
+        case ready(key: String, vm: PlayerViewModel, startedAt: Date)
+
+        var key: String? {
+            switch self {
+            case .idle: return nil
+            case .inFlight(let key, _, _, _), .ready(let key, _, _): return key
+            }
+        }
+
+        var viewModel: PlayerViewModel? {
+            switch self {
+            case .idle: return nil
+            case .inFlight(_, let vm, _, _): return vm
+            case .ready(_, let vm, _): return vm
+            }
+        }
+
+        var startedAt: Date? {
+            switch self {
+            case .idle: return nil
+            case .inFlight(_, _, _, let date): return date
+            case .ready(_, _, let date): return date
+            }
+        }
+
+        var isPreloading: Bool {
+            if case .inFlight = self { return true }
+            return false
+        }
+
+        var isReady: Bool {
+            if case .ready = self { return true }
+            return false
+        }
+
+        mutating func cancel() {
+            switch self {
+            case .idle:
+                break
+            case .inFlight(_, let vm, let task, _):
+                task.cancel()
+                vm?.cleanup()
+            case .ready(_, let vm, _):
+                AppLogger.info("Cleaning up preloaded player")
+                vm.cleanup()
+            }
+            self = .idle
+        }
     }
 }

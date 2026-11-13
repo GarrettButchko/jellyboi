@@ -49,12 +49,6 @@ public final class DownloadStorage: @unchecked Sendable {
         return fileManager.fileExists(atPath: fileURL.path)
     }
 
-    public func isLocallyPlayable(fileName: String) -> Bool {
-        guard let url = localFileURL(for: fileName) else { return false }
-        let ext = url.pathExtension.lowercased()
-        return ["mp4", "m4v", "mov"].contains(ext)
-    }
-
     public func saveIndex(items: [DownloadItem]) {
         do {
             let data = try JSONEncoder().encode(items)

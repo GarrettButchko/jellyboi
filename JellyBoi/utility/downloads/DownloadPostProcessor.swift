@@ -28,7 +28,7 @@ public enum DownloadPostProcessor {
         }
 
         do {
-            let isRawNative = rawContainer == "mp4" || rawContainer == "m4v" || rawContainer == "mov"
+            let isRawNative = ApplePlayableContainer.contains(rawContainer)
             var shouldUseDirect = false
 
             if isRawNative {

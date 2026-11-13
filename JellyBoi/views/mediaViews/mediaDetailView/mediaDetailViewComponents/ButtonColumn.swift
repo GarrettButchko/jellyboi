@@ -27,7 +27,7 @@ extension MediaDetailView {
                 .buttonStyle(.plain)
                 .disabled(isOptionsDisabled)
                 .glassEffect(.regular.interactive(), in: Circle())
-                .animation(.smooth(duration: 0.25), value: isOptionsDisabled)
+                .animation(.skeleton, value: isOptionsDisabled)
             }
 
             GlassEffectContainer(spacing: 8) {
@@ -59,11 +59,11 @@ extension MediaDetailView {
                     .contextMenu {
                         playbackMenuContent
                     }
-                    .animation(.smooth(duration: 0.25), value: isPlayDisabled)
+                    .animation(.skeleton, value: isPlayDisabled)
                 }
             }
         }
-        .animation(.smooth(duration: 0.3), value: detailVM.progressVisible)
+        .animation(.skeleton, value: detailVM.progressVisible)
     }
 
     // MARK: - Progress Ring Button
@@ -142,7 +142,7 @@ extension MediaDetailView {
                 )
             },
             onResetProgress: {
-                withAnimation(.smooth) {
+                withAnimation(.skeleton) {
                     if isSeriesContainer {
                         detailVM.seriesAlertAction = .resetProgress
                     } else {

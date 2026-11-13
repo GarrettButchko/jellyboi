@@ -9,6 +9,10 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 
+// MARK: - Skeleton Default Items
+
+private let defaultOverview = "This is a placeholder overview text describing the plot and synopsis of the media item for skeleton loading state across multiple lines."
+
 extension MediaDetailView {
 
     @ViewBuilder
@@ -17,24 +21,23 @@ extension MediaDetailView {
             VStack(alignment: .leading, spacing: 6) {
                 episodeHeaderSection
                 if !detailVM.isOverviewHidden {
-                    if let overview = displayItem.overview, !overview.isEmpty {
-                        ExpandableText(overview)
-                            .padding(.horizontal, 20)
-                            .transition(.opacity)
-                    } else if detailVM.isLoading {
-                        VStack(alignment: .leading, spacing: 8) {
-                            SkeletonBlock(cornerRadius: 4).frame(maxWidth: .infinity).frame(height: 14)
-                            SkeletonBlock(cornerRadius: 4).frame(maxWidth: .infinity).frame(height: 14)
-                            SkeletonBlock(cornerRadius: 4).frame(height: 14).frame(maxWidth: .infinity, alignment: .leading).padding(.trailing, 80)
+                    ZStack(alignment: .topLeading) {
+                        if let overview = displayItem.overview, !overview.isEmpty {
+                            ExpandableText(overview)
+                                .padding(.horizontal, 20)
+                                .transition(.skeleton)
+                        } else if detailVM.primaryDetailsStatus.isLoading {
+                            ExpandableText(defaultOverview)
+                                .padding(.horizontal, 20)
+                                .skeleton()
+                                .transition(.skeleton)
                         }
-                        .padding(.horizontal, 20)
-                        .skeleton()
-                        .transition(.opacity)
                     }
                 }
             }
             infoChipsScrollView
         }
-        .animation(.easeInOut(duration: 0.35), value: detailVM.isLoading)
+        .animation(.skeleton, value: detailVM.primaryDetailsStatus)
+        .animation(.skeleton, value: displayItem.overview)
     }
 }

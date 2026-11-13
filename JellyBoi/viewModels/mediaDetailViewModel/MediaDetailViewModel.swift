@@ -2,18 +2,17 @@
 //  MediaDetailViewModel.swift
 //  JellyBoi
 //
-//  Created by Garrett Butchko on 9/2/26.
+//  Created by Garrett Butchko on 8/19/26.
 //
 
-import Foundation
-import CoreGraphics
-import Observation
-import Get
+import SwiftUI
+import SDWebImageSwiftUI
 import JellyfinAPI
-import LoggingKit
 
-@Observable
+// MARK: - MediaDetailViewModel
+
 @MainActor
+@Observable
 class MediaDetailViewModel {
 
     // MARK: - State
@@ -21,43 +20,51 @@ class MediaDetailViewModel {
     var detailedItem: BaseItemDto?
     var sourceItem: BaseItemDto?
     var seriesItem: BaseItemDto?
-    var cast: LoadingState<BaseItemPerson> = .empty
-    var similarItems: LoadingState<BaseItemDto> = .empty
-    var specialFeatures: LoadingState<BaseItemDto> = .empty
+
+    // MARK: - Consolidated Loading Status Enums
+    var primaryDetailsStatus: DetailSectionStatus = .idle
+    var episodesStatus: DetailSectionStatus = .idle
+    var collectionStatus: DetailSectionStatus = .idle
+    var secondaryStatus: DetailSectionStatus = .idle
+    
+    var collectionItems: [BaseItemDto] = []
+    var episodes: [BaseItemDto] = []
+    var cast: [BaseItemPerson] = []
+    var specialFeatures: [BaseItemDto] = []
+    var similarItems: [BaseItemDto] = []
     var seasons: [BaseItemDto] = []
-    var episodes: LoadingState<BaseItemDto> = .empty
-    var collectionItems: LoadingState<BaseItemDto> = .empty
+    
     var selectedSeasonIndex: Int = 0
     var scrolledEpisodeID: String?
+    
     var hasInitialEpisodeScrolled: Bool = false
     var heroAspectRatio: CGFloat = 2.0 / 3.0
     var hasDetectedBitmapRatio = false
     var heroReady = false
-    var isLoading = false
-
-    var isLoadingCast: Bool { cast.isLoading }
-    var isLoadingCollectionItems: Bool { collectionItems.isLoading }
-    var isLoadingEpisodes: Bool { episodes.isLoading }
-    var isLoadingSpecialFeatures: Bool { specialFeatures.isLoading }
-    var isLoadingSimilarItems: Bool { similarItems.isLoading }
-
-    var client: JellyfinClient?
-    weak var libraryViewModel: LibraryViewModel?
-    static var collectionItemsCache: [String: [BaseItemDto]] = [:]
-    static var seasonsCache: [String: [BaseItemDto]] = [:]
-    static var episodesCache: [String: [BaseItemDto]] = [:]
-
-    // MARK: - Playback Configuration State
-
     var mediaSources: [MediaSourceInfo] = []
     var selectedMediaSourceID: String?
-    var selectedMaxBitrate: Int?
     var selectedAudioStreamIndex: Int?
     var selectedSubtitleStreamIndex: Int? = -1
+    var isLoading = false
+    var isTrailersLoading = false
+
+    // MARK: - Shared Static Cache
+    static var seasonsCache: [String: [BaseItemDto]] = [:]
+    static var episodesCache: [String: [BaseItemDto]] = [:]
+    static var collectionItemsCache: [String: [BaseItemDto]] = [:]
+
+    // MARK: - Dependencies (set in load)
+
+    weak var client: JellyfinClient?
+    weak var libraryViewModel: LibraryViewModel?
+    weak var playbackManager: PlaybackManager?
+    weak var serverViewModel: ServerViewModel?
+
+    // MARK: - Playback Options Sheet State
+    var selectedMaxBitrate: Int?
     var isLoadingPlaybackOptions = false
 
     // MARK: - Alert State
-
     var seriesAlertAction: SeriesConfirmationAlert?
     var downloadAlertAction: DownloadAlertAction?
 
@@ -67,24 +74,55 @@ class MediaDetailViewModel {
         if let item {
             self.sourceItem = item
             let actors = (item.people ?? []).filter { $0.type == .actor }
-            self.cast = actors.isEmpty ? .loading : .full(actors)
-            if item.type == .boxSet, let id = item.id, let cached = Self.collectionItemsCache[id] {
-                self.collectionItems = cached.isEmpty ? .empty : .full(cached)
+            self.cast = (item.type != .boxSet) ? actors : []
+
+            // Primary Details Status
+            let hasPrimaryInfo = !(item.overview ?? "").isEmpty || !actors.isEmpty || !(item.tags ?? []).isEmpty
+            self.primaryDetailsStatus = hasPrimaryInfo ? .loaded : .loading
+
+            if item.type == .boxSet {
+                if let id = item.id, let cached = Self.collectionItemsCache[id] {
+                    self.collectionItems = cached
+                    self.collectionStatus = cached.isEmpty ? .empty : .loaded
+                } else {
+                    self.collectionItems = []
+                    self.collectionStatus = .loading
+                }
+            } else {
+                self.collectionItems = []
+                self.collectionStatus = .empty
             }
+
             if item.type == .series, let id = item.id {
                 if let cachedSeasons = Self.seasonsCache[id] {
                     self.seasons = cachedSeasons
                 }
                 if let cachedEpisodes = Self.episodesCache[id], !cachedEpisodes.isEmpty {
-                    self.episodes = .full(cachedEpisodes)
+                    self.episodes = cachedEpisodes
+                    self.episodesStatus = .loaded
                 }
                 if self.seasons.isEmpty && !self.episodes.isEmpty {
-                    self.seasons = Self.deriveSeasons(from: self.episodes.elements, seriesID: id)
+                    self.seasons = Self.deriveSeasons(from: self.episodes, seriesID: id)
                 }
             }
             if item.type == .series && self.episodes.isEmpty {
-                self.episodes = .loading
+                self.episodes = []
+                self.episodesStatus = .loading
+            } else if item.type != .series {
+                self.episodes = []
+                self.episodesStatus = .empty
             }
+
+            if item.type != .boxSet && item.type != .episode {
+                self.similarItems = []
+                self.specialFeatures = []
+                self.secondaryStatus = .loading
+            } else {
+                self.similarItems = []
+                self.specialFeatures = []
+                self.secondaryStatus = .empty
+            }
+
             if let ratio = item.primaryImageAspectRatio, ratio > 0 {
                 self.heroAspectRatio = CGFloat(ratio)
             } else if item.type == .episode {
@@ -111,7 +149,7 @@ class MediaDetailViewModel {
     var isOptionsDisabled: Bool {
         guard let currentItem = displayItem else { return false }
         if currentItem.type == .boxSet {
-            return collectionItems.isLoading || collectionItems.isEmpty
+            return collectionStatus.isLoading || collectionItems.isEmpty
         }
         return false
     }
@@ -119,7 +157,7 @@ class MediaDetailViewModel {
     var isPlayDisabled: Bool {
         guard let currentItem = displayItem else { return false }
         if currentItem.type == .boxSet {
-            return collectionItems.isLoading || collectionItems.isEmpty
+            return collectionStatus.isLoading || collectionItems.isEmpty
         }
         return false
     }
@@ -146,6 +184,7 @@ class MediaDetailViewModel {
         )
     }
 
+
     var hasExtraInfo: Bool {
         guard let item = displayItem else { return false }
         let people = item.people ?? []
@@ -154,6 +193,36 @@ class MediaDetailViewModel {
             || !people.filter({ $0.type == .writer }).isEmpty
             || !(item.studios ?? []).isEmpty
     }
+
+    func episodeSeasonTitle(libraryViewModel: LibraryViewModel?) -> String? {
+        guard let item = displayItem, item.type == .episode else { return nil }
+        if let seasonName = item.seasonName, !seasonName.isEmpty {
+            return seasonName
+        }
+        if let seasonNum = item.parentIndexNumber {
+            return "Season \(seasonNum)"
+        }
+        if let seriesID = item.seriesID,
+           let show = libraryViewModel?.tvShows.first(where: { $0.id == seriesID }) {
+            return show.name
+        }
+        return nil
+    }
+
+    var isPlayed: Bool {
+        get {
+            displayItem?.userData?.isPlayed ?? false
+        }
+        set {
+            if detailedItem != nil {
+                detailedItem?.userData?.isPlayed = newValue
+            }
+            if sourceItem != nil {
+                sourceItem?.userData?.isPlayed = newValue
+            }
+        }
+    }
+
 
     // MARK: - Favorites
 
@@ -178,14 +247,19 @@ class MediaDetailViewModel {
         }
     }
 
-    func handleFavoriteToggled(itemID: String, isFavorite: Bool) {
-        if displayItem?.id == itemID {
+    func toggleFavorite() {
+        guard let itemID = displayItem?.id else { return }
+        let isFavorite = !(displayItem?.isFavorite ?? false)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
             detailedItem?.setFavorite(isFavorite)
             sourceItem?.setFavorite(isFavorite)
         }
+        Task {
+            _ = await serverViewModel?.setFavorite(isFavorite, forItemID: itemID)
+        }
     }
 
-    func handleFavoriteNotification(itemID: String, isFavorite: Bool) {
+    func handleFavoriteUpdated(itemID: String, isFavorite: Bool) {
         if displayItem?.id == itemID {
             detailedItem?.setFavorite(isFavorite)
             sourceItem?.setFavorite(isFavorite)
@@ -210,20 +284,31 @@ class MediaDetailViewModel {
 
     // MARK: - Images & Aspect Ratio
 
-    func markHeroReady() {
-        heroReady = true
-    }
-
     func updateHeroAspectRatio(from size: CGSize) {
         guard size.height > 0 else { return }
         let ratio = size.width / size.height
         hasDetectedBitmapRatio = true
-        if abs(heroAspectRatio - ratio) > 0.02 {
-            heroAspectRatio = ratio
+        if abs(heroAspectRatio - ratio) > 0.005 {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                heroAspectRatio = ratio
+            }
         }
     }
 
-    // MARK: - Lifecycle & Loading
+    func markHeroReady() {
+        heroReady = true
+    }
+
+    func detectBitmapAspectRatio(from image: UIImage) {
+        guard !hasDetectedBitmapRatio, image.size.height > 0 else { return }
+        hasDetectedBitmapRatio = true
+        let bitmapRatio = image.size.width / image.size.height
+        if abs(heroAspectRatio - bitmapRatio) > 0.05 {
+            heroAspectRatio = bitmapRatio
+        }
+    }
+
+    // MARK: - Lifecycle Preparation
 
     func prepare(item: BaseItemDto, client: JellyfinClient?, libraryViewModel: LibraryViewModel? = nil) {
         self.sourceItem = item
@@ -233,52 +318,79 @@ class MediaDetailViewModel {
         self.scrolledEpisodeID = nil
 
         let actors = (item.people ?? []).filter { $0.type == .actor }
-        self.cast = actors.isEmpty ? .loading : .full(actors)
+        self.cast = (item.type != .boxSet) ? actors : []
 
-        if let id = item.id, let lvm = libraryViewModel {
-            if let cached = lvm.cachedSpecialFeatures(for: id) {
-                self.specialFeatures = cached.isEmpty ? .empty : .full(cached)
+        let hasPrimaryInfo = !(item.overview ?? "").isEmpty || !actors.isEmpty || !(item.tags ?? []).isEmpty
+        self.primaryDetailsStatus = hasPrimaryInfo ? .loaded : .loading
+
+        if item.type != .boxSet && item.type != .episode {
+            let hasCachedFeatures = item.id.flatMap { libraryViewModel?.cachedSpecialFeatures(for: $0) }
+            let hasCachedSimilar = item.id.flatMap { libraryViewModel?.cachedSimilarItems(for: $0) }
+
+            if item.specialFeatureCount == 0 {
+                self.specialFeatures = []
+            } else if let cached = hasCachedFeatures {
+                self.specialFeatures = cached
             } else {
-                self.specialFeatures = .loading
+                self.specialFeatures = []
             }
-            if let cachedSimilar = lvm.cachedSimilarItems(for: id) {
-                self.similarItems = cachedSimilar.isEmpty ? .empty : .full(cachedSimilar)
+
+            if let cachedSimilar = hasCachedSimilar {
+                self.similarItems = cachedSimilar
             } else {
-                self.similarItems = .loading
+                self.similarItems = []
+            }
+
+            if hasCachedFeatures != nil || hasCachedSimilar != nil {
+                self.secondaryStatus = .loaded
+            } else {
+                self.secondaryStatus = .loading
             }
         } else {
-            self.specialFeatures = .loading
-            self.similarItems = .loading
+            self.specialFeatures = []
+            self.similarItems = []
+            self.secondaryStatus = .empty
         }
 
         if item.type == .series {
             if let seriesID = item.id {
                 if let cached = Self.episodesCache[seriesID], !cached.isEmpty && self.episodes.isEmpty {
-                    self.episodes = .full(cached)
+                    self.episodes = cached
+                    self.episodesStatus = .loaded
                 } else if let lvm = libraryViewModel {
                     let cached = lvm.episodes(forSeriesID: seriesID)
                     if !cached.isEmpty && self.episodes.isEmpty {
-                        self.episodes = .full(cached)
+                        self.episodes = cached
+                        self.episodesStatus = .loaded
                     }
                 }
                 if let cached = Self.seasonsCache[seriesID], !cached.isEmpty && self.seasons.isEmpty {
                     self.seasons = cached
                 }
                 if self.seasons.isEmpty && !self.episodes.isEmpty {
-                    self.seasons = Self.deriveSeasons(from: self.episodes.elements, seriesID: seriesID)
+                    self.seasons = Self.deriveSeasons(from: self.episodes, seriesID: seriesID)
                 }
             }
             if self.episodes.isEmpty {
-                self.episodes = .loading
+                self.episodes = []
+                self.episodesStatus = .loading
             }
+        } else {
+            self.episodes = []
+            self.episodesStatus = .empty
         }
 
         if item.type == .boxSet, let collectionID = item.id {
             if let cached = Self.collectionItemsCache[collectionID], !cached.isEmpty && self.collectionItems.isEmpty {
-                self.collectionItems = .full(cached)
+                self.collectionItems = cached
+                self.collectionStatus = .loaded
             } else if self.collectionItems.isEmpty {
-                self.collectionItems = .loading
+                self.collectionItems = []
+                self.collectionStatus = .loading
             }
+        } else {
+            self.collectionItems = []
+            self.collectionStatus = .empty
         }
 
         if let ratio = item.primaryImageAspectRatio, ratio > 0 {
@@ -293,6 +405,8 @@ class MediaDetailViewModel {
         }
     }
 
+    // MARK: - Loading Orchestrator
+
     func load(
         item: BaseItemDto,
         client: JellyfinClient,
@@ -301,11 +415,14 @@ class MediaDetailViewModel {
         playbackManager: PlaybackManager? = nil,
         serverViewModel: ServerViewModel? = nil
     ) async {
-        guard let itemID = item.id else { return }
         self.client = client
         self.libraryViewModel = libraryViewModel
-        let resolvedItem = libraryViewModel.item(for: itemID)
-            ?? DownloadManager.shared.completedDownloads.first(where: { $0.item.id == itemID })?.item
+        self.playbackManager = playbackManager
+        self.serverViewModel = serverViewModel
+
+        let itemID = item.id ?? ""
+        let resolvedItem = libraryViewModel.movies.first(where: { $0.id == itemID })
+            ?? libraryViewModel.tvShows.first(where: { $0.id == itemID })
             ?? item
         self.sourceItem = resolvedItem
         self.hasInitialEpisodeScrolled = false
@@ -314,32 +431,34 @@ class MediaDetailViewModel {
         defer { isLoading = false }
 
         if !NetworkMonitor.shared.isConnected {
-            self.detailedItem = resolvedItem
-            if let sources = detailedItem?.mediaSources ?? sourceItem?.mediaSources, !sources.isEmpty {
-                self.mediaSources = sources
-                configureInitialStreamSelection()
-            }
-            if cast.isLoading {
-                let actors = (resolvedItem.people ?? []).filter { $0.type == .actor }
-                self.cast = actors.isEmpty ? .empty : .full(actors)
-            }
-            if item.type == .series || resolvedItem.type == .series {
-                let downloadedEps = DownloadManager.shared.downloadedEpisodes
-                    .filter { ($0.seriesID ?? $0.parentBackdropItemID) == itemID }
-                    .sorted { ($0.indexNumber ?? 0) < ($1.indexNumber ?? 0) }
-                self.episodes = downloadedEps.isEmpty ? .empty : .full(downloadedEps)
-                let seasonNumbers = Set(downloadedEps.compactMap(\.parentIndexNumber))
-                self.seasons = seasonNumbers.sorted().map { sNum in
-                    BaseItemDto(id: "\(itemID)-season-\(sNum)", indexNumber: sNum, name: "Season \(sNum)", type: .season)
+            withAnimation(.skeleton) {
+                self.detailedItem = resolvedItem
+                self.primaryDetailsStatus = .loaded
+                if let sources = detailedItem?.mediaSources ?? sourceItem?.mediaSources, !sources.isEmpty {
+                    self.mediaSources = sources
+                    configureInitialStreamSelection()
                 }
-            } else if episodes.isLoading {
-                episodes = .empty
-            }
-            if specialFeatures.isLoading {
-                specialFeatures = .empty
-            }
-            if similarItems.isLoading {
-                similarItems = .empty
+                let actors = (resolvedItem.people ?? []).filter { $0.type == .actor }
+                self.cast = actors
+                if item.type == .series || resolvedItem.type == .series {
+                    let downloadedEps = DownloadManager.shared.downloadedEpisodes
+                        .filter { ($0.seriesID ?? $0.parentBackdropItemID) == itemID }
+                        .sorted { ($0.indexNumber ?? 0) < ($1.indexNumber ?? 0) }
+                    self.episodes = downloadedEps
+                    self.episodesStatus = downloadedEps.isEmpty ? .empty : .loaded
+                    let seasonNumbers = Set(downloadedEps.compactMap(\.parentIndexNumber))
+                    self.seasons = seasonNumbers.sorted().map { sNum in
+                        BaseItemDto(id: "\(itemID)-season-\(sNum)", indexNumber: sNum, name: "Season \(sNum)", type: .season)
+                    }
+                } else {
+                    episodes = []
+                    episodesStatus = .empty
+                }
+                specialFeatures = []
+                similarItems = []
+                self.secondaryStatus = .empty
+                collectionItems = []
+                collectionStatus = .empty
             }
             if let playbackManager, let serverViewModel {
                 startPreload(
@@ -355,15 +474,33 @@ class MediaDetailViewModel {
         let isBoxSet = item.type == .boxSet || resolvedItem.type == .boxSet
         let isEpisode = item.type == .episode || resolvedItem.type == .episode
 
+        // Check if primary details are already fully shown (actors and synopsis present)
+        let resolvedActors = (resolvedItem.people ?? []).filter { $0.type == .actor }
+        let hasCompletePrimaryData = !resolvedActors.isEmpty && !(resolvedItem.overview ?? "").isEmpty
+        let shouldFetchPrimaryDetails = !hasCompletePrimaryData || primaryDetailsStatus != .loaded
+
         // STAGE 1 & 2 in parallel: Fetch essential details and series/seasons concurrently
-        async let detailFetch = client.fetchItemOrNil(itemID: itemID, userID: userID)
+        async let detailFetch: BaseItemDto? = {
+            if shouldFetchPrimaryDetails {
+                return await client.fetchItemOrNil(itemID: itemID, userID: userID)
+            } else {
+                return nil
+            }
+        }()
+
         async let seriesOrCollectionTask: Void = { @MainActor in
             if isSeries {
-                await loadSeasonsAndEpisodes(client: client, userID: userID)
+                // If episodes are already loaded from cache, don't re-fetch
+                if episodesStatus != .loaded {
+                    await loadSeasonsAndEpisodes(client: client, userID: userID)
+                }
             } else {
-                episodes = .empty
+                episodes = []
+                episodesStatus = .empty
                 if isBoxSet {
-                    await loadCollectionItems(client: client, userID: userID, libraryViewModel: libraryViewModel)
+                    if collectionStatus != .loaded {
+                        await loadCollectionItems(client: client, userID: userID, libraryViewModel: libraryViewModel)
+                    }
                 } else if isEpisode {
                     await loadParentSeries(client: client, userID: userID, libraryViewModel: libraryViewModel)
                 }
@@ -373,20 +510,34 @@ class MediaDetailViewModel {
         let detailResult = await detailFetch
         guard !Task.isCancelled else { return }
 
-        self.detailedItem = detailResult
+        withAnimation(.skeleton) {
+            if let detailResult {
+                self.detailedItem = detailResult
+                self.primaryDetailsStatus = .loaded
 
-        let actors = (detailResult?.people ?? sourceItem?.people ?? []).filter { $0.type == .actor }
-        self.cast = actors.isEmpty ? .empty : .full(actors)
+                if !isBoxSet {
+                    let actors = (detailResult.people ?? sourceItem?.people ?? []).filter { $0.type == .actor }
+                    self.cast = actors
+                } else {
+                    self.cast = []
+                }
 
-        if let sources = detailedItem?.mediaSources ?? sourceItem?.mediaSources, !sources.isEmpty {
-            self.mediaSources = sources
-            configureInitialStreamSelection()
-        }
+                if let sources = detailedItem?.mediaSources ?? sourceItem?.mediaSources, !sources.isEmpty {
+                    self.mediaSources = sources
+                    configureInitialStreamSelection()
+                }
 
-        if !hasDetectedBitmapRatio, let ratio = detailedItem?.primaryImageAspectRatio, ratio > 0 {
-            let newRatio = CGFloat(ratio)
-            if abs(heroAspectRatio - newRatio) > 0.02 {
-                heroAspectRatio = newRatio
+                if !hasDetectedBitmapRatio, let ratio = detailedItem?.primaryImageAspectRatio, ratio > 0 {
+                    let newRatio = CGFloat(ratio)
+                    if abs(heroAspectRatio - newRatio) > 0.02 {
+                        heroAspectRatio = newRatio
+                    }
+                }
+            } else if primaryDetailsStatus == .loading {
+                // Keep existing resolved data if network returned nil or was skipped
+                let actors = (resolvedItem.people ?? []).filter { $0.type == .actor }
+                self.cast = actors
+                self.primaryDetailsStatus = .loaded
             }
         }
 
@@ -403,24 +554,52 @@ class MediaDetailViewModel {
 
         // STAGE 3: Secondary below-the-fold content (Similar items & Special features)
         guard !Task.isCancelled else { return }
-        let similar = await libraryViewModel.similarItems(for: itemID, client: client, userID: userID)
-        similarItems = similar.isEmpty ? .empty : .full(similar)
+        if !isBoxSet && !isEpisode {
+            // Check cache first to avoid firing secondary requests if already cached
+            let cachedSimilar = libraryViewModel.cachedSimilarItems(for: itemID)
+            let cachedFeatures = libraryViewModel.cachedSpecialFeatures(for: itemID)
 
-        guard !Task.isCancelled else { return }
-        let features = await libraryViewModel.specialFeatures(for: itemID, client: client, userID: userID)
-        specialFeatures = features.isEmpty ? .empty : .full(features)
+            if let cachedSimilar, let cachedFeatures {
+                withAnimation(.skeleton) {
+                    similarItems = cachedSimilar
+                    specialFeatures = cachedFeatures
+                    secondaryStatus = (cachedSimilar.isEmpty && cachedFeatures.isEmpty) ? .empty : .loaded
+                }
+            } else {
+                let specialCount = detailedItem?.specialFeatureCount ?? sourceItem?.specialFeatureCount
+                async let similarFetch = libraryViewModel.similarItems(for: itemID, client: client, userID: userID)
+                async let featuresFetch: [BaseItemDto] = specialCount == 0
+                    ? []
+                    : libraryViewModel.specialFeatures(for: itemID, client: client, userID: userID)
+
+                let (similar, features) = await (similarFetch, featuresFetch)
+                guard !Task.isCancelled else { return }
+
+                withAnimation(.skeleton) {
+                    similarItems = similar
+                    specialFeatures = features
+                    secondaryStatus = (similar.isEmpty && features.isEmpty) ? .empty : .loaded
+                }
+            }
+        } else {
+            withAnimation(.skeleton) {
+                similarItems = []
+                specialFeatures = []
+                secondaryStatus = .empty
+            }
+        }
     }
 
     // MARK: - Parent Series
 
-    func loadParentSeries(client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel) async {
-        guard let seriesID = detailedItem?.seriesID ?? sourceItem?.seriesID else { return }
-        if let local = libraryViewModel.item(for: seriesID) {
-            self.seriesItem = local
+    func loadParentSeries(client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel? = nil) async {
+        guard let seriesID = sourceItem?.seriesID else { return }
+        if let found = libraryViewModel?.tvShows.first(where: { $0.id == seriesID }) {
+            self.seriesItem = found
             return
         }
-        if let fetched = await client.fetchItemOrNil(itemID: seriesID, userID: userID) {
-            self.seriesItem = fetched
-        }
+        let fetched = await client.fetchItemOrNil(itemID: seriesID, userID: userID)
+        guard !Task.isCancelled else { return }
+        self.seriesItem = fetched
     }
 }

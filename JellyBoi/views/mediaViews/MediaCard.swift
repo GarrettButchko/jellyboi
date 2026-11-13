@@ -22,6 +22,28 @@ struct MediaCard: View, Equatable {
     var onStartFromBeginning: (() -> Void)? = nil
     var onResetProgress: (() -> Void)? = nil
 
+    init(
+        item: BaseItemDto,
+        posterURL: URL? = nil,
+        namespace: Namespace.ID? = nil,
+        onSelect: @escaping () -> Void = {},
+        zoomID: AnyHashable? = nil,
+        imageAspectRatio: CGFloat? = nil,
+        onContinueWatching: (() -> Void)? = nil,
+        onStartFromBeginning: (() -> Void)? = nil,
+        onResetProgress: (() -> Void)? = nil
+    ) {
+        self.item = item
+        self.posterURL = posterURL
+        self.namespace = namespace
+        self.onSelect = onSelect
+        self.zoomID = zoomID
+        self.imageAspectRatio = imageAspectRatio
+        self.onContinueWatching = onContinueWatching
+        self.onStartFromBeginning = onStartFromBeginning
+        self.onResetProgress = onResetProgress
+    }
+
     @Environment(ServerViewModel.self) private var serverViewModel: ServerViewModel?
     @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
     @Environment(PlaybackManager.self) private var playbackManager: PlaybackManager?

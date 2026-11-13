@@ -10,31 +10,52 @@ import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
 
+// MARK: - Skeleton Default Items
+
+private let defaultCastPerson = BaseItemPerson(
+    id: "default-cast-person",
+    name: "Cast Member",
+    role: "Character Role",
+    type: .actor
+)
+
+private let defaultCastPeople: [BaseItemPerson] = (0..<8).map { index in
+    BaseItemPerson(
+        id: "default-cast-\(index)",
+        name: defaultCastPerson.name,
+        role: defaultCastPerson.role,
+        type: defaultCastPerson.type
+    )
+}
+
 extension MediaDetailView {
 
     @ViewBuilder
     var castSection: some View {
-        if !detailVM.isCastHidden, (!detailVM.cast.isEmpty || detailVM.cast.isLoading) {
-            SectionRow(title: "Cast & Crew") {
-                switch detailVM.cast {
-                case .loading:
-                    castSkeleton
-                        .transition(.opacity)
-                case .full(let actors):
-                    castContent(actors)
-                        .transition(.opacity)
-                case .empty:
-                    EmptyView()
+        if !detailVM.isCastHidden, !detailVM.cast.isEmpty || detailVM.primaryDetailsStatus.isLoading {
+            SectionRow(title: "Cast & Crew") { 
+                ZStack(alignment: .topLeading) {
+                    if detailVM.primaryDetailsStatus.isLoading {
+                        castSkeleton
+                            .transition(.skeleton)
+                    } else {
+                        castContent(detailVM.cast)
+                            .transition(.skeleton)
+                    }
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: detailVM.cast.isEmpty)
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .top)),
+                removal: .opacity
+            ))
+            .animation(.skeleton, value: detailVM.primaryDetailsStatus)
         }
     }
     
     private var castSkeleton: some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 16) {
-                ForEach(BaseItemPerson.placeholders, id: \.id) { person in
+                ForEach(defaultCastPeople, id: \.id) { person in
                     CastCircle(person: person, imageURL: nil)
                         .frame(width: 74, alignment: .top)
                 }
@@ -124,7 +145,7 @@ struct CastCircle: View {
     }
 
     @ViewBuilder
-    private var avatarView: some View {
+    private var avatarView: some View { 
         if isRedacted {
             Circle()
                 .fill(Color.mainOpp.opacity(0.12))

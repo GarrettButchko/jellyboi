@@ -20,17 +20,6 @@ public struct GenreCount: Identifiable, Hashable, Sendable {
         self.name = name
         self.count = count
     }
-
-    /// Generates placeholder genre counts with realistic text lengths for skeleton views.
-    public static func placeholders(count: Int = 12) -> [GenreCount] {
-        let lengths = [8, 12, 6, 14, 10, 7, 11, 9]
-        return (0..<count).map { i in
-            GenreCount(
-                name: String(repeating: "█", count: lengths[i % lengths.count]),
-                count: 99
-            )
-        }
-    }
 }
 
 // MARK: - ViewModel

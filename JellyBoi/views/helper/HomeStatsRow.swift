@@ -34,6 +34,16 @@ struct HomeStatsRow: View {
     var watchedHours: Int = 0
     var onSelectStat: ((HomeStatCategory) -> Void)? = nil
 
+    static let `default` = HomeStatsRow(
+        moviesCount: 999,
+        tvSeriesCount: 99,
+        episodeCount: 999,
+        inProgressCount: 99,
+        favoritesCount: 99,
+        completedCount: 99,
+        watchedHours: 99
+    )
+
     var body: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 10) {
@@ -180,16 +190,8 @@ private struct StatPressButtonStyle: ButtonStyle {
             watchedHours: 412
         )
 
-        HomeStatsRow(
-            moviesCount: 999,
-            tvSeriesCount: 99,
-            episodeCount: 999,
-            inProgressCount: 99,
-            favoritesCount: 99,
-            completedCount: 99,
-            watchedHours: 99
-        )
-        .skeleton()
+        HomeStatsRow.default
+            .skeleton()
     }
     .background(Color.bg)
 }

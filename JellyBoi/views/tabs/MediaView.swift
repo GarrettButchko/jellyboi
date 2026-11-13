@@ -3,6 +3,22 @@ import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
 
+// MARK: - Skeleton Default Items
+
+private let defaultMediaItem = BaseItemDto(
+    id: "default-media-item",
+    name: "Media Title",
+    type: .movie
+)
+
+private let defaultMediaGridItems: [BaseItemDto] = (0..<12).map { index in
+    BaseItemDto(
+        id: "default-media-\(index)",
+        name: defaultMediaItem.name,
+        type: defaultMediaItem.type
+    )
+}
+
 struct MediaView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
@@ -195,7 +211,7 @@ struct MediaView: View {
     private var favoritesContent: some View {
         Group {
             if viewModel.isLoading && viewModel.currentFavoriteItems.isEmpty {
-                MediaGrid(items: .placeholders, namespace: zoomTransition)
+                MediaGrid(items: defaultMediaGridItems, namespace: zoomTransition)
                     .skeleton()
                     .transition(.opacity)
             } else if viewModel.currentFavoriteItems.isEmpty {
@@ -233,7 +249,7 @@ struct MediaView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
+        .animation(.skeleton, value: viewModel.isLoading)
     }
 
     // MARK: - Regular Library Content
@@ -243,7 +259,7 @@ struct MediaView: View {
         Group {
             if viewModel.regularItems.isEmpty {
                 if viewModel.isLoading {
-                    MediaGrid(items: .placeholders, namespace: zoomTransition)
+                    MediaGrid(items: defaultMediaGridItems, namespace: zoomTransition)
                         .skeleton()
                         .transition(.opacity)
                 } else if let error = viewModel.errorMessage {
@@ -285,7 +301,7 @@ struct MediaView: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
+        .animation(.skeleton, value: viewModel.isLoading)
     }
 
     // MARK: - Reusable Components

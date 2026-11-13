@@ -9,6 +9,28 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 
+// MARK: - Skeleton Default Items
+
+private let defaultEpisode = BaseItemDto(
+    id: "default-episode",
+    indexNumber: 1,
+    name: "Episode Title",
+    overview: "Episode overview text description.",
+    parentIndexNumber: 1,
+    type: .episode
+)
+
+private let defaultEpisodes: [BaseItemDto] = (0..<5).map { index in
+    BaseItemDto(
+        id: "default-episode-\(index)",
+        indexNumber: index + 1,
+        name: defaultEpisode.name,
+        overview: defaultEpisode.overview,
+        parentIndexNumber: defaultEpisode.parentIndexNumber,
+        type: defaultEpisode.type
+    )
+}
+
 extension MediaDetailView {
 
     @ViewBuilder
@@ -43,29 +65,33 @@ extension MediaDetailView {
             #endif
             return true
         }()
-        if showEpisodes, displayItem.type == .series, (!detailVM.seasons.isEmpty || detailVM.episodes.isLoading) {
+        if showEpisodes, displayItem.type == .series, !detailVM.episodesStatus.isEmpty {
             ScrollViewReader { proxy in
                 SectionRow(
                     title: "Episodes",
                     headerAccessory: {
                         if detailVM.seasons.count > 1 {
                             seasonMenu(proxy: proxy)
+                                .transition(.skeleton)
                         }
                     }
                 ) {
-                    switch detailVM.episodes {
-                    case .loading:
-                        episodesSkeleton
-                            .transition(.opacity)
-                    case .full(let episodes):
-                        episodesContent(episodes)
-                            .transition(.opacity)
-                    case .empty:
-                        EmptyView()
+                    ZStack(alignment: .topLeading) {
+                        if detailVM.episodesStatus.isLoading {
+                            episodesSkeleton
+                                .transition(.skeleton)
+                        } else {
+                            episodesContent(detailVM.episodes)
+                                .transition(.skeleton)
+                        }
                     }
                 }
-                .animation(.easeInOut(duration: 0.2), value: detailVM.episodes.isEmpty)
-                .animation(.easeInOut(duration: 0.2), value: detailVM.seasons.count)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity
+                ))
+                .animation(.skeleton, value: detailVM.episodesStatus)
+                .animation(.skeleton, value: detailVM.seasons.count)
                 .task(id: detailVM.episodes.count) {
                     guard !detailVM.hasInitialEpisodeScrolled, !detailVM.episodes.isEmpty else { return }
                     let nextEp = detailVM.nextPlayableEpisode(libraryViewModel: libraryViewModel)
@@ -85,7 +111,7 @@ extension MediaDetailView {
                           let ep = detailVM.episodes.first(where: { $0.id == newEpisodeID }),
                           let sIdx = detailVM.seasonIndex(for: ep) else { return }
                     if detailVM.selectedSeasonIndex != sIdx {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(.skeleton) {
                             detailVM.selectedSeasonIndex = sIdx
                         }
                     }
@@ -97,13 +123,19 @@ extension MediaDetailView {
     private var episodesSkeleton: some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 12) {
-                ForEach(0..<5, id: \.self) { _ in
-                    SkeletonBlock(cornerRadius: 16)
-                        .frame(width: episodeCardHeight * (16.0 / 9.0), height: episodeCardHeight)
+                ForEach(defaultEpisodes, id: \.id) { episode in
+                    let cardWidth = episodeCardHeight * (16.0 / 9.0)
+                    MediaCard(
+                        item: episode,
+                        posterURL: nil,
+                        imageAspectRatio: 16.0 / 9.0
+                    )
+                    .frame(width: cardWidth, height: episodeCardHeight)
                 }
             }
             .padding(.horizontal, 16)
         }
+        .frame(height: episodeCardHeight)
         .scrollClipDisabled()
         .scrollIndicators(.hidden)
         .skeleton()
@@ -157,7 +189,7 @@ extension MediaDetailView {
                 let season = detailVM.seasons[index]
                 let isSelected = (index == detailVM.selectedSeasonIndex)
                 Button {
-                    withAnimation(.easeInOut(duration: 0.35)) {
+                    withAnimation(.skeleton) {
                         detailVM.selectedSeasonIndex = index
                         if let firstEpID = detailVM.firstEpisode(forSeasonIndex: index)?.id {
                             detailVM.scrolledEpisodeID = firstEpID

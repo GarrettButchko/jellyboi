@@ -17,6 +17,22 @@ final class HomeHeroCoordinator {
     var heroItem: BaseItemDto? = nil
 }
 
+// MARK: - Skeleton Default Items
+
+private let defaultHomeItem = BaseItemDto(
+    id: "default-home-item",
+    name: "Media Title",
+    type: .movie
+)
+
+private let defaultHomeItems: [BaseItemDto] = (0..<8).map { index in
+    BaseItemDto(
+        id: "default-home-\(index)",
+        name: defaultHomeItem.name,
+        type: defaultHomeItem.type
+    )
+}
+
 struct HomeView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
@@ -76,21 +92,13 @@ struct HomeView: View {
                                     Carousel.Placeholder()
                                         .transition(.opacity)
                                 }
-                                HomeStatsRow(
-                                    moviesCount: 999,
-                                    tvSeriesCount: 99,
-                                    episodeCount: 999,
-                                    inProgressCount: 99,
-                                    favoritesCount: 99,
-                                    completedCount: 99,
-                                    watchedHours: 99
-                                )
-                                .skeleton()
-                                .transition(.opacity)
+                                HomeStatsRow.default
+                                    .skeleton()
+                                    .transition(.opacity)
                                 ForEach(0..<3, id: \.self) { _ in
                                     SectionRow(
                                         title: "Movies & Shows",
-                                        items: .placeholders,
+                                        items: defaultHomeItems,
                                         namespace: zoomTransition
                                     )
                                     .skeleton()
@@ -159,7 +167,7 @@ struct HomeView: View {
                                 }
                             }
                         }
-                        .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
+                        .animation(.skeleton, value: viewModel.isLoading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(alignment: .top) {
                             HomeHeroBackdrop(

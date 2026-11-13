@@ -44,10 +44,11 @@ extension MediaDetailViewModel {
 
     func loadSeasonsAndEpisodes(client: JellyfinClient, userID: String?) async {
         guard let seriesID = sourceItem?.id else {
-            episodes = .empty
+            episodes = []
+            episodesStatus = .empty
             return
         }
-        episodes = .loading
+        episodesStatus = .loading
 
         // 1. Fetch seasons and sort them off the main actor
         let sortedSeasons = await Task.detached(priority: .userInitiated) { () -> [BaseItemDto] in
@@ -78,7 +79,11 @@ extension MediaDetailViewModel {
             }
         }
 
-        guard !sortedSeasons.isEmpty else { return }
+        guard !sortedSeasons.isEmpty else {
+            self.episodes = []
+            self.episodesStatus = .empty
+            return
+        }
 
         // 2. Fetch all seasons' episodes in parallel off the main actor
         var seasonNumberMap: [String: Int] = [:]
@@ -127,7 +132,8 @@ extension MediaDetailViewModel {
 
         Self.episodesCache[seriesID] = sortedEpisodes
 
-        self.episodes = sortedEpisodes.isEmpty ? .empty : .full(sortedEpisodes)
+        self.episodes = sortedEpisodes
+        self.episodesStatus = sortedEpisodes.isEmpty ? .empty : .loaded
 
         if !hasInitialEpisodeScrolled {
             if let nextEp = nextPlayableEpisode(libraryViewModel: libraryViewModel),
@@ -242,7 +248,7 @@ extension MediaDetailViewModel {
 
     func loadCollectionItems(client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel? = nil) async {
         guard let collectionID = sourceItem?.id ?? detailedItem?.id else { return }
-        collectionItems = .loading
+        collectionStatus = .loading
 
         let sorted = await Task.detached(priority: .userInitiated) { () -> [BaseItemDto] in
             let items = await client.fetchItemsOrEmpty(
@@ -265,7 +271,8 @@ extension MediaDetailViewModel {
             guard let id = item.id else { return item }
             return libraryViewModel?.item(for: id) ?? item
         }
-        collectionItems = mapped.isEmpty ? .empty : .full(mapped)
+        collectionItems = mapped
+        collectionStatus = mapped.isEmpty ? .empty : .loaded
         if let collectionID = sourceItem?.id ?? detailedItem?.id {
             Self.collectionItemsCache[collectionID] = mapped
         }

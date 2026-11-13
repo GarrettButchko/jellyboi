@@ -23,6 +23,18 @@ extension MediaDetailView {
         }
     }
 
+    // MARK: - Skeleton Default Items
+
+    private static let defaultInfoChip = InfoChipItem(icon: "star.fill", text: "8.5")
+
+    private static let defaultInfoChips: [InfoChipItem] = [
+        defaultInfoChip,
+        InfoChipItem(text: "2024"),
+        InfoChipItem(icon: "clock", text: "2h 15m"),
+        InfoChipItem(text: "4K UHD"),
+        InfoChipItem(icon: "speaker.wave.2", text: "Dolby Atmos")
+    ]
+
     var infoChipData: [InfoChipItem] {
         var chips: [InfoChipItem] = []
 
@@ -54,13 +66,17 @@ extension MediaDetailView {
     @ViewBuilder
     var infoChipsScrollView: some View {
         let chips = infoChipData
-        if !chips.isEmpty {
-            content(chips: chips)
-                .transition(.opacity)
-        } else if detailVM.isLoading {
-           skeleton
-                .transition(.opacity)
+        ZStack(alignment: .topLeading) {
+            if !chips.isEmpty {
+                content(chips: chips)
+                    .transition(.skeleton)
+            } else if detailVM.primaryDetailsStatus.isLoading {
+                skeleton
+                    .transition(.skeleton)
+            }
         }
+        .animation(.skeleton, value: chips.isEmpty)
+        .animation(.skeleton, value: detailVM.primaryDetailsStatus)
     }
 
     @ViewBuilder
@@ -78,21 +94,12 @@ extension MediaDetailView {
             .padding(.horizontal, 20)
         }
         .scrollIndicators(.hidden)
-        
     }
 
     @ViewBuilder
     var skeleton: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach([70, 90, 50, 80, 60] as [CGFloat], id: \.self) { w in
-                    SkeletonBlock(cornerRadius: 14).frame(width: w, height: 32)
-                }
-            }
-            .padding(.horizontal, 20)
-        }
-        .scrollIndicators(.hidden)
-        .skeleton()
+        content(chips: Self.defaultInfoChips)
+            .skeleton()
     }
 }
 

@@ -11,6 +11,25 @@ import JellyfinAPI
 import SDWebImageSwiftUI
 import MarqueeText
 
+// MARK: - Skeleton Default Genres
+
+private let defaultGenre = GenreCount(name: "Action", count: 99)
+
+private let defaultGenres: [GenreCount] = [
+    defaultGenre,
+    GenreCount(name: "Adventure", count: 99),
+    GenreCount(name: "Animation", count: 99),
+    GenreCount(name: "Comedy", count: 99),
+    GenreCount(name: "Crime", count: 99),
+    GenreCount(name: "Documentary", count: 99),
+    GenreCount(name: "Drama", count: 99),
+    GenreCount(name: "Family", count: 99),
+    GenreCount(name: "Fantasy", count: 99),
+    GenreCount(name: "Horror", count: 99),
+    GenreCount(name: "Mystery", count: 99),
+    GenreCount(name: "Sci-Fi", count: 99)
+]
+
 // MARK: - SearchView
 
 struct SearchView: View {
@@ -134,7 +153,7 @@ struct SearchView: View {
                     columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)],
                     spacing: 12
                 ) {
-                    ForEach(GenreCount.placeholders(count: 12)) { genre in
+                    ForEach(defaultGenres) { genre in
                         GenreChip(genre: genre) {}
                     }
                 }
@@ -172,7 +191,7 @@ struct SearchView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
+        .animation(.skeleton, value: viewModel.isLoading)
     }
 
     // MARK: - Search results (active state)

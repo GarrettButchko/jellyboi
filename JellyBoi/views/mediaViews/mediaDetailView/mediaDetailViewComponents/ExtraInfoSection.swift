@@ -16,6 +16,11 @@ extension MediaDetailView {
         if detailVM.hasExtraInfo {
             extraInfoContent
                 .padding(.horizontal, 20)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity
+                ))
+                .animation(.skeleton, value: detailVM.hasExtraInfo)
         }
     }
 
