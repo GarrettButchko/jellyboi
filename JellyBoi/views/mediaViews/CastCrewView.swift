@@ -159,7 +159,7 @@ struct CastCrewView: View {
                                         onSelect: {
                                             selectedMediaItem = episode
                                         },
-                                        imageAspectRatio: 2.0 / 3.0
+                                        imageAspectRatio: MediaAspectRatio.poster
                                     )
                                     .equatable()
                                 }

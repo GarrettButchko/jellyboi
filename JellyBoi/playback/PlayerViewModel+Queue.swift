@@ -95,7 +95,7 @@ extension PlayerViewModel {
                 upNextState = .countdown(secondsRemaining: secRemaining, progressFraction: progress)
             }
 
-            if preloadedMedia == nil && !next.isPreloading {
+            if preloadedMedia == nil && !nextItemState.isPreloading {
                 Task {
                     await preloadNextMedia()
                 }
@@ -112,11 +112,11 @@ extension PlayerViewModel {
     }
 
     func preloadNextMedia() async {
-        guard let nextItem = nextItem, !next.isPreloading, preloadedMedia == nil else { return }
-        next = .preloading
+        guard let nextItem = nextItem, !nextItemState.isPreloading, preloadedMedia == nil else { return }
+        nextItemState = .preloading
         defer {
-            if next == .preloading {
-                next = .idle
+            if nextItemState == .preloading {
+                nextItemState = .idle
             }
         }
 
@@ -126,17 +126,17 @@ extension PlayerViewModel {
 
         if let prepared = await prepareMediaItem(for: nextReq) {
             self.preloadedMedia = prepared
-            self.next = .ready
+            self.nextItemState = .ready
             AppLogger.success("Successfully preloaded next item: '\(nextItem.name ?? "Unknown")'")
         }
     }
 
     func playNextItem() async {
-        guard let nextItem = nextItem, next != .preparing else { return }
+        guard let nextItem = nextItem, nextItemState != .preparing else { return }
         let preloaded = preloadedMedia
-        next = .preparing
+        nextItemState = .preparing
         defer {
-            next = .idle
+            nextItemState = .idle
             preloadedMedia = nil
         }
 

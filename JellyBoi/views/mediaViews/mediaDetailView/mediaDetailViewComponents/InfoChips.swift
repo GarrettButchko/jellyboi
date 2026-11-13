@@ -63,20 +63,34 @@ extension MediaDetailView {
         return chips
     }
 
+    /// Single animation driver for the chip row: the status controls when the placeholder shows,
+    /// the chip count controls when it gets replaced by real content.
+    private struct InfoChipSkeletonState: Equatable {
+        let status: DetailSectionStatus
+        let chipCount: Int
+    }
+
+    private var infoChipSkeletonState: InfoChipSkeletonState {
+        InfoChipSkeletonState(
+            status: detailVM.primaryDetailsStatus,
+            chipCount: infoChipData.count
+        )
+    }
+
     @ViewBuilder
     var infoChipsScrollView: some View {
         let chips = infoChipData
         ZStack(alignment: .topLeading) {
             if !chips.isEmpty {
                 content(chips: chips)
-                    .transition(.skeleton)
             } else if detailVM.primaryDetailsStatus.isLoading {
-                skeleton
-                    .transition(.skeleton)
+                skeletonContent
             }
         }
-        .animation(.skeleton, value: chips.isEmpty)
-        .animation(.skeleton, value: detailVM.primaryDetailsStatus)
+        .skeleton(
+            when: chips.isEmpty && detailVM.primaryDetailsStatus.isLoading,
+            value: infoChipSkeletonState
+        )
     }
 
     @ViewBuilder
@@ -97,9 +111,8 @@ extension MediaDetailView {
     }
 
     @ViewBuilder
-    var skeleton: some View {
+    var skeletonContent: some View {
         content(chips: Self.defaultInfoChips)
-            .skeleton()
     }
 }
 

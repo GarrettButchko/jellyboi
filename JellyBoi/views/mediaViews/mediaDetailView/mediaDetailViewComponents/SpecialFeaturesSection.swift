@@ -37,29 +37,15 @@ extension MediaDetailView {
 
     @ViewBuilder
     var specialFeaturesSection: some View {
-        let showSpecialFeatures: Bool = {
-            #if DEBUG
-            if DebugSettings.shared.hideSpecialFeatures { return false }
-            #endif
-            return true
-        }()
-        if showSpecialFeatures, detailVM.secondaryStatus.isLoading || !detailVM.specialFeatures.isEmpty {
+        if !detailVM.isSpecialFeaturesHidden, detailVM.secondaryStatus.isLoading || !detailVM.specialFeatures.isEmpty {
             SectionRow(title: "Special Features") {
-                ZStack(alignment: .topLeading) {
-                    if detailVM.secondaryStatus.isLoading {
-                        specialFeaturesSkeleton
-                            .transition(.skeleton)
-                    } else {
-                        specialFeaturesContent(detailVM.specialFeatures)
-                            .transition(.skeleton)
-                    }
+                if detailVM.secondaryStatus.isLoading {
+                    specialFeaturesSkeleton
+                } else {
+                    specialFeaturesContent(detailVM.specialFeatures)
                 }
             }
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .top)),
-                removal: .opacity
-            ))
-            .animation(.skeleton, value: detailVM.secondaryStatus)
+            .skeleton(when: detailVM.secondaryStatus.isLoading, value: detailVM.secondaryStatus)
         }
     }
 
@@ -67,12 +53,12 @@ extension MediaDetailView {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 14) {
                 ForEach(defaultSpecialFeatures, id: \.id) { feature in
-                    let cardWidth = specialFeatureCardHeight * (16.0 / 9.0)
+                    let cardWidth = specialFeatureCardHeight * MediaAspectRatio.thumbnail
                     VStack(alignment: .leading, spacing: 6) {
                         MediaCard(
                             item: feature,
                             posterURL: nil,
-                            imageAspectRatio: 16.0 / 9.0
+                            imageAspectRatio: MediaAspectRatio.thumbnail
                         )
                         .frame(width: cardWidth, height: specialFeatureCardHeight)
 
@@ -90,7 +76,6 @@ extension MediaDetailView {
         .frame(height: specialFeatureItemHeight)
         .scrollClipDisabled()
         .scrollIndicators(.hidden)
-        .skeleton()
     }
 
     private func specialFeaturesContent(_ features: [BaseItemDto]) -> some View {

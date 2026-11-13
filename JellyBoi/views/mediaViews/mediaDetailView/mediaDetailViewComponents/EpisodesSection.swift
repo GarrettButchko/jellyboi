@@ -59,38 +59,23 @@ extension MediaDetailView {
 
     @ViewBuilder
     var episodesSection: some View {
-        let showEpisodes: Bool = {
-            #if DEBUG
-            if DebugSettings.shared.hideEpisodes { return false }
-            #endif
-            return true
-        }()
-        if showEpisodes, displayItem.type == .series, !detailVM.episodesStatus.isEmpty {
+        if !detailVM.isEpisodesHidden, displayItem.type == .series, !detailVM.episodesStatus.isEmpty {
             ScrollViewReader { proxy in
                 SectionRow(
                     title: "Episodes",
                     headerAccessory: {
                         if detailVM.seasons.count > 1 {
                             seasonMenu(proxy: proxy)
-                                .transition(.skeleton)
                         }
                     }
                 ) {
-                    ZStack(alignment: .topLeading) {
-                        if detailVM.episodesStatus.isLoading {
-                            episodesSkeleton
-                                .transition(.skeleton)
-                        } else {
-                            episodesContent(detailVM.episodes)
-                                .transition(.skeleton)
-                        }
+                    if detailVM.episodesStatus.isLoading {
+                        episodesSkeleton
+                    } else {
+                        episodesContent(detailVM.episodes)
                     }
                 }
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .top)),
-                    removal: .opacity
-                ))
-                .animation(.skeleton, value: detailVM.episodesStatus)
+                .skeleton(when: detailVM.episodesStatus.isLoading, value: detailVM.episodesStatus)
                 .animation(.skeleton, value: detailVM.seasons.count)
                 .task(id: detailVM.episodes.count) {
                     guard !detailVM.hasInitialEpisodeScrolled, !detailVM.episodes.isEmpty else { return }
@@ -124,11 +109,11 @@ extension MediaDetailView {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 12) {
                 ForEach(defaultEpisodes, id: \.id) { episode in
-                    let cardWidth = episodeCardHeight * (16.0 / 9.0)
+                    let cardWidth = episodeCardHeight * MediaAspectRatio.thumbnail
                     MediaCard(
                         item: episode,
                         posterURL: nil,
-                        imageAspectRatio: 16.0 / 9.0
+                        imageAspectRatio: MediaAspectRatio.thumbnail
                     )
                     .frame(width: cardWidth, height: episodeCardHeight)
                 }
@@ -138,7 +123,6 @@ extension MediaDetailView {
         .frame(height: episodeCardHeight)
         .scrollClipDisabled()
         .scrollIndicators(.hidden)
-        .skeleton()
     }
     
     private func episodesContent(_ episodes: [BaseItemDto]) -> some View {

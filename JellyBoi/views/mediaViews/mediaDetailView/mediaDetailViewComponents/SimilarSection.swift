@@ -31,40 +31,35 @@ extension MediaDetailView {
     var similarItemsSection: some View {
         if !detailVM.areSimilarItemsHidden, detailVM.secondaryStatus.isLoading || !detailVM.similarItems.isEmpty {
             SectionRow(title: "More Like This") {
-                ZStack(alignment: .topLeading) {
-                    if detailVM.secondaryStatus.isLoading {
-                        SectionRowMediaList(
-                            items: defaultSimilarItems
-                        )
-                        .skeleton()
-                        .transition(.skeleton)
-                    } else {
-                        SectionRowMediaList(
-                            items: detailVM.similarItems,
-                            namespace: relatedTransition,
-                            rowKey: "related",
-                            onSelect: { relatedItem, zoomID in
-                                relatedZoomID = zoomID
-                                selectedRelatedItem = relatedItem
-                            },
-                            posterURL: { relatedItem in
-                                guard let client = serverViewModel.client else { return nil }
-                                if relatedItem.type == .episode {
-                                    return relatedItem.seriesPosterURL(client: client)
-                                        ?? relatedItem.posterURL(client: client)
-                                }
-                                return relatedItem.posterURL(client: client)
+                if detailVM.secondaryStatus.isLoading {
+                    SectionRowMediaList(
+                        items: defaultSimilarItems
+                    )
+                } else {
+                    SectionRowMediaList(
+                        items: detailVM.similarItems,
+                        namespace: relatedTransition,
+                        rowKey: "related",
+                        onSelect: { relatedItem, zoomID in
+                            relatedZoomID = zoomID
+                            selectedRelatedItem = relatedItem
+                        },
+                        posterURL: { relatedItem in
+                            guard let client = serverViewModel.client else { return nil }
+                            if relatedItem.type == .episode {
+                                return relatedItem.seriesPosterURL(client: client)
+                                    ?? relatedItem.posterURL(client: client)
                             }
-                        )
-                        .transition(.skeleton)
-                    }
+                            return relatedItem.posterURL(client: client)
+                        }
+                    )
                 }
             }
             .transition(.asymmetric(
                 insertion: .opacity.combined(with: .move(edge: .top)),
                 removal: .opacity
             ))
-            .animation(.skeleton, value: detailVM.secondaryStatus)
+            .skeleton(when: detailVM.secondaryStatus.isLoading, value: detailVM.secondaryStatus)
         }
     }
 }

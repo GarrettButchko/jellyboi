@@ -12,228 +12,61 @@ import Get
 import JellyfinAPI
 import LoggingKit
 
-
 @Observable
 @MainActor
 final class PlaybackManager {
-    
+
     static let shared = PlaybackManager()
-    
+
     // MARK: - Dependencies & Session State
+
     var client: JellyfinClient?
     var userID: String?
     weak var libraryViewModel: LibraryViewModel?
     /// The currently active player view model driving foreground playback and UI presentation.
     var activePlayerViewModel: PlayerViewModel?
-    /// Discrete coordination state of the foreground playback session.
-    private(set) var sessionState: PlaybackStatus = .idle
-    /// Encapsulates the background preloading session and lifecycle.
-    private(set) var preloadSession: PreloadSession = .idle
-    
-    var loadingMessage: String = "Loading Stream…"
+    /// Coordination phase of the foreground playback session.
+    private(set) var sessionPhase: SessionPhase = .idle
+
+    let loadingMessage = "Loading Stream…"
     var currentError: PlaybackErrorInfo? {
         didSet {
-            if currentError == nil, case .failed = sessionState {
-                sessionState = .idle
+            if currentError == nil, sessionPhase.isFailed {
+                sessionPhase = .idle
             }
         }
     }
-    
+
+    /// Background preload for the item the user is most likely to play next, if any.
+    private var preloadJob: PreloadJob?
     private var activeTask: Task<Void, Never>?
-    
-    // MARK: - State Accessors
-    
+
     /// Indicates whether playback is actively preparing for foreground display.
     var isPreparing: Bool {
-        sessionState.isPreparing
-    }
-    
-    /// Read-only playback status of the active player, or the session status when no player is active.
-    var status: PlaybackStatus {
-        activePlayerViewModel?.now ?? sessionState
+        sessionPhase.isPreparing
     }
 
-    /// Timestamp when the current background preload began, if active or ready.
-    var preloadStartTime: Date? {
-        preloadSession.startedAt
-    }
-    
-    // MARK: - Nested Types
-    
-    typealias PlaybackRequest = JellyBoi.PlaybackRequest
-    
-    func preloadKey(
-        item: BaseItemDto,
-        fromBeginning: Bool,
-        mediaSourceID: String?,
-        audioStreamIndex: Int?,
-        subtitleStreamIndex: Int?,
-        maxBitrate: Int?
-    ) -> String {
-        let resumeTicks = fromBeginning ? 0 : item.resumePlaybackTicks
-        return "\(item.id ?? "")-\(resumeTicks)-\(fromBeginning)-\(mediaSourceID ?? "")-\(audioStreamIndex ?? -1)-\(subtitleStreamIndex ?? -1)-\(maxBitrate ?? -1)"
-    }
+    // MARK: - Preload Job
 
-    func isPreloadCompatible(
-        vm: PlayerViewModel,
-        item: BaseItemDto,
-        fromBeginning: Bool,
-        mediaSourceID: String?,
-        audioStreamIndex: Int?,
-        subtitleStreamIndex: Int?,
-        maxBitrate: Int?
-    ) -> Bool {
-        if vm.now == .ended { return false }
-        if case .failed = vm.now { return false }
-
-        guard let vmItemID = vm.request.item.id, let itemID = item.id else { return false }
-        let matchesID = (vmItemID == itemID) || (item.type == .series && vm.request.item.seriesID == itemID)
-        guard matchesID else { return false }
-
-        guard vm.request.startFromBeginning == fromBeginning else { return false }
-        if maxBitrate != vm.request.maxBitrate { return false }
-
-        let vmSource = vm.request.mediaSourceID ?? vm.streamContext.mediaSourceID
-        if let mediaSourceID, let vmSource, mediaSourceID != vmSource {
-            return false
+    /// A background-prepared player that can be handed straight to the UI.
+    private struct PreloadJob {
+        enum Phase {
+            /// `prepare(mode: .preload)` is still running.
+            case loading
+            /// The player is prepared and paused at its resume position.
+            case ready
         }
 
-        if let audioStreamIndex, let vmAudio = vm.request.audioStreamIndex, audioStreamIndex != vmAudio {
-            return false
-        }
-
-        let reqSub = subtitleStreamIndex ?? -1
-        let vmSub = vm.request.subtitleStreamIndex ?? -1
-        if reqSub != vmSub && subtitleStreamIndex != nil && vm.request.subtitleStreamIndex != nil {
-            return false
-        }
-
-        return true
+        let id: UUID
+        let target: PlaybackTarget
+        var phase: Phase = .loading
+        var player: PlayerViewModel?
+        var task: Task<Bool, Never>?
     }
 
-    private func resolvePlaybackTarget(
-        item: BaseItemDto,
-        fromBeginning: Bool,
-        queue: [BaseItemDto]?,
-        resolvedClient: JellyfinClient?,
-        resolvedUserID: String?,
-        resolvedLibrary: LibraryViewModel?
-    ) async -> (targetItem: BaseItemDto, activeQueue: [BaseItemDto], errorMessage: String?)? {
-        var targetItem = item
-        var activeQueue: [BaseItemDto] = queue ?? []
+    // MARK: - Preloading
 
-        if targetItem.type == .boxSet {
-            if !activeQueue.isEmpty, let playable = activeQueue.nextPlayableItem(fromBeginning: fromBeginning) {
-                targetItem = playable
-                AppLogger.info("Selected next playable item '\(targetItem.name ?? "Unknown")' from provided queue")
-            } else if let resolved = await self.resolveNextItemInCollection(
-                collection: targetItem,
-                fromBeginning: fromBeginning,
-                client: resolvedClient,
-                userID: resolvedUserID,
-                libraryViewModel: resolvedLibrary
-            ) {
-                targetItem = resolved.playable
-                activeQueue = resolved.queue
-                AppLogger.info("Resolved collection '\(item.name ?? "")' to next item '\(targetItem.name ?? "Unknown")'")
-            } else {
-                return (targetItem, activeQueue, "No movies or TV shows found in this collection.")
-            }
-        }
-
-        if targetItem.type == .series {
-            if !fromBeginning, let resumeEp = resolvedLibrary?.resumeShows.first(where: { $0.seriesID == targetItem.id }) {
-                targetItem = resumeEp
-                if activeQueue.isEmpty {
-                    let cached = (resolvedLibrary?.episodes ?? [])
-                        .filter { $0.seriesID == targetItem.seriesID || $0.seriesID == item.id }
-                        .sortedBySeasonAndEpisode()
-                    activeQueue = cached.isEmpty ? [resumeEp] : cached
-                } else if let matchIndex = activeQueue.firstIndex(where: { $0.id == resumeEp.id }) {
-                    if activeQueue[matchIndex].resumePlaybackTicks == 0 && resumeEp.resumePlaybackTicks > 0 {
-                        activeQueue[matchIndex].userData = resumeEp.userData
-                    }
-                }
-                AppLogger.info("Resolved series '\(item.name ?? "")' to resume episode '\(targetItem.name ?? "Unknown")'")
-            } else if let resolved = await self.resolvePlayableEpisode(
-                for: targetItem,
-                fromBeginning: fromBeginning,
-                client: resolvedClient,
-                userID: resolvedUserID,
-                libraryViewModel: resolvedLibrary
-            ) {
-                targetItem = resolved.playable
-                activeQueue = resolved.queue
-                AppLogger.info("Resolved series '\(item.name ?? "")' to playable episode '\(targetItem.name ?? "Unknown")'")
-            } else {
-                return (targetItem, activeQueue, "No episodes found for this TV show.")
-            }
-        }
-
-        if targetItem.type == .episode && activeQueue.isEmpty, let seriesID = targetItem.seriesID {
-            let cached = (resolvedLibrary?.episodes ?? [])
-                .filter { $0.seriesID == seriesID }
-                .sortedBySeasonAndEpisode()
-            if !cached.isEmpty {
-                activeQueue = cached
-            } else if let client = resolvedClient {
-                let fetched = await client.fetchEpisodesOrEmpty(seriesID: seriesID, userID: resolvedUserID)
-                activeQueue = fetched.sortedBySeasonAndEpisode()
-            }
-        }
-
-        return (targetItem, activeQueue, nil)
-    }
-
-    private func resetActivePlayback() {
-        activeTask?.cancel()
-        activeTask = nil
-        let current = activePlayerViewModel
-        activePlayerViewModel = nil
-        if let current {
-            AppLogger.info("Releasing existing player")
-            current.cleanup()
-        }
-        sessionState = .idle
-        currentError = nil
-    }
-
-    private func makePlayerViewModel(
-        targetItem: BaseItemDto,
-        fromBeginning: Bool,
-        localFileURL: URL?,
-        mediaSourceID: String?,
-        audioStreamIndex: Int?,
-        subtitleStreamIndex: Int?,
-        maxBitrate: Int?,
-        activeQueue: [BaseItemDto],
-        client: JellyfinClient?,
-        userID: String?,
-        libraryViewModel: LibraryViewModel?
-    ) -> PlayerViewModel {
-        let resolvedIndex = activeQueue.firstIndex(where: { $0.id == targetItem.id }) ?? 0
-        let resolvedLocalURL = localFileURL ?? targetItem.id.flatMap { DownloadManager.shared.playableLocalFileURL(for: $0) }
-
-        let request = PlaybackRequest(
-            item: targetItem,
-            startFromBeginning: fromBeginning,
-            localFileURL: resolvedLocalURL,
-            mediaSourceID: mediaSourceID,
-            audioStreamIndex: audioStreamIndex,
-            subtitleStreamIndex: subtitleStreamIndex,
-            maxBitrate: maxBitrate,
-            queue: activeQueue,
-            initialQueueIndex: resolvedIndex
-        )
-
-        return PlayerViewModel(
-            request: request,
-            client: client,
-            userID: userID,
-            libraryViewModel: libraryViewModel
-        )
-    }
-
+    /// Prepares a player in the background so a later `play` for the same target can present instantly.
     func preload(
         item: BaseItemDto,
         fromBeginning: Bool = false,
@@ -248,118 +81,82 @@ final class PlaybackManager {
         queue: [BaseItemDto]? = nil
     ) {
         guard item.id != nil else { return }
-        if activePlayerViewModel != nil || isPreparing { return }
+        guard activePlayerViewModel == nil, !isPreparing else { return }
 
-        let key = preloadKey(
+        let target = makeTarget(
             item: item,
             fromBeginning: fromBeginning,
+            client: client,
+            userID: userID,
+            libraryViewModel: libraryViewModel,
+            localFileURL: localFileURL,
             mediaSourceID: mediaSourceID,
             audioStreamIndex: audioStreamIndex,
             subtitleStreamIndex: subtitleStreamIndex,
-            maxBitrate: maxBitrate
+            maxBitrate: maxBitrate,
+            queue: queue
         )
+        guard let target = resolvedTarget(target) else { return }
 
-        if preloadSession.key == key {
-            return
+        if let job = preloadJob {
+            guard !job.target.isCompatible(with: target) else {
+                AppLogger.info("Existing preload for '\(item.name ?? "")' is still valid; preserving")
+                return
+            }
+            discardPreload()
         }
-
-        if let existingVM = preloadSession.viewModel,
-           isPreloadCompatible(
-               vm: existingVM,
-               item: item,
-               fromBeginning: fromBeginning,
-               mediaSourceID: mediaSourceID,
-               audioStreamIndex: audioStreamIndex,
-               subtitleStreamIndex: subtitleStreamIndex,
-               maxBitrate: maxBitrate
-           ) {
-            AppLogger.info("Existing preloaded player for '\(item.name ?? "")' is compatible; preserving")
-            return
-        }
-
-        cancelPreload()
-
-        let resolvedClient = client ?? self.client
-        let resolvedUserID = userID ?? self.userID
-        let resolvedLibrary = libraryViewModel ?? self.libraryViewModel
 
         AppLogger.info("Starting background preload for '\(item.name ?? "Unknown")'")
 
-        let taskStartTime = Date()
+        let jobID = UUID()
         let task = Task { @MainActor [weak self] in
             guard let self else { return false }
-            guard let resolved = await self.resolvePlaybackTarget(
-                item: item,
-                fromBeginning: fromBeginning,
-                queue: queue,
-                resolvedClient: resolvedClient,
-                resolvedUserID: resolvedUserID,
-                resolvedLibrary: resolvedLibrary
-            ), resolved.errorMessage == nil else {
-                if case .inFlight(let k, _, _, _) = self.preloadSession, k == key {
-                    self.preloadSession = .idle
-                }
-                return false
-            }
+            let startedAt = Date()
 
-            guard !Task.isCancelled else {
-                if case .inFlight(let k, _, _, _) = self.preloadSession, k == key {
-                    self.preloadSession = .idle
-                }
-                return false
-            }
-
-            let targetItem = resolved.targetItem
-            let activeQueue = resolved.activeQueue
-
-            let vm = self.makePlayerViewModel(
-                targetItem: targetItem,
-                fromBeginning: fromBeginning,
-                localFileURL: localFileURL,
-                mediaSourceID: mediaSourceID,
-                audioStreamIndex: audioStreamIndex,
-                subtitleStreamIndex: subtitleStreamIndex,
-                maxBitrate: maxBitrate,
-                activeQueue: activeQueue,
-                client: resolvedClient,
-                userID: resolvedUserID,
-                libraryViewModel: resolvedLibrary
-            )
-            if case .inFlight(let k, _, let t, let start) = self.preloadSession, k == key {
-                self.preloadSession = .inFlight(key: k, vm: vm, task: t, startedAt: start)
-            }
+            let vm = target.makePlayerViewModel()
+            self.updatePreloadJob(id: jobID) { $0.player = vm }
 
             let success = await vm.prepare(mode: .preload)
-            guard !Task.isCancelled else {
+            guard success, !Task.isCancelled else {
                 vm.cleanup()
-                if case .inFlight(let k, _, _, _) = self.preloadSession, k == key {
-                    self.preloadSession = .idle
-                }
+                self.clearPreloadJob(id: jobID)
                 return false
             }
 
-            if success {
-                self.preloadSession = .ready(key: key, vm: vm, startedAt: taskStartTime)
-                let elapsed = Date().timeIntervalSince(taskStartTime)
-                AppLogger.success("Preload ready for '\(targetItem.name ?? "Unknown")' (\(String(format: "%.2f", elapsed))s)")
-                return true
-            } else {
-                vm.cleanup()
-                if case .inFlight(let k, _, _, _) = self.preloadSession, k == key {
-                    self.preloadSession = .idle
-                }
-                return false
-            }
+            self.updatePreloadJob(id: jobID) { $0.phase = .ready }
+            let elapsed = Date().timeIntervalSince(startedAt)
+            AppLogger.success("Preload ready for '\(target.item.name ?? "Unknown")' (\(String(format: "%.2f", elapsed))s)")
+            return true
         }
-        preloadSession = .inFlight(key: key, vm: nil, task: task, startedAt: taskStartTime)
+        preloadJob = PreloadJob(id: jobID, target: target, task: task)
     }
 
+    /// Cancels and releases any background preload that is not already being presented.
     func cancelPreload() {
-        guard !isPreparing && activePlayerViewModel == nil else {
-            return
-        }
-        preloadSession.cancel()
+        guard !isPreparing, activePlayerViewModel == nil else { return }
+        discardPreload()
     }
+
+    private func discardPreload() {
+        guard let job = preloadJob else { return }
+        preloadJob = nil
+        job.task?.cancel()
+        job.player?.cleanup()
+    }
+
+    /// Mutates the current preload job only if it is still the one identified by `id`.
+    private func updatePreloadJob(id: UUID, _ mutate: (inout PreloadJob) -> Void) {
+        guard var job = preloadJob, job.id == id else { return }
+        mutate(&job)
+        preloadJob = job
+    }
+
+    private func clearPreloadJob(id: UUID) {
+        guard preloadJob?.id == id else { return }
+        preloadJob = nil
+    }
+
+    // MARK: - Playback
 
     func play(
         item: BaseItemDto,
@@ -379,246 +176,142 @@ final class PlaybackManager {
             return
         }
 
-        let resolvedClient = client ?? self.client
-        let resolvedUserID = userID ?? self.userID
-        let resolvedLibrary = libraryViewModel ?? self.libraryViewModel
-
-        let key = preloadKey(
+        play(makeTarget(
             item: item,
             fromBeginning: fromBeginning,
-            mediaSourceID: mediaSourceID,
-            audioStreamIndex: audioStreamIndex,
-            subtitleStreamIndex: subtitleStreamIndex,
-            maxBitrate: maxBitrate
-        )
-
-        // Fast path 1: Matching preload is already ready
-        if case .ready(let preloadedKey, let preloadedVM, _) = preloadSession,
-           (preloadedKey == key || isPreloadCompatible(
-               vm: preloadedVM,
-               item: item,
-               fromBeginning: fromBeginning,
-               mediaSourceID: mediaSourceID,
-               audioStreamIndex: audioStreamIndex,
-               subtitleStreamIndex: subtitleStreamIndex,
-               maxBitrate: maxBitrate
-           )) {
-            AppLogger.success("Instant launch from preloaded player for '\(item.name ?? "")'")
-            self.preloadSession = .idle
-
-            self.resetActivePlayback()
-            self.activePlayerViewModel = preloadedVM
-            self.sessionState = .playing
-            return
-        }
-
-        // Fast path 2: Matching preload is currently in flight
-        let ongoingPreloadTask: Task<Bool, Never>?
-        if case .inFlight(let inFlightKey, let inFlightVM, let task, _) = preloadSession {
-            let matches = (inFlightKey == key) || (inFlightVM.map {
-                isPreloadCompatible(
-                    vm: $0,
-                    item: item,
-                    fromBeginning: fromBeginning,
-                    mediaSourceID: mediaSourceID,
-                    audioStreamIndex: audioStreamIndex,
-                    subtitleStreamIndex: subtitleStreamIndex,
-                    maxBitrate: maxBitrate
-                )
-            } ?? false)
-            ongoingPreloadTask = matches ? task : nil
-        } else {
-            ongoingPreloadTask = nil
-        }
-
-        if let ongoingPreload = ongoingPreloadTask {
-            AppLogger.info("Awaiting in-flight preload for '\(item.name ?? "")'")
-
-            self.resetActivePlayback()
-            self.sessionState = .preparing
-            loadingMessage = "Loading Stream…"
-
-            activeTask = Task { @MainActor [weak self] in
-                guard let self else { return }
-                let success = await ongoingPreload.value
-                guard !Task.isCancelled else {
-                    self.sessionState = .idle
-                    return
-                }
-                if success, case .ready(_, let preloadedVM, _) = self.preloadSession {
-                    self.preloadSession = .idle
-                    self.activePlayerViewModel = preloadedVM
-                    self.sessionState = .playing
-                    return
-                }
-                self.preloadSession.cancel()
-                self.startFullPlayback(
-                    item: item,
-                    fromBeginning: fromBeginning,
-                    resolvedClient: resolvedClient,
-                    resolvedUserID: resolvedUserID,
-                    resolvedLibrary: resolvedLibrary,
-                    localFileURL: localFileURL,
-                    mediaSourceID: mediaSourceID,
-                    audioStreamIndex: audioStreamIndex,
-                    subtitleStreamIndex: subtitleStreamIndex,
-                    maxBitrate: maxBitrate,
-                    queue: queue
-                )
-            }
-            return
-        }
-
-        cancelPreload()
-        resetActivePlayback()
-        sessionState = .preparing
-        loadingMessage = "Loading Stream…"
-
-        startFullPlayback(
-            item: item,
-            fromBeginning: fromBeginning,
-            resolvedClient: resolvedClient,
-            resolvedUserID: resolvedUserID,
-            resolvedLibrary: resolvedLibrary,
+            client: client,
+            userID: userID,
+            libraryViewModel: libraryViewModel,
             localFileURL: localFileURL,
             mediaSourceID: mediaSourceID,
             audioStreamIndex: audioStreamIndex,
             subtitleStreamIndex: subtitleStreamIndex,
             maxBitrate: maxBitrate,
             queue: queue
-        )
+        ))
     }
 
-    private func startFullPlayback(
-        item: BaseItemDto,
-        fromBeginning: Bool,
-        resolvedClient: JellyfinClient?,
-        resolvedUserID: String?,
-        resolvedLibrary: LibraryViewModel?,
-        localFileURL: URL?,
-        mediaSourceID: String?,
-        audioStreamIndex: Int?,
-        subtitleStreamIndex: Int?,
-        maxBitrate: Int?,
-        queue: [BaseItemDto]?
-    ) {
-        sessionState = .preparing
-        activeTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            guard let resolved = await self.resolvePlaybackTarget(
-                item: item,
-                fromBeginning: fromBeginning,
-                queue: queue,
-                resolvedClient: resolvedClient,
-                resolvedUserID: resolvedUserID,
-                resolvedLibrary: resolvedLibrary
-            ) else {
-                self.sessionState = .idle
-                return
-            }
-
-            if let errorMsg = resolved.errorMessage {
-                self.sessionState = .failed(reason: errorMsg)
-                self.currentError = PlaybackErrorInfo(
-                    title: "Playback Error",
-                    message: errorMsg,
-                    retryAction: { [weak self] in
-                        self?.play(
-                            item: item,
-                            fromBeginning: fromBeginning,
-                            client: resolvedClient,
-                            userID: resolvedUserID,
-                            libraryViewModel: resolvedLibrary,
-                            localFileURL: localFileURL,
-                            mediaSourceID: mediaSourceID,
-                            audioStreamIndex: audioStreamIndex,
-                            subtitleStreamIndex: subtitleStreamIndex,
-                            maxBitrate: maxBitrate,
-                            queue: queue
-                        )
-                    }
-                )
-                return
-            }
-
-            let targetItem = resolved.targetItem
-            let activeQueue = resolved.activeQueue
-
-            let vm = self.makePlayerViewModel(
-                targetItem: targetItem,
-                fromBeginning: fromBeginning,
-                localFileURL: localFileURL,
-                mediaSourceID: mediaSourceID,
-                audioStreamIndex: audioStreamIndex,
-                subtitleStreamIndex: subtitleStreamIndex,
-                maxBitrate: maxBitrate,
-                activeQueue: activeQueue,
-                client: resolvedClient,
-                userID: resolvedUserID,
-                libraryViewModel: resolvedLibrary
-            )
-
-            let success = await vm.prepare(mode: .immediate)
-            guard !Task.isCancelled else {
-                vm.cleanup()
-                self.sessionState = .idle
-                return
-            }
-
-            if success {
-                AppLogger.success("Playback prepared successfully, presenting native player")
-                self.activePlayerViewModel = vm
-                self.sessionState = .playing
-            } else {
-                let err = vm.now.errorMessage ?? "An unknown error occurred while preparing playback."
-                AppLogger.error("Playback preparation failed: \(err)")
-                vm.cleanup()
-                self.sessionState = .failed(reason: err)
-                self.currentError = PlaybackErrorInfo(
-                    title: "Playback Error",
-                    message: err,
-                    retryAction: { [weak self] in
-                        self?.play(
-                            item: item,
-                            fromBeginning: fromBeginning,
-                            client: resolvedClient,
-                            userID: resolvedUserID,
-                            libraryViewModel: resolvedLibrary,
-                            localFileURL: localFileURL,
-                            mediaSourceID: mediaSourceID,
-                            audioStreamIndex: audioStreamIndex,
-                            subtitleStreamIndex: subtitleStreamIndex,
-                            maxBitrate: maxBitrate,
-                            queue: queue
-                        )
-                    }
-                )
-            }
-        }
-    }
-
-    func playLocal(item: BaseItemDto, fileURL: URL, fromBeginning: Bool = false, queue: [BaseItemDto]? = nil) {
-        guard item.id != nil else {
-            AppLogger.warning("Cannot start local playback: Item ID is missing")
+    private func play(_ target: PlaybackTarget) {
+        guard let resolved = resolvedTarget(target) else {
+            fail("No playable item found for this title.", retry: target)
             return
         }
-        AppLogger.info("Requesting local file playback for '\(item.name ?? "Unknown")' at \(fileURL.lastPathComponent)")
-        play(
-            item: item,
-            fromBeginning: fromBeginning,
-            client: client,
-            userID: userID,
-            libraryViewModel: libraryViewModel,
-            localFileURL: fileURL,
-            queue: queue
+
+        if let job = preloadJob, job.target.isCompatible(with: resolved) {
+            if job.phase == .ready, let player = job.player {
+                AppLogger.success("Instant launch from preloaded player for '\(resolved.item.name ?? "")'")
+                preloadJob = nil
+                resetActivePlayback()
+                activePlayerViewModel = player
+                sessionPhase = .playing
+                return
+            }
+
+            if let task = job.task {
+                awaitPreload(task, jobID: job.id, target: resolved, retry: target)
+                return
+            }
+        }
+
+        discardPreload()
+        resetActivePlayback()
+        startPlayback(resolved, retry: target)
+    }
+
+    /// Waits for an in-flight preload, presenting its player on success or starting over on failure.
+    private func awaitPreload(
+        _ preload: Task<Bool, Never>,
+        jobID: UUID,
+        target: PlaybackTarget,
+        retry retryTarget: PlaybackTarget
+    ) {
+        AppLogger.info("Awaiting in-flight preload for '\(target.item.name ?? "")'")
+
+        resetActivePlayback()
+        sessionPhase = .preparing
+
+        activeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let success = await preload.value
+
+            guard !Task.isCancelled else {
+                self.sessionPhase = .idle
+                return
+            }
+
+            if success,
+               let job = self.preloadJob,
+               job.id == jobID,
+               job.phase == .ready,
+               let player = job.player {
+                self.preloadJob = nil
+                self.activePlayerViewModel = player
+                self.sessionPhase = .playing
+                return
+            }
+
+            self.clearPreloadJob(id: jobID)
+            self.startPlayback(target, retry: retryTarget)
+        }
+    }
+
+    private func startPlayback(_ target: PlaybackTarget, retry retryTarget: PlaybackTarget) {
+        sessionPhase = .preparing
+        activeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            let vm = target.makePlayerViewModel()
+            let success = await vm.prepare(mode: .immediate)
+
+            guard !Task.isCancelled else {
+                vm.cleanup()
+                self.sessionPhase = .idle
+                return
+            }
+
+            guard success else {
+                let reason = vm.now.errorMessage ?? "An unknown error occurred while preparing playback."
+                AppLogger.error("Playback preparation failed: \(reason)")
+                vm.cleanup()
+                self.fail(reason, retry: retryTarget)
+                return
+            }
+
+            AppLogger.success("Playback prepared successfully, presenting native player")
+            self.activePlayerViewModel = vm
+            self.sessionPhase = .playing
+        }
+    }
+
+    private func resetActivePlayback() {
+        activeTask?.cancel()
+        activeTask = nil
+        let current = activePlayerViewModel
+        activePlayerViewModel = nil
+        if let current {
+            AppLogger.info("Releasing existing player")
+            current.cleanup()
+        }
+        sessionPhase = .idle
+        currentError = nil
+    }
+
+    private func fail(_ reason: String, retry target: PlaybackTarget?) {
+        sessionPhase = .failed(reason: reason)
+
+        var retryAction: (() -> Void)?
+        if let target {
+            retryAction = { [weak self] in self?.play(target) }
+        }
+        currentError = PlaybackErrorInfo(
+            title: "Playback Error",
+            message: reason,
+            retryAction: retryAction
         )
     }
 
     func clearError() {
         currentError = nil
-        if case .failed = sessionState {
-            sessionState = .idle
-        }
     }
 
     func stop() {
@@ -633,75 +326,72 @@ final class PlaybackManager {
             AppLogger.info("Stopping playback and releasing resources for '\(current.request.item.playbackTitle)'")
             current.cleanup()
         }
-        sessionState = .idle
+        sessionPhase = .idle
     }
 
-    // MARK: - Playable Item Resolution
+    // MARK: - Target Construction
 
-    private func resolveNextItemInCollection(
-        collection: BaseItemDto,
-        fromBeginning: Bool,
-        client: JellyfinClient?,
-        userID: String?,
-        libraryViewModel: LibraryViewModel?
-    ) async -> (playable: BaseItemDto, queue: [BaseItemDto])? {
-        guard let collectionID = collection.id, let client else { return nil }
-        let items = await client.fetchItemsOrEmpty(
-            parameters: .collectionItems(collectionID: collectionID, userID: userID)
-        )
-        let sorted = items.sorted { a, b in
-            let dateA = a.premiereDate ?? (a.productionYear.flatMap { Calendar.current.date(from: DateComponents(year: $0)) } ?? .distantPast)
-            let dateB = b.premiereDate ?? (b.productionYear.flatMap { Calendar.current.date(from: DateComponents(year: $0)) } ?? .distantPast)
-            if dateA != dateB {
-                return dateA < dateB
+    /// Resolves a container to the concrete item that should be played, using cached library data only.
+    ///
+    /// The detail view normally hands over the exact episode it wants to play, so this only covers
+    /// requests made before that view has its episode list. No network request happens here: a
+    /// fetch inside the preload path would defeat the point of preloading. A box set that reaches
+    /// this point already had its items loaded, so an unresolved container means there is nothing
+    /// playable to show.
+    private func resolvedTarget(_ target: PlaybackTarget) -> PlaybackTarget? {
+        guard target.item.type == .series else {
+            return target.item.type == .boxSet ? nil : target
+        }
+        guard let seriesID = target.item.id,
+              let library = target.libraryViewModel
+        else { return nil }
+
+        let episodes = library.episodes(forSeriesID: seriesID).sortedBySeasonAndEpisode()
+        guard !episodes.isEmpty else { return nil }
+
+        if !target.fromBeginning,
+           let resume = library.resumeShows.first(where: { $0.seriesID == seriesID }),
+           let index = episodes.firstIndex(where: { $0.id == resume.id }) {
+            // Keep the queue's copy so the index matches, but take the server's resume position.
+            var episode = episodes[index]
+            if episode.resumePlaybackTicks == 0 && resume.resumePlaybackTicks > 0 {
+                episode.userData = resume.userData
             }
-            return (a.sortName ?? a.name ?? "") < (b.sortName ?? b.name ?? "")
+            return target.retargeted(to: episode, queue: episodes)
         }
 
-        let filtered = sorted.filter { $0.type == .movie || $0.type == .series || $0.type == .episode }
-        let targetList = filtered.isEmpty ? sorted : filtered
-
-        let resolvedList: [BaseItemDto] = targetList.map { item in
-            guard let id = item.id else { return item }
-            return libraryViewModel?.movies.first(where: { $0.id == id })
-                ?? libraryViewModel?.resumeShows.first(where: { $0.id == id })
-                ?? libraryViewModel?.episodes.first(where: { $0.id == id })
-                ?? libraryViewModel?.tvShows.first(where: { $0.id == id })
-                ?? item
+        guard let playable = episodes.nextPlayableItem(fromBeginning: target.fromBeginning) else {
+            return nil
         }
-
-        guard let playable = resolvedList.nextPlayableItem(fromBeginning: fromBeginning) else { return nil }
-        return (playable, resolvedList)
+        return target.retargeted(to: playable, queue: episodes)
     }
 
-    private func resolvePlayableEpisode(
-        for series: BaseItemDto,
+    /// Merges the caller's optional overrides with the manager's current session defaults.
+    private func makeTarget(
+        item: BaseItemDto,
         fromBeginning: Bool,
         client: JellyfinClient?,
         userID: String?,
-        libraryViewModel: LibraryViewModel?
-    ) async -> (playable: BaseItemDto, queue: [BaseItemDto])? {
-        guard let seriesID = series.id else { return nil }
-
-        let cached = (libraryViewModel?.episodes ?? [])
-            .filter { $0.seriesID == seriesID }
-            .sortedBySeasonAndEpisode()
-
-        if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == seriesID }) {
-            let queue = cached.isEmpty ? [resumeEp] : cached
-            return (resumeEp, queue)
-        }
-
-        if !cached.isEmpty, let playable = cached.nextPlayableItem(fromBeginning: fromBeginning) {
-            return (playable, cached)
-        }
-
-        guard let client else { return nil }
-        let result = await client.fetchEpisodesOrEmpty(seriesID: seriesID, userID: userID)
-
-        let sorted = result.sortedBySeasonAndEpisode()
-
-        guard let playable = sorted.nextPlayableItem(fromBeginning: fromBeginning) else { return nil }
-        return (playable, sorted)
+        libraryViewModel: LibraryViewModel?,
+        localFileURL: URL?,
+        mediaSourceID: String?,
+        audioStreamIndex: Int?,
+        subtitleStreamIndex: Int?,
+        maxBitrate: Int?,
+        queue: [BaseItemDto]?
+    ) -> PlaybackTarget {
+        PlaybackTarget(
+            item: item,
+            fromBeginning: fromBeginning,
+            client: client ?? self.client,
+            userID: userID ?? self.userID,
+            libraryViewModel: libraryViewModel ?? self.libraryViewModel,
+            localFileURL: localFileURL,
+            mediaSourceID: mediaSourceID,
+            audioStreamIndex: audioStreamIndex,
+            subtitleStreamIndex: subtitleStreamIndex,
+            maxBitrate: maxBitrate,
+            queue: queue
+        )
     }
 }

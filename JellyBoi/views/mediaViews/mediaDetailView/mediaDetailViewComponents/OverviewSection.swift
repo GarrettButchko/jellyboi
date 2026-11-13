@@ -21,23 +21,18 @@ extension MediaDetailView {
             VStack(alignment: .leading, spacing: 6) {
                 episodeHeaderSection
                 if !detailVM.isOverviewHidden {
-                    ZStack(alignment: .topLeading) {
-                        if let overview = displayItem.overview, !overview.isEmpty {
-                            ExpandableText(overview)
-                                .padding(.horizontal, 20)
-                                .transition(.skeleton)
-                        } else if detailVM.primaryDetailsStatus.isLoading {
-                            ExpandableText(defaultOverview)
-                                .padding(.horizontal, 20)
-                                .skeleton()
-                                .transition(.skeleton)
-                        }
+                    if let overview = displayItem.overview, !overview.isEmpty {
+                        ExpandableText(overview)
+                            .padding(.horizontal, 20)
+                    } else if detailVM.primaryDetailsStatus.isLoading {
+                        ExpandableText(defaultOverview)
+                            .padding(.horizontal, 20)
                     }
                 }
             }
+            .skeleton(when: detailVM.primaryDetailsStatus.isLoading, value: detailVM.primaryDetailsStatus)
+
             infoChipsScrollView
         }
-        .animation(.skeleton, value: detailVM.primaryDetailsStatus)
-        .animation(.skeleton, value: displayItem.overview)
     }
 }

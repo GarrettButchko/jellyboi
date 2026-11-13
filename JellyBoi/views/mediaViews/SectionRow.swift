@@ -88,7 +88,7 @@ extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == Em
         items: [BaseItemDto],
         namespace: Namespace.ID? = nil,
         rowKey: String? = nil,
-        imageAspectRatio: CGFloat? = 2.0 / 3.0,
+        imageAspectRatio: CGFloat? = MediaAspectRatio.poster,
         cardHeight: CGFloat? = nil,
         onTitleTap: (() -> Void)? = nil,
         onSelect: ((BaseItemDto, AnyHashable) -> Void)? = nil,
@@ -120,7 +120,7 @@ struct SectionRowMediaList: View {
     let items: [BaseItemDto]
     var namespace: Namespace.ID? = nil
     var rowKey: String? = nil
-    var imageAspectRatio: CGFloat? = 2.0 / 3.0
+    var imageAspectRatio: CGFloat? = MediaAspectRatio.poster
     var cardHeight: CGFloat? = nil
     var onSelect: ((BaseItemDto, AnyHashable) -> Void)? = nil
     var posterURL: ((BaseItemDto) -> URL?)? = nil
@@ -131,13 +131,13 @@ struct SectionRowMediaList: View {
 
     private var resolvedCardWidth: CGFloat {
         if let cardHeight {
-            return cardHeight * (imageAspectRatio ?? (2.0 / 3.0))
+            return cardHeight * (imageAspectRatio ?? MediaAspectRatio.poster)
         }
         return defaultCardWidth
     }
 
     private var resolvedCardHeight: CGFloat {
-        cardHeight ?? (defaultCardWidth / (imageAspectRatio ?? (2.0 / 3.0)))
+        cardHeight ?? (defaultCardWidth / (imageAspectRatio ?? MediaAspectRatio.poster))
     }
 
     var body: some View {

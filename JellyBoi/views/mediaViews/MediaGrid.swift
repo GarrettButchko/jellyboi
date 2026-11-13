@@ -40,7 +40,7 @@ struct MediaGrid: View {
                     onSelect: {
                         onSelect?(item)
                     },
-                    imageAspectRatio: item.type == .episode ? (2.0 / 3.0) : nil
+                    imageAspectRatio: item.type == .episode ? MediaAspectRatio.poster : nil
                 )
                 .equatable()
             }

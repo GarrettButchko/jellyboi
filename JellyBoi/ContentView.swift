@@ -110,13 +110,6 @@ struct ContentView: View {
                 ZStack(alignment: .topLeading) {
                     NativePlayerView(
                         player: player,
-                        onDismiss: {
-                            #if os(iOS)
-                            OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
-                            #endif
-                            playerVM.cleanup()
-                            playbackManager.stop()
-                        },
                         onControlsVisibilityChanged: { isVisible in
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 playerVM.areControlsVisible = isVisible
@@ -226,6 +219,26 @@ struct ContentView: View {
                 }
             }
         }
+        .onChange(of: viewManager.isSignedIn) { _, isSignedIn in
+            if !isSignedIn {
+                RealtimeService.shared.stop()
+            }
+        }
+    }
+
+    /// Keeps the socket pointed at the current server and refreshes the library after a scan.
+    private func startRealtime(client: JellyfinClient, userID: String?) {
+        RealtimeService.shared.onLibraryChanged = { [weak libraryViewModel, weak serverViewModel] in
+            guard let libraryViewModel,
+                  let serverViewModel,
+                  let client = serverViewModel.client
+            else { return }
+
+            Task {
+                await libraryViewModel.refresh(using: client, userID: serverViewModel.currentUser?.id)
+            }
+        }
+        RealtimeService.shared.start(client: client, userID: userID)
     }
 
     @discardableResult
@@ -239,13 +252,15 @@ struct ContentView: View {
         case .success:
             networkMonitor.setConnected(true)
             if let client = serverViewModel.client {
+                let userID = serverViewModel.currentUser?.id
                 playbackManager.client = client
-                playbackManager.userID = serverViewModel.currentUser?.id
+                playbackManager.userID = userID
                 playbackManager.libraryViewModel = libraryViewModel
                 DownloadManager.shared.client = client
                 Task {
-                    await libraryViewModel.load(using: client, userID: serverViewModel.currentUser?.id)
+                    await libraryViewModel.load(using: client, userID: userID)
                 }
+                startRealtime(client: client, userID: userID)
             }
             withAnimation(.smooth(duration: 0.35)) {
                 isOffline = false
@@ -261,6 +276,7 @@ struct ContentView: View {
             }
             return false
         case .unauthenticated:
+            RealtimeService.shared.stop()
             viewManager.signOut()
             return false
         }

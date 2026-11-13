@@ -11,7 +11,6 @@ import CoreMedia
 import MediaPlayer
 import JellyfinAPI
 import LoggingKit
-import SDWebImage
 
 extension PlayerViewModel {
 
@@ -49,7 +48,7 @@ extension PlayerViewModel {
     // MARK: - Metadata Creation
 
     func createArtworkMetadataItem(for targetItem: BaseItemDto, preloadedData: Data? = nil) -> AVMetadataItem {
-        let artworkData = preloadedData ?? loadCachedArtwork(for: targetItem)?.0
+        let artworkData = preloadedData ?? ArtworkLoader.cached(for: targetItem, client: client)?.data
         if let artworkData, !artworkData.isEmpty {
             let item = AVMutableMetadataItem()
             item.identifier = .commonIdentifierArtwork
@@ -72,7 +71,7 @@ extension PlayerViewModel {
                     valueRequest.respond(error: NSError(domain: "PlayerMetadata", code: -1, userInfo: [NSLocalizedDescriptionKey: "Player deallocated"]))
                     return
                 }
-                if let (data, img) = await self.loadArtwork(for: targetItem) {
+                if let (data, img) = await ArtworkLoader.load(for: targetItem, client: self.client) {
                     self.artworkState = .loaded(img)
                     valueRequest.respond(value: data as NSData)
                     AppLogger.debug("Fulfilled on-demand artwork metadata for '\(targetItem.playbackTitle)'")
@@ -122,75 +121,18 @@ extension PlayerViewModel {
         return items.compactMap { $0 }
     }
 
-    // MARK: - Poster Artwork & Now Playing Info
-
-    func resolveArtworkURLs(for targetItem: BaseItemDto? = nil) -> [URL] {
-        let currentItem = targetItem ?? request.item
-        return currentItem.artworkURLs(client: client)
-    }
-
-    func loadCachedArtwork(for targetItem: BaseItemDto? = nil) -> (Data, UIImage)? {
-        let currentItem = targetItem ?? request.item
-        let urls = resolveArtworkURLs(for: currentItem)
-        guard !urls.isEmpty else { return nil }
-
-        for url in urls {
-            let cacheKey = SDWebImageManager.shared.cacheKey(for: url) ?? url.absoluteString
-            if let img = SDImageCache.shared.imageFromMemoryCache(forKey: cacheKey) ?? SDImageCache.shared.imageFromDiskCache(forKey: cacheKey) {
-                if let data = img.jpegData(compressionQuality: 0.85) ?? img.pngData() {
-                    AppLogger.debug("Loaded poster artwork from SDImageCache for \(currentItem.playbackTitle)")
-                    return (data, img)
-                }
-            }
-        }
-
-        return nil
-    }
-
-    func loadArtwork(for targetItem: BaseItemDto? = nil, timeoutSeconds: Double = 5.0) async -> (Data, UIImage)? {
-        let currentItem = targetItem ?? request.item
-        if let cached = loadCachedArtwork(for: currentItem) {
-            return cached
-        }
-
-        let urls = resolveArtworkURLs(for: currentItem)
-        guard !urls.isEmpty else { return nil }
-
-        for url in urls {
-            if let result = await fetchImage(for: url, timeoutSeconds: timeoutSeconds) {
-                AppLogger.debug("Downloaded poster artwork for \(currentItem.playbackTitle)")
-                return result
-            }
-        }
-
-        return nil
-    }
-
-    func fetchImage(for url: URL, timeoutSeconds: Double = 5.0) async -> (Data, UIImage)? {
-        do {
-            var request = URLRequest(url: url)
-            request.timeoutInterval = timeoutSeconds
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-                  let image = UIImage(data: data) else {
-                return nil
-            }
-            let cacheKey = SDWebImageManager.shared.cacheKey(for: url) ?? url.absoluteString
-            await SDImageCache.shared.store(image, imageData: data, forKey: cacheKey, toDisk: true)
-            return (data, image)
-        } catch {
-            AppLogger.debug("Network artwork fetch failed for \(url.lastPathComponent): \(error.localizedDescription)")
-            return nil
-        }
-    }
-
+    // MARK: - Now Playing Info
     func startAsyncArtworkFetchIfNeeded() {
         guard artworkState.image == nil else { return }
         subscriptions.cancelArtworkTask()
         artworkState = .loading
         subscriptions.artworkTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            if let (_, img) = await self.loadArtwork(timeoutSeconds: 8.0) {
+            if let (_, img) = await ArtworkLoader.load(
+                for: self.request.item,
+                client: self.client,
+                timeoutSeconds: 8.0
+            ) {
                 guard !Task.isCancelled else { return }
                 self.artworkState = .loaded(img)
             } else {

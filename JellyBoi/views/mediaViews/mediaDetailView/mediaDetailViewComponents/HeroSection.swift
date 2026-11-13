@@ -85,7 +85,6 @@ extension MediaDetailView {
                 }
                 .onSuccess { image, _, _ in
                     detailVM.updateHeroAspectRatio(from: image.size)
-                    detailVM.markHeroReady()
                 }
             }
             .animatableAspectRatio(currentRatio)

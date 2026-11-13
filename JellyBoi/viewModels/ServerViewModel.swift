@@ -184,6 +184,14 @@ class ServerViewModel {
 
     // MARK: - User Data Broadcasting
 
+    /// Publishes user data pushed by the realtime socket.
+    ///
+    /// Socket messages carry complete `UserItemDataDto` snapshots, so applying them is the same
+    /// operation as a REST response: one broadcast, and every local copy updates.
+    func applyUserData(_ dtos: [UserItemDataDto]) {
+        broadcastUserData(dtos)
+    }
+
     /// Publishes server-reported user data. This is the single change event every local copy listens to.
     private func broadcastUserData(_ dtos: [UserItemDataDto]) {
         guard !dtos.isEmpty else { return }

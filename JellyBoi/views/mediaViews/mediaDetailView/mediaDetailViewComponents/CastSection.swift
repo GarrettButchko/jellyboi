@@ -30,25 +30,26 @@ private let defaultCastPeople: [BaseItemPerson] = (0..<8).map { index in
 
 extension MediaDetailView {
 
+    /// The cast placeholder is shown while the screen is still loading and the cast list is still
+    /// empty — `primaryDetailsStatus` alone flips to `.loaded` as soon as the item has an overview,
+    /// which used to hide the whole section (no skeleton, no content) until the cast arrived.
+    private var isCastPlaceholderVisible: Bool {
+        detailVM.cast.isEmpty
+            && displayItem.type != .boxSet
+            && (detailVM.isLoading || detailVM.primaryDetailsStatus.isLoading)
+    }
+
     @ViewBuilder
     var castSection: some View {
-        if !detailVM.isCastHidden, !detailVM.cast.isEmpty || detailVM.primaryDetailsStatus.isLoading {
-            SectionRow(title: "Cast & Crew") { 
-                ZStack(alignment: .topLeading) {
-                    if detailVM.primaryDetailsStatus.isLoading {
-                        castSkeleton
-                            .transition(.skeleton)
-                    } else {
-                        castContent(detailVM.cast)
-                            .transition(.skeleton)
-                    }
+        if !detailVM.isCastHidden, !detailVM.cast.isEmpty || isCastPlaceholderVisible {
+            SectionRow(title: "Cast & Crew") {
+                if detailVM.cast.isEmpty {
+                    castSkeleton
+                } else {
+                    castContent(detailVM.cast)
                 }
             }
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .top)),
-                removal: .opacity
-            ))
-            .animation(.skeleton, value: detailVM.primaryDetailsStatus)
+            .skeleton(when: isCastPlaceholderVisible, value: detailVM.cast.count)
         }
     }
     
@@ -64,7 +65,6 @@ extension MediaDetailView {
         }
         .scrollClipDisabled()
         .scrollIndicators(.hidden)
-        .skeleton()
     }
 
     private func castContent(_ people: [BaseItemPerson]) -> some View {

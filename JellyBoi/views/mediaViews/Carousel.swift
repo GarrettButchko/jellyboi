@@ -151,7 +151,7 @@ struct Carousel: View {
         VStack(spacing: 12) {
             GeometryReader { geometry in
                 let cardWidth = geometry.size.width * carouselCardWidthRatio
-                let cardHeight = cardWidth * 9 / 16
+                let cardHeight = cardWidth / MediaAspectRatio.thumbnail
                 let sideInset = (geometry.size.width - cardWidth) / 2
 
                 ScrollViewReader { proxy in
@@ -294,7 +294,7 @@ struct Carousel: View {
                     }
                 }
             }
-            .aspectRatio(16 / (9 * carouselCardWidthRatio), contentMode: .fit)
+            .aspectRatio(MediaAspectRatio.thumbnail / carouselCardWidthRatio, contentMode: .fit)
             .frame(maxWidth: .infinity)
 
             #if DEBUG
@@ -656,12 +656,12 @@ extension Carousel {
                 GeometryReader { geometry in
                     let w = geometry.size.width
                     let cardWidth = w > 0 ? w * carouselCardWidthRatio : 300
-                    let cardHeight = cardWidth * 9 / 16
+                    let cardHeight = cardWidth / MediaAspectRatio.thumbnail
                     SkeletonBlock(cornerRadius: 20)
                         .frame(width: cardWidth, height: cardHeight)
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
-                .aspectRatio(16 / (9 * carouselCardWidthRatio), contentMode: .fit)
+                .aspectRatio(MediaAspectRatio.thumbnail / carouselCardWidthRatio, contentMode: .fit)
                 .frame(maxWidth: .infinity)
                 .transaction { $0.animation = nil }
 

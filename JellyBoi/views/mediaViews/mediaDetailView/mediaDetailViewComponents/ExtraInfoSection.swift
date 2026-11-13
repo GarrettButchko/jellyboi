@@ -9,18 +9,56 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 
+// MARK: - Skeleton Default Items
+
+private struct DefaultExtraInfoRow {
+    let label: String
+    let value: String
+}
+
+private let defaultExtraInfoRows: [DefaultExtraInfoRow] = [
+    DefaultExtraInfoRow(label: "Genres", value: "Action, Adventure, Science Fiction"),
+    DefaultExtraInfoRow(label: "Director", value: "Director Name"),
+    DefaultExtraInfoRow(label: "Writers", value: "Writer Name"),
+    DefaultExtraInfoRow(label: "Studios", value: "Studio Name")
+]
+
 extension MediaDetailView {
+
+    /// Shown while the screen is still loading and the item has no extra info yet, so the section
+    /// fades in with the rest of the details instead of popping into existence.
+    private var isExtraInfoPlaceholderVisible: Bool {
+        !detailVM.hasExtraInfo && (detailVM.isLoading || detailVM.primaryDetailsStatus.isLoading)
+    }
 
     @ViewBuilder
     var extraInfoSection: some View {
-        if detailVM.hasExtraInfo {
-            extraInfoContent
-                .padding(.horizontal, 20)
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .top)),
-                    removal: .opacity
-                ))
-                .animation(.skeleton, value: detailVM.hasExtraInfo)
+        if detailVM.hasExtraInfo || isExtraInfoPlaceholderVisible {
+            Group {
+                if detailVM.hasExtraInfo {
+                    extraInfoContent
+                } else {
+                    extraInfoSkeleton
+                }
+            }
+            .padding(.horizontal, 20)
+            .skeleton(when: isExtraInfoPlaceholderVisible, value: detailVM.hasExtraInfo)
+        }
+    }
+
+    private var extraInfoTitle: some View {
+        Text("Extra Info")
+            .font(.system(size: 20, weight: .bold))
+            .foregroundStyle(Color.mainOpp)
+    }
+
+    private var extraInfoSkeleton: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            extraInfoTitle
+
+            ForEach(defaultExtraInfoRows, id: \.label) { row in
+                ExtraInfoRow(label: row.label, value: row.value)
+            }
         }
     }
 
@@ -30,9 +68,7 @@ extension MediaDetailView {
         let writers   = people.filter { $0.type == .writer   }.compactMap(\.name)
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Extra Info")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(Color.mainOpp)
+            extraInfoTitle
 
             if let genres = displayItem.genres, !genres.isEmpty {
                 ExtraInfoRow(label: "Genres", value: genres.joined(separator: ", "))

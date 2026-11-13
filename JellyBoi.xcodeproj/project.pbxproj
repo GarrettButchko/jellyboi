@@ -75,7 +75,7 @@
 		2161FFDF3087D4CE00196CDF /* Exceptions for "JellyBoi" folder in "JellyBoiWidgetExtensionExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				utility/downloads/DownloadActivityAttributes.swift,
+				utility/downloads/liveActivity/ActivityAttributes.swift,
 			);
 			target = 2161FFC03087D4CD00196CDF /* JellyBoiWidgetExtensionExtension */;
 		};

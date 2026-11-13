@@ -159,7 +159,7 @@ struct OfflineMediaView: View {
                                     onSelect: {
                                         selectedItem = episode
                                     },
-                                    imageAspectRatio: 2.0 / 3.0
+                                    imageAspectRatio: MediaAspectRatio.poster
                                 )
                                 .equatable()
                             }
@@ -181,7 +181,7 @@ struct OfflineMediaView: View {
                     onSelect: {
                         selectedItem = item
                     },
-                    imageAspectRatio: item.type == .episode ? (2.0 / 3.0) : nil
+                    imageAspectRatio: item.type == .episode ? MediaAspectRatio.poster : nil
                 )
                 .equatable()
             }

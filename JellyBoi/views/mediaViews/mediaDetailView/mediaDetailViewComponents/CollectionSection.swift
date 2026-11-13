@@ -36,44 +36,34 @@ extension MediaDetailView {
     var collectionSection: some View {
         if displayItem.type == .boxSet {
             SectionRow(title: "Movies & Shows") {
-                ZStack(alignment: .topLeading) {
-                    if detailVM.collectionStatus.isLoading {
-                        MediaGrid(items: defaultCollectionItems, namespace: collectionTransition)
-                            .skeleton()
-                            .transition(.skeleton)
-                    } else if !detailVM.collectionItems.isEmpty {
-                        LazyVGrid(columns: collectionColumns, spacing: 16) {
-                            ForEach(detailVM.collectionItems, id: \.id) { item in
-                                MediaCard(
-                                    item: item,
-                                    posterURL: item.posterURL(client: serverViewModel.client),
-                                    namespace: collectionTransition,
-                                    onSelect: {
-                                        selectedCollectionItem = item
-                                    }
-                                )
-                                .equatable()
-                            }
+                if detailVM.collectionStatus.isLoading {
+                    MediaGrid(items: defaultCollectionItems, namespace: collectionTransition)
+                } else if !detailVM.collectionItems.isEmpty {
+                    LazyVGrid(columns: collectionColumns, spacing: 16) {
+                        ForEach(detailVM.collectionItems, id: \.id) { item in
+                            MediaCard(
+                                item: item,
+                                posterURL: item.posterURL(client: serverViewModel.client),
+                                namespace: collectionTransition,
+                                onSelect: {
+                                    selectedCollectionItem = item
+                                }
+                            )
+                            .equatable()
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 24)
-                        .transition(.skeleton)
-                    } else {
-                        EmptyStateView(
-                            icon: "film.stack",
-                            title: "No Media Found",
-                            message: "No movies or TV shows found in this collection."
-                        )
-                        .padding(.top, 20)
-                        .transition(.skeleton)
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
+                } else {
+                    EmptyStateView(
+                        icon: "film.stack",
+                        title: "No Media Found",
+                        message: "No movies or TV shows found in this collection."
+                    )
+                    .padding(.top, 20)
                 }
             }
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .top)),
-                removal: .opacity
-            ))
-            .animation(.skeleton, value: detailVM.collectionStatus)
+            .skeleton(when: detailVM.collectionStatus.isLoading, value: detailVM.collectionStatus)
         }
     }
 }

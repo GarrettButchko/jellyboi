@@ -83,10 +83,6 @@ struct MediaDetailView: View {
                 .padding(.top, 16)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .animation(.skeleton, value: detailVM.primaryDetailsStatus)
-            .animation(.skeleton, value: detailVM.episodesStatus)
-            .animation(.skeleton, value: detailVM.collectionStatus)
-            .animation(.skeleton, value: detailVM.secondaryStatus)
             .animation(.skeleton, value: detailVM.heroAspectRatio)
         }
         .background(Color.bg.ignoresSafeArea())
