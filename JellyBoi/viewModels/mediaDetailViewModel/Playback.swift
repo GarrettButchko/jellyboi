@@ -141,22 +141,12 @@ extension MediaDetailViewModel {
         }
     }
 
-    func resetSeriesProgress(serverViewModel: ServerViewModel?) {
-        guard let item = displayItem, let itemID = item.id else { return }
-        clearProgress(for: itemID)
-        for index in episodes.indices {
-            episodes[index].clearProgress()
-        }
+    /// Resets watch state on the server. Nothing is cleared locally: the server's response is
+    /// broadcast through `.mediaUserDataChanged` and applied by `applyUserData`.
+    func resetProgress(serverViewModel: ServerViewModel?) {
+        guard let item = displayItem else { return }
         Task {
-            await serverViewModel?.resetProgress(for: item)
-            if let client = serverViewModel?.client, let userID = serverViewModel?.currentUser?.id {
-                let inProgressOrPlayed = episodes.filter { $0.isWatched || $0.hasProgress }
-                for ep in inProgressOrPlayed {
-                    if let epID = ep.id {
-                        _ = try? await client.send(Paths.markUnplayedItem(itemID: epID, userID: userID))
-                    }
-                }
-            }
+            await serverViewModel?.resetProgress(for: item, episodes: episodes)
         }
     }
 
@@ -165,49 +155,28 @@ extension MediaDetailViewModel {
         serverViewModel: ServerViewModel,
         libraryViewModel: LibraryViewModel
     ) {
-        resetSeriesProgress(serverViewModel: serverViewModel)
-
-        let firstEpisode = episodes.first(where: { ($0.parentIndexNumber ?? 1) >= 1 && ($0.indexNumber ?? 1) == 1 })
-            ?? episodes.first(where: { ($0.parentIndexNumber ?? 1) >= 1 })
-            ?? episodes.first
-            ?? playableItem(libraryViewModel: libraryViewModel, fromBeginning: true)
-
-        playbackManager.play(
-            item: firstEpisode,
-            fromBeginning: true,
-            client: serverViewModel.client,
-            userID: serverViewModel.currentUser?.id,
-            libraryViewModel: libraryViewModel,
-            mediaSourceID: selectedMediaSourceID,
-            audioStreamIndex: selectedAudioStreamIndex,
-            subtitleStreamIndex: selectedSubtitleStreamIndex,
-            maxBitrate: selectedMaxBitrate,
-            queue: !episodes.isEmpty ? episodes : nil
-        )
-    }
-
-    func resetProgress(serverViewModel: ServerViewModel?) {
-        guard let item = displayItem, let itemID = item.id else { return }
-        if item.type == .series {
-            resetSeriesProgress(serverViewModel: serverViewModel)
-            return
-        }
-        clearProgress(for: itemID)
         Task {
-            await serverViewModel?.resetProgress(for: item)
-        }
-    }
-
-    func clearProgress(for itemID: String) {
-        if displayItem?.id == itemID || displayItem?.seriesID == itemID {
-            detailedItem?.clearProgress()
-            sourceItem?.clearProgress()
-        }
-        episodes.clearProgress(for: itemID, matchingSeries: true)
-        for index in collectionItems.indices {
-            if collectionItems[index].id == itemID || itemID == displayItem?.id {
-                collectionItems[index].clearProgress()
+            if let item = displayItem {
+                await serverViewModel.resetProgress(for: item, episodes: episodes)
             }
+
+            let firstEpisode = episodes.first(where: { ($0.parentIndexNumber ?? 1) >= 1 && ($0.indexNumber ?? 1) == 1 })
+                ?? episodes.first(where: { ($0.parentIndexNumber ?? 1) >= 1 })
+                ?? episodes.first
+                ?? playableItem(libraryViewModel: libraryViewModel, fromBeginning: true)
+
+            playbackManager.play(
+                item: firstEpisode,
+                fromBeginning: true,
+                client: serverViewModel.client,
+                userID: serverViewModel.currentUser?.id,
+                libraryViewModel: libraryViewModel,
+                mediaSourceID: selectedMediaSourceID,
+                audioStreamIndex: selectedAudioStreamIndex,
+                subtitleStreamIndex: selectedSubtitleStreamIndex,
+                maxBitrate: selectedMaxBitrate,
+                queue: !episodes.isEmpty ? episodes : nil
+            )
         }
     }
 

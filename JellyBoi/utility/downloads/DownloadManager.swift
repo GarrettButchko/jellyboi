@@ -118,27 +118,14 @@ public final class DownloadManager: NSObject {
         }
 
         NotificationCenter.default.addObserver(
-            forName: .mediaProgressReset,
+            forName: .mediaUserDataChanged,
             object: nil,
             queue: .main
         ) { [weak self] notification in
             guard let self,
-                  let itemID = notification.object as? String else { return }
+                  let dtos = notification.userInfo?["userData"] as? [UserItemDataDto] else { return }
             MainActor.assumeIsolated {
-                self.clearProgress(for: itemID)
-            }
-        }
-
-        NotificationCenter.default.addObserver(
-            forName: .mediaFavoriteToggled,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let self,
-                  let itemID = notification.object as? String,
-                  let isFavorite = notification.userInfo?["isFavorite"] as? Bool else { return }
-            MainActor.assumeIsolated {
-                self.updateFavorite(for: itemID, isFavorite: isFavorite)
+                self.applyUserData(dtos)
             }
         }
     }
@@ -190,18 +177,22 @@ public final class DownloadManager: NSObject {
         saveIndex()
     }
 
-    public func clearProgress(for itemID: String) {
-        guard var downloadItem = downloads[itemID] else { return }
-        downloadItem.item.clearProgress()
-        downloads[itemID] = downloadItem
-        saveIndex()
-    }
+    /// Applies server-reported user data to downloaded items so their progress and favorite state
+    /// always match the server.
+    public func applyUserData(_ dtos: [UserItemDataDto]) {
+        var changed = false
 
-    public func updateFavorite(for itemID: String, isFavorite: Bool) {
-        guard var downloadItem = downloads[itemID] else { return }
-        downloadItem.item.setFavorite(isFavorite)
-        downloads[itemID] = downloadItem
-        saveIndex()
+        for dto in dtos {
+            let itemID = dto.itemID ?? dto.key
+            guard var downloadItem = downloads[itemID] else { continue }
+            downloadItem.item.userData = dto
+            downloads[itemID] = downloadItem
+            changed = true
+        }
+
+        if changed {
+            saveIndex()
+        }
     }
 
     // MARK: - Query State
@@ -373,7 +364,7 @@ public final class DownloadManager: NSObject {
 
         let container = item.container?.lowercased() ?? "mp4"
         let safeContainer = container.isEmpty ? "mp4" : container
-        let isNativePlayable = ApplePlayableContainer.contains(safeContainer)
+        let isNativePlayable = ApplePlayableContainer.supports(safeContainer)
         let finalContainer = isNativePlayable ? safeContainer : "mp4"
         let fileName = "\(itemID).\(finalContainer)"
 
@@ -674,7 +665,7 @@ public final class DownloadManager: NSObject {
         let destinationURL = storage.downloadsDirectory.appendingPathComponent(item.fileName)
 
         let rawContainer = item.item.container?.lowercased() ?? ""
-        let isRawNative = ApplePlayableContainer.contains(rawContainer)
+        let isRawNative = ApplePlayableContainer.supports(rawContainer)
         let itemTitle = item.title
         let itemBytesDownloaded = item.bytesDownloaded
         let targetAspect = item.item.mediaStreams?.first(where: { $0.type == .video })?.aspectRatio

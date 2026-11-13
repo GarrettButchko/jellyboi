@@ -38,11 +38,9 @@ class MediaButtonColumnViewModel {
         serverViewModel: ServerViewModel?,
         onResetProgress: (() -> Void)? = nil
     ) {
-        isProgressReset = true
         Task {
-            await serverViewModel?.resetProgress(for: item) {
-                onResetProgress?()
-            }
+            _ = await serverViewModel?.resetProgress(for: item)
+            onResetProgress?()
         }
     }
 

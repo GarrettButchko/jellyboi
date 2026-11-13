@@ -50,7 +50,6 @@ struct MediaCard: View, Equatable {
     @Environment(\.redactionReasons) private var redactionReasons
 
     @State private var isHovered: Bool = false
-    @State private var isProgressReset: Bool = false
     @State private var isFavoriteOverride: Bool? = nil
 
     static func == (lhs: MediaCard, rhs: MediaCard) -> Bool {
@@ -78,8 +77,6 @@ struct MediaCard: View, Equatable {
 
     /// Single-pass calculation of watched, watching, and progress to avoid redundant calculations during scrolling.
     private func computeWatchState() -> (isWatched: Bool, isWatching: Bool, watchProgress: Double?) {
-        guard !isProgressReset else { return (false, false, nil) }
-
         let watched: Bool
         if item.type == .series {
             watched = item.isSeriesWatched()
@@ -131,13 +128,9 @@ struct MediaCard: View, Equatable {
     }
 
     private func handleResetProgress() {
-        withAnimation(.smooth) {
-            isProgressReset = true
-        }
         Task {
-            await serverViewModel?.resetProgress(for: item) {
-                onResetProgress?()
-            }
+            _ = await serverViewModel?.resetProgress(for: item)
+            onResetProgress?()
         }
     }
 

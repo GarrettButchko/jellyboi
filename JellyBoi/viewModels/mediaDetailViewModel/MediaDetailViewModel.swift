@@ -60,6 +60,12 @@ class MediaDetailViewModel {
     weak var playbackManager: PlaybackManager?
     weak var serverViewModel: ServerViewModel?
 
+    // MARK: - Server User Data
+
+    /// Applies server-reported user data so this screen never keeps its own idea of watch state.
+    @ObservationIgnored
+    private var userDataTask: Task<Void, Never>?
+
     // MARK: - Playback Options Sheet State
     var selectedMaxBitrate: Int?
     var isLoadingPlaybackOptions = false
@@ -131,6 +137,41 @@ class MediaDetailViewModel {
             if let sources = item.mediaSources, !sources.isEmpty {
                 self.mediaSources = sources
                 configureInitialStreamSelection()
+            }
+        }
+
+        userDataTask = Task { @MainActor [weak self] in
+            for await notification in NotificationCenter.default.notifications(named: .mediaUserDataChanged) {
+                guard let self else { break }
+                guard let dtos = notification.userInfo?["userData"] as? [UserItemDataDto] else { continue }
+                self.applyUserData(dtos)
+            }
+        }
+    }
+
+    deinit {
+        userDataTask?.cancel()
+    }
+
+    /// Writes server-reported user data into every item this screen is holding.
+    ///
+    /// Reset, favorite, and progress changes all arrive from the server, so nothing here infers
+    /// watch state locally.
+    func applyUserData(_ dtos: [UserItemDataDto]) {
+        for dto in dtos {
+            let itemID = dto.itemID ?? dto.key
+
+            if detailedItem?.id == itemID {
+                detailedItem?.userData = dto
+            }
+            if sourceItem?.id == itemID {
+                sourceItem?.userData = dto
+            }
+            if let index = episodes.firstIndex(where: { $0.id == itemID }) {
+                episodes[index].userData = dto
+            }
+            if let index = collectionItems.firstIndex(where: { $0.id == itemID }) {
+                collectionItems[index].userData = dto
             }
         }
     }
@@ -256,13 +297,6 @@ class MediaDetailViewModel {
         }
         Task {
             _ = await serverViewModel?.setFavorite(isFavorite, forItemID: itemID)
-        }
-    }
-
-    func handleFavoriteUpdated(itemID: String, isFavorite: Bool) {
-        if displayItem?.id == itemID {
-            detailedItem?.setFavorite(isFavorite)
-            sourceItem?.setFavorite(isFavorite)
         }
     }
 

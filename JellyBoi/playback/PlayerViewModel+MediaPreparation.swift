@@ -457,7 +457,7 @@ extension PlayerViewModel {
     ) -> (url: URL, playMethod: PlayMethod, sessionID: String)? {
         let source = selectedSource ?? req.item.mediaSources?.first
         let container = source?.container?.lowercased() ?? ""
-        let isAppleNativeContainer = ApplePlayableContainer.contains(container)
+        let isAppleNativeContainer = ApplePlayableContainer.supports(container)
         let hasCustomStreams = req.audioStreamIndex != nil || (req.subtitleStreamIndex != nil && req.subtitleStreamIndex! >= 0) || req.maxBitrate != nil
         let canDirectPlay = source?.isSupportsDirectPlay == true && isAppleNativeContainer && !hasCustomStreams
 

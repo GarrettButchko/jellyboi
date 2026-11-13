@@ -101,24 +101,6 @@ extension BaseItemDto {
         return nil
     }
 
-    /// Resets playback progress and watch state to unplayed.
-    ///
-    /// Mirrors what Jellyfin's "mark unplayed" does server-side (`DELETE /UserPlayedItems/{id}`):
-    /// clears the played flag, the position ticks, and the play count.
-    mutating func clearProgress() {
-        userData?.playedPercentage = 0
-        userData?.isPlayed = false
-        userData?.playbackPositionTicks = 0
-        userData?.playCount = 0
-
-        // Folders (series/seasons) report progress through their children, so they reset to
-        // "everything unplayed" instead of keeping their pre-reset count. Leaving it alone keeps
-        // cards showing the old series progress until a refresh.
-        if let childCount = recursiveItemCount ?? episodeCount {
-            userData?.unplayedItemCount = childCount
-        }
-    }
-
     /// Updates playback progress and watch state for the item.
     mutating func updateProgress(positionTicks: Int, totalTicks: Int?) {
         let total = totalTicks ?? runTimeTicks.map { Int($0) } ?? 0
@@ -551,15 +533,6 @@ extension Sequence where Element == BaseItemDto {
 }
 
 extension Array where Element == BaseItemDto {
-    /// Clears progress for all items matching the given ID, optionally matching series ID as well.
-    mutating func clearProgress(for itemID: String, matchingSeries: Bool = false) {
-        for index in indices {
-            if self[index].id == itemID || (matchingSeries && self[index].seriesID == itemID) {
-                self[index].clearProgress()
-            }
-        }
-    }
-
     /// Updates progress for all items matching the given ID.
     mutating func updateProgress(for itemID: String, positionTicks: Int, totalTicks: Int?) {
         for index in indices {

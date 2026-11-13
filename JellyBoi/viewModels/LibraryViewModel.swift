@@ -183,11 +183,9 @@ class LibraryViewModel {
     // MARK: - Lifecycle
 
     @ObservationIgnored
-    private var progressResetTask: Task<Void, Never>?
+    private var userDataTask: Task<Void, Never>?
     @ObservationIgnored
     private var progressUpdateTask: Task<Void, Never>?
-    @ObservationIgnored
-    private var favoriteToggleTask: Task<Void, Never>?
     @ObservationIgnored
     private var isFetching = false
     @ObservationIgnored
@@ -196,12 +194,11 @@ class LibraryViewModel {
     private var currentClient: JellyfinClient?
 
     init() {
-        progressResetTask = Task { @MainActor [weak self] in
-            for await notification in NotificationCenter.default.notifications(named: .mediaProgressReset) {
+        userDataTask = Task { @MainActor [weak self] in
+            for await notification in NotificationCenter.default.notifications(named: .mediaUserDataChanged) {
                 guard let self else { break }
-                if let itemID = notification.object as? String {
-                    self.clearProgress(for: itemID)
-                }
+                guard let dtos = notification.userInfo?["userData"] as? [UserItemDataDto] else { continue }
+                self.applyUserData(dtos)
             }
         }
         progressUpdateTask = Task { @MainActor [weak self] in
@@ -214,22 +211,11 @@ class LibraryViewModel {
                 }
             }
         }
-        favoriteToggleTask = Task { @MainActor [weak self] in
-            for await notification in NotificationCenter.default.notifications(named: .mediaFavoriteToggled) {
-                guard let self else { break }
-                if let itemID = notification.object as? String,
-                   let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
-                    let userData = notification.userInfo?["userData"] as? UserItemDataDto
-                    self.updateFavorite(for: itemID, isFavorite: isFavorite, userData: userData)
-                }
-            }
-        }
     }
 
     deinit {
-        progressResetTask?.cancel()
+        userDataTask?.cancel()
         progressUpdateTask?.cancel()
-        favoriteToggleTask?.cancel()
     }
 
     // MARK: - State
@@ -539,18 +525,36 @@ class LibraryViewModel {
 
     // MARK: - Progress Management
 
-    func clearProgress(for itemID: String) {
-        if var item = itemsByID[itemID] {
-            item.clearProgress()
+    /// Applies server-reported user data to the single local store.
+    ///
+    /// This is the only place user data is written. Reset, favorite, and progress changes all arrive
+    /// from the server through `.mediaUserDataChanged`, so the library cannot drift from Jellyfin.
+    func applyUserData(_ dtos: [UserItemDataDto]) {
+        var changed = false
+        var changedIDs = Set<String>()
+
+        for dto in dtos {
+            let itemID = dto.itemID ?? dto.key
+            guard var item = itemsByID[itemID] else { continue }
+
+            if (item.userData?.isFavorite ?? false) != (dto.isFavorite ?? false) {
+                favoritesCount = max(0, favoritesCount + (dto.isFavorite == true ? 1 : -1))
+            }
+
+            item.userData = dto
             itemsByID[itemID] = item
+            changedIDs.insert(itemID)
+            changed = true
         }
-        for (id, var item) in itemsByID where item.seriesID == itemID {
-            item.clearProgress()
-            itemsByID[id] = item
-        }
+
+        guard changed else { return }
+
+        // Only the items the server just reported on can leave the Continue Watching row — pruning
+        // everything would empty it on any unrelated change, since next-up episodes carry no progress.
         resumeShowIDs.removeAll { id in
+            guard changedIDs.contains(id) else { return false }
             guard let item = itemsByID[id] else { return true }
-            return item.id == itemID || item.seriesID == itemID
+            return !item.hasProgress && !item.isWatched
         }
 
         updateAggregates()
@@ -562,25 +566,6 @@ class LibraryViewModel {
             itemsByID[itemID] = item
         }
 
-        updateAggregates()
-    }
-
-    // MARK: - Favorite Management
-
-    func updateFavorite(for itemID: String, isFavorite: Bool, userData: UserItemDataDto? = nil) {
-        guard var item = itemsByID[itemID] else { return }
-        let wasFavorite = item.userData?.isFavorite ?? false
-
-        if let userData {
-            item.userData = userData
-        } else {
-            item.setFavorite(isFavorite)
-        }
-        itemsByID[itemID] = item
-
-        if wasFavorite != isFavorite {
-            favoritesCount = max(0, favoritesCount + (isFavorite ? 1 : -1))
-        }
         updateAggregates()
     }
 

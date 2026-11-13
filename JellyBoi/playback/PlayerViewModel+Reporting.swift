@@ -81,7 +81,7 @@ extension PlayerViewModel {
         let sessionID = streamContext.playSessionID
         let sourceID = streamContext.mediaSourceID
         AppLogger.info("Reporting playback stopped to Jellyfin (positionTicks: \(positionTicks))")
-        Task.detached {
+        Task { @MainActor [weak self] in
             let stopInfo = PlaybackStopInfo(
                 itemID: itemID,
                 mediaSourceID: sourceID,
@@ -94,6 +94,13 @@ extension PlayerViewModel {
             } catch {
                 AppLogger.warning("Failed to report playback stop: \(error.localizedDescription)")
             }
+
+            // The server decides whether the item counts as played. Read that decision back and let
+            // the library apply it, rather than keeping a client-side guess.
+            guard let self,
+                  let refreshed = try? await client.fetchItem(itemID: itemID),
+                  let userData = refreshed.userData else { return }
+            self.libraryViewModel?.applyUserData([userData])
         }
     }
 

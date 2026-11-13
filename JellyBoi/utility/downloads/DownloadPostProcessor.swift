@@ -28,7 +28,7 @@ public enum DownloadPostProcessor {
         }
 
         do {
-            let isRawNative = ApplePlayableContainer.contains(rawContainer)
+            let isRawNative = ApplePlayableContainer.supports(rawContainer)
             var shouldUseDirect = false
 
             if isRawNative {

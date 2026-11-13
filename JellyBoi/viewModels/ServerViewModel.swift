@@ -109,21 +109,64 @@ class ServerViewModel {
 
     // MARK: - Progress Management
 
-    func resetProgress(for item: BaseItemDto, onComplete: (@MainActor @Sendable () -> Void)? = nil) async {
-        guard let itemID = item.id else { return }
-        await resetProgress(forItemID: itemID, onComplete: onComplete)
-    }
+    /// Clears watch state for `item` and, for containers, its episodes.
+    ///
+    /// Nothing is cleared locally before the request. The server's `UserItemDataDto` responses are
+    /// broadcast through `.mediaUserDataChanged` and every local copy applies those values, so a
+    /// failed request leaves the UI untouched instead of silently disagreeing with the server.
+    ///
+    /// - Returns: `true` when every request succeeded.
+    @discardableResult
+    func resetProgress(for item: BaseItemDto, episodes: [BaseItemDto] = []) async -> Bool {
+        guard let client, let itemID = item.id else { return false }
+        let userID = currentUser?.id
 
-    func resetProgress(forItemID itemID: String, onComplete: (@MainActor @Sendable () -> Void)? = nil) async {
-        if let client {
-            // `markUnplayed` is Jellyfin's canonical reset: it clears the played flag, the play
-            // count, and the playback position in one request, so no follow-up write is needed.
-            let userID = currentUser?.id
-            _ = try? await client.markUnplayed(itemID: itemID, userID: userID)
+        var targets = [itemID]
+        if item.type == .series || item.type == .season {
+            // Only episodes that actually carry progress need a request.
+            targets += episodes.filter { $0.isWatched || $0.hasProgress }.compactMap(\.id)
         }
 
-        NotificationCenter.default.post(name: .mediaProgressReset, object: itemID)
-        onComplete?()
+        var (dtos, failures) = await Self.markUnplayed(targets, client: client, userID: userID)
+
+        // A container's own user data (`isPlayed`, `unplayedItemCount`) is aggregated from its
+        // children, so re-read it once the children have been cleared.
+        if targets.count > 1,
+           let refreshed = try? await client.fetchItem(itemID: itemID, userID: userID),
+           let userData = refreshed.userData {
+            dtos.append(userData)
+        }
+
+        guard !dtos.isEmpty else { return false }
+        broadcastUserData(dtos)
+        return failures == 0
+    }
+
+    /// Marks items unplayed with bounded concurrency so a long series does not flood the server.
+    private static func markUnplayed(
+        _ itemIDs: [String],
+        client: JellyfinClient,
+        userID: String?,
+        limit: Int = 4
+    ) async -> (dtos: [UserItemDataDto], failures: Int) {
+        await withTaskGroup(of: UserItemDataDto?.self) { group in
+            var pending = itemIDs[...]
+
+            for _ in 0..<min(limit, itemIDs.count) {
+                guard let id = pending.popFirst() else { break }
+                group.addTask { try? await client.markUnplayed(itemID: id, userID: userID) }
+            }
+
+            var collected: [UserItemDataDto] = []
+            while let result = await group.next() {
+                if let dto = result { collected.append(dto) }
+                if let id = pending.popFirst() {
+                    group.addTask { try? await client.markUnplayed(itemID: id, userID: userID) }
+                }
+            }
+
+            return (collected, itemIDs.count - collected.count)
+        }
     }
 
     // MARK: - Favorite Management
@@ -132,22 +175,28 @@ class ServerViewModel {
     func setFavorite(_ isFavorite: Bool, forItemID itemID: String) async -> UserItemDataDto? {
         guard let client else { return nil }
         let userID = currentUser?.id
-        do {
-            let userData = try await client.setFavorite(isFavorite, itemID: itemID, userID: userID)
-            NotificationCenter.default.post(
-                name: .mediaFavoriteToggled,
-                object: itemID,
-                userInfo: ["isFavorite": isFavorite, "userData": userData]
-            )
-            return userData
-        } catch {
+        guard let userData = try? await client.setFavorite(isFavorite, itemID: itemID, userID: userID) else {
             return nil
         }
+        broadcastUserData([userData])
+        return userData
+    }
+
+    // MARK: - User Data Broadcasting
+
+    /// Publishes server-reported user data. This is the single change event every local copy listens to.
+    private func broadcastUserData(_ dtos: [UserItemDataDto]) {
+        guard !dtos.isEmpty else { return }
+        NotificationCenter.default.post(
+            name: .mediaUserDataChanged,
+            object: nil,
+            userInfo: ["userData": dtos]
+        )
     }
 }
 
 extension Notification.Name {
-    static let mediaProgressReset = Notification.Name("mediaProgressReset")
+    /// Server-reported user data changed. `userInfo["userData"]` carries `[UserItemDataDto]`.
+    static let mediaUserDataChanged = Notification.Name("mediaUserDataChanged")
     static let mediaProgressUpdated = Notification.Name("mediaProgressUpdated")
-    static let mediaFavoriteToggled = Notification.Name("mediaFavoriteToggled")
 }
