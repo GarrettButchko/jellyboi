@@ -116,15 +116,10 @@ class ServerViewModel {
 
     func resetProgress(forItemID itemID: String, onComplete: (@MainActor @Sendable () -> Void)? = nil) async {
         if let client {
+            // `markUnplayed` is Jellyfin's canonical reset: it clears the played flag, the play
+            // count, and the playback position in one request, so no follow-up write is needed.
             let userID = currentUser?.id
             _ = try? await client.markUnplayed(itemID: itemID, userID: userID)
-            try? await client.updatePlaybackProgress(
-                itemID: itemID,
-                userID: userID,
-                isPlayed: false,
-                positionTicks: 0,
-                playedPercentage: 0
-            )
         }
 
         NotificationCenter.default.post(name: .mediaProgressReset, object: itemID)

@@ -167,18 +167,21 @@ final class PlayerViewModel: Identifiable {
 
     func cleanup() {
         guard now != .ended else { return }
+        
         now = .ended
+        
         AppLogger.info("Cleaning up PlayerViewModel resources for '\(request.item.playbackTitle)'")
 
         subscriptions.cancelAll(player: player)
 
         artworkState = .none
         streamContext.videoNaturalSize = nil
-
         upNextState = .hidden
+        
         if let preloaded = preloadedMedia {
             (preloaded.playerItem.asset as? AVURLAsset)?.cancelLoading()
         }
+        
         preloadedMedia = nil
         next = .idle
 
@@ -192,6 +195,7 @@ final class PlayerViewModel: Identifiable {
         if let currentItem = player?.currentItem {
             (currentItem.asset as? AVURLAsset)?.cancelLoading()
         }
+        
         player?.replaceCurrentItem(with: nil)
         player = nil
 

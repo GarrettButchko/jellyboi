@@ -563,22 +563,6 @@ extension JellyfinClient {
         return try await send(request).value
     }
 
-    /// Resets or updates playback progress for an item.
-    public func updatePlaybackProgress(
-        itemID: String,
-        userID: String?,
-        isPlayed: Bool,
-        positionTicks: Int64 = 0,
-        playedPercentage: Double = 0
-    ) async throws {
-        let data = UpdateUserItemDataDto(
-            isPlayed: isPlayed,
-            playbackPositionTicks: Int(positionTicks),
-            playedPercentage: playedPercentage
-        )
-        _ = try await send(Paths.updateItemUserData(itemID: itemID, userID: userID, data))
-    }
-
     // MARK: Playback & Reporting
 
     /// Fetches playback info for an item.

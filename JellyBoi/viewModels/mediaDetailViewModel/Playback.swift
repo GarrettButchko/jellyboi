@@ -68,7 +68,7 @@ extension MediaDetailViewModel {
         libraryViewModel: LibraryViewModel
     ) {
         guard !isPlayDisabled else { return }
-        let fromBeginning = isWatched
+        let fromBeginning = displayItem?.isWatched ?? false
         let itemToPlay = playableItem(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning)
         playbackManager.preload(
             item: itemToPlay,
@@ -86,104 +86,28 @@ extension MediaDetailViewModel {
 
     // MARK: - Server-derived Playback State
 
-    private var seriesEpisodes: [BaseItemDto] {
-        if !episodes.isEmpty { return episodes }
-        guard let id = displayItem?.id else { return [] }
-        return libraryViewModel?.episodes(forSeriesID: id) ?? []
-    }
+    // Everything below reads `BaseItemDto.userData` directly. Nothing is aggregated locally from
+    // `episodes` or `collectionItems`: if the Jellyfin server does not report progress for an item,
+    // the UI shows none rather than inventing a number that would not match other Jellyfin clients.
 
-    var isCollectionWatched: Bool {
-        guard displayItem?.type == .boxSet, !collectionItems.isEmpty else { return false }
-        return collectionItems.allSatisfy { $0.isWatched }
-    }
-
-    var isSeriesWatched: Bool {
-        guard displayItem?.type == .series else { return false }
-        if let unplayed = displayItem?.userData?.unplayedItemCount, unplayed == 0 { return true }
-        if displayItem?.userData?.isPlayed == true { return true }
-        let eps = seriesEpisodes
-        if !eps.isEmpty {
-            return eps.allSatisfy { $0.isWatched }
-        }
-        return displayItem?.isSeriesWatched(allEpisodes: eps) ?? false
-    }
-
-    var isWatched: Bool {
-        if displayItem?.type == .boxSet {
-            return isCollectionWatched
-        }
-        if displayItem?.type == .series {
-            return isSeriesWatched
-        }
-        return displayItem?.isWatched ?? false
-    }
-
-    func cumulativeProgress(for items: [BaseItemDto]) -> Double {
-        BaseItemDto.cumulativeProgress(for: items, allEpisodes: libraryViewModel?.episodes ?? [])
-    }
-
-    var hasProgress: Bool {
-        if isWatched { return false }
-        return (watchProgress ?? 0) > 0
-    }
-
+    /// True when the server reports progress that has not reached the played threshold.
     var isInProgress: Bool {
-        if isWatched { return false }
-        if displayItem?.type == .boxSet {
-            return collectionItems.contains { $0.isWatched || $0.isInProgress }
-        }
-        if displayItem?.type == .series {
-            let eps = seriesEpisodes
-            if !eps.isEmpty {
-                return eps.contains { $0.isWatched || $0.isInProgress }
-            }
-            return displayItem?.isSeriesInProgress(
-                allEpisodes: eps,
-                resumeShows: libraryViewModel?.resumeShows ?? []
-            ) ?? false
-        }
-        return displayItem?.isInProgress ?? false
+        displayItem?.isInProgress ?? false
     }
 
-    var watchProgress: Double? {
-        if isWatched { return 1.0 }
-        if displayItem?.type == .boxSet {
-            if !collectionItems.isEmpty {
-                return cumulativeProgress(for: collectionItems)
-            }
-            return 0.0
-        }
-        if displayItem?.type == .series {
-            let eps = seriesEpisodes
-            if !eps.isEmpty {
-                return cumulativeProgress(for: eps)
-            }
-            return displayItem?.seriesWatchProgress(allEpisodes: eps) ?? 0.0
-        }
-        return displayItem?.watchProgress
-    }
-
+    /// Whether the progress ring should be shown; always on once the item is finished.
     var progressVisible: Bool {
-        if displayItem?.type == .boxSet { return false }
-        if isWatched { return true }
-        guard let wp = watchProgress else { return false }
-        return Int(wp * 100) > 0
+        displayItem?.isProgressVisible ?? false
     }
 
+    /// Progress ring fill amount, derived from the server's percentage.
     var progressValue: Double {
-        if isWatched { return 1.0 }
-        return watchProgress ?? 0.0
+        Double(displayItem?.progressPercentage ?? 0) / 100.0
     }
 
+    /// Formatted percentage label, e.g. "45%".
     var percentText: String {
-        if isWatched { return "100%" }
-        if displayItem?.type == .boxSet || displayItem?.type == .series {
-            if let wp = watchProgress {
-                return "\(Int(wp * 100))%"
-            }
-            return "0%"
-        }
-        return displayItem?.percentText ?? ""
+        displayItem?.percentText ?? ""
     }
 
     func targetPlayableTitle(libraryViewModel: LibraryViewModel? = nil) -> String {
@@ -200,7 +124,7 @@ extension MediaDetailViewModel {
         if isPlayDisabled {
             return
         }
-        if isWatched {
+        if displayItem?.isWatched ?? false {
             playMedia(
                 fromBeginning: true,
                 playbackManager: playbackManager,

@@ -78,7 +78,7 @@ extension MediaDetailView {
                     .stroke(Color.main.opacity(0.1), lineWidth: 5)
                     .frame(width: 35, height: 35)
 
-                if detailVM.isWatched {
+                if detailVM.displayItem?.isWatched == true {
                     Circle()
                         .stroke(accent, lineWidth: 5)
                         .frame(width: 35, height: 35)
@@ -112,7 +112,7 @@ extension MediaDetailView {
         PlaybackMenuContent(
             title: !isSeriesContainer ? detailVM.targetPlayableTitle() : nil,
             isInProgress: detailVM.isInProgress,
-            isWatched: detailVM.isWatched,
+            isWatched: detailVM.displayItem?.isWatched ?? false,
             onContinueWatching: {
                 detailVM.playMedia(
                     fromBeginning: false,

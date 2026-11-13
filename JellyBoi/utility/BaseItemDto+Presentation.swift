@@ -33,6 +33,10 @@ extension BaseItemDto {
     // MARK: - Title & Presentation Helpers
 
     /// Formatted season and episode designation (e.g. "S1 E2" or "Ep 2") for episodes.
+    ///
+    /// Use this where the episode title is displayed separately, such as poster badges and the
+    /// episode header capsule. Use `formattedEpisodeName` when the designation and title belong
+    /// together in one string.
     var formattedEpisodeNumber: String? {
         guard type == .episode else { return nil }
         if let season = parentIndexNumber, let episode = indexNumber {
@@ -43,45 +47,45 @@ extension BaseItemDto {
         return nil
     }
 
-    /// Formatted title suitable for context menus, action headers, and display labels.
-    /// For episodes, formats with series name (optional), season/episode numbers, and episode title.
-    /// - Parameter includeSeriesName: When true, prefixes with the series name if available (e.g. "Series • S1 E1: Pilot").
-    ///   When false, excludes the series name (e.g. "S1 E1: Pilot").
-    func contextMenuTitle(includeSeriesName: Bool = true) -> String {
-        if type == .episode {
-            let epNumber = formattedEpisodeNumber
-            let epName = name
-            let series = includeSeriesName ? seriesName : nil
+    /// Canonical episode label: designation plus title, e.g. "S1 E2: Pilot".
+    ///
+    /// This is the single place episode titles get assembled. Context menus, the player, the lock
+    /// screen, and Up Next all read it, so they can never disagree on ordering or punctuation.
+    /// Returns nil for anything that is not an episode.
+    var formattedEpisodeName: String? {
+        guard type == .episode else { return nil }
+        let designation = formattedEpisodeNumber
+        let title = name.flatMap { $0.isEmpty ? nil : $0 }
 
-            switch (series, epNumber, epName) {
-            case let (.some(s), .some(e), .some(n)) where !s.isEmpty && !e.isEmpty && !n.isEmpty:
-                return "\(s) • \(e): \(n)"
-            case let (_, .some(e), .some(n)) where !e.isEmpty && !n.isEmpty:
-                return includeSeriesName ? "\(e) • \(n)" : "\(e): \(n)"
-            case let (.some(s), _, .some(n)) where !s.isEmpty && !n.isEmpty:
-                return "\(s) • \(n)"
-            case let (_, .some(e), _):
-                return e
-            case let (_, _, .some(n)) where !n.isEmpty:
-                return n
-            default:
-                return "Episode"
-            }
+        switch (designation, title) {
+        case let (.some(designation), .some(title)):
+            return "\(designation): \(title)"
+        case let (.some(designation), .none):
+            return designation
+        case let (.none, .some(title)):
+            return title
+        case (.none, .none):
+            return nil
         }
-        return name ?? ""
     }
 
-    /// Formatted title for media playback headers and player overlays.
+    /// Formatted title suitable for context menus, action headers, and display labels.
+    /// - Parameter includeSeriesName: When true, prefixes with the series name if available
+    ///   (e.g. "Series • S1 E1: Pilot"). When false, omits it (e.g. "S1 E1: Pilot").
+    func contextMenuTitle(includeSeriesName: Bool = true) -> String {
+        guard type == .episode else { return name ?? "" }
+
+        let episode = formattedEpisodeName ?? "Episode"
+        guard includeSeriesName, let series = seriesName, !series.isEmpty else {
+            return episode
+        }
+        return "\(series) • \(episode)"
+    }
+
+    /// Formatted title for media playback headers, lock screen, and player overlays.
     var playbackTitle: String {
         if type == .episode {
-            var parts: [String] = []
-            if let season = parentIndexNumber, let episode = indexNumber {
-                parts.append("S\(season):E\(episode)")
-            }
-            if let name, !name.isEmpty {
-                parts.append(name)
-            }
-            return parts.isEmpty ? (name ?? "Episode") : parts.joined(separator: " - ")
+            return formattedEpisodeName ?? "Episode"
         }
         return name ?? "Video"
     }
@@ -98,10 +102,21 @@ extension BaseItemDto {
     }
 
     /// Resets playback progress and watch state to unplayed.
+    ///
+    /// Mirrors what Jellyfin's "mark unplayed" does server-side (`DELETE /UserPlayedItems/{id}`):
+    /// clears the played flag, the position ticks, and the play count.
     mutating func clearProgress() {
         userData?.playedPercentage = 0
         userData?.isPlayed = false
         userData?.playbackPositionTicks = 0
+        userData?.playCount = 0
+
+        // Folders (series/seasons) report progress through their children, so they reset to
+        // "everything unplayed" instead of keeping their pre-reset count. Leaving it alone keeps
+        // cards showing the old series progress until a refresh.
+        if let childCount = recursiveItemCount ?? episodeCount {
+            userData?.unplayedItemCount = childCount
+        }
     }
 
     /// Updates playback progress and watch state for the item.
@@ -143,18 +158,22 @@ extension BaseItemDto {
 
     // MARK: - Playback State & Progress Helpers
 
-    /// Watch progress ratio from 0.0 to 1.0. Returns nil if unplayed or no progress recorded.
+    /// Server-reported watch progress as a 0...1 ratio. Returns nil when no progress is recorded.
+    ///
+    /// This is the single source every other progress value below derives from.
     var watchProgress: Double? {
         if userData?.isPlayed == true { return 1.0 }
         guard let percent = userData?.playedPercentage else { return nil }
         return min(max(percent / 100.0, 0), 1.0)
     }
 
-    /// Whether the item has been watched (completed >= 85% or marked played).
+    /// Whether the server has marked the item as watched.
+    ///
+    /// Reads the server's `isPlayed` flag directly. No client-side percentage threshold: the server
+    /// decides when something counts as played (its own configured threshold), so the app stays in
+    /// agreement with Jellyfin and every other client.
     var isWatched: Bool {
-        if userData?.isPlayed == true { return true }
-        if type == .series, let unplayed = userData?.unplayedItemCount, unplayed == 0 { return true }
-        return (watchProgress ?? 0) >= 0.85
+        userData?.isPlayed == true
     }
 
     /// Playback position in ticks for resuming playback.
@@ -172,42 +191,39 @@ extension BaseItemDto {
         return 0
     }
 
-    /// Whether the item has positive playback progress (ticks or percent >= 1%).
+    /// Progress as an integer percentage, forced to 100 once the item counts as watched.
+    ///
+    /// `percentText`, `hasProgress`, and `isProgressVisible` all derive from this.
+    var progressPercentage: Int {
+        if isWatched { return 100 }
+        guard let progress = watchProgress else { return 0 }
+        return Int(progress * 100)
+    }
+
+    /// Formatted percentage label (e.g. "45%").
+    var percentText: String {
+        "\(progressPercentage)%"
+    }
+
+    /// Whether the item has positive playback progress.
+    ///
+    /// `progressPercentage` alone is not sufficient: some servers report position ticks without a
+    /// played percentage, and ticks are the only signal available in that case.
     var hasProgress: Bool {
-        if let percent = userData?.playedPercentage, percent >= 1.0 { return true }
-        if let ticks = userData?.playbackPositionTicks, ticks > 0 {
-            let total = runTimeTicks.map { Int($0) } ?? 0
-            if total > 0 {
-                return (Double(ticks) / Double(total)) * 100.0 >= 1.0
-            }
-            return true
-        }
-        return false
+        if progressPercentage > 0 { return true }
+        guard let ticks = userData?.playbackPositionTicks, ticks > 0 else { return false }
+        let total = runTimeTicks.map { Int($0) } ?? 0
+        return total > 0 ? (Double(ticks) / Double(total)) * 100.0 >= 1.0 : true
     }
 
     /// Whether the item is partially watched and not completed.
     var isInProgress: Bool {
-        if isWatched { return false }
-        return hasProgress && progressPercentage > 0
+        !isWatched && hasProgress
     }
 
-    /// Whether a progress indicator (ring or bar) should be visible (suppressed at 0%).
+    /// Whether a progress indicator (ring or bar) should be drawn. Watched items stay visible at 100%.
     var isProgressVisible: Bool {
-        if isWatched { return true }
-        guard isInProgress else { return false }
-        return progressPercentage > 0
-    }
-
-    /// Progress percentage integer between 0 and 100.
-    var progressPercentage: Int {
-        if isWatched { return 100 }
-        guard let wp = watchProgress else { return 0 }
-        return Int(wp * 100)
-    }
-
-    /// Formatted progress percentage string (e.g. "45%").
-    var percentText: String {
-        "\(progressPercentage)%"
+        progressPercentage > 0
     }
 
     /// Formatted remaining runtime string (e.g. "1h 12m left").
