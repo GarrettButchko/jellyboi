@@ -255,7 +255,7 @@ extension PlayerViewModel {
         }
         nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = timeline.durationSeconds
         nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = timeline.currentSeconds
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = status.isPlaying ? 1.0 : 0.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = now.isPlaying ? 1.0 : 0.0
 
         let artwork = MPMediaItemArtwork(boundsSize: artworkImage.size) { _ in artworkImage }
         nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork

@@ -62,9 +62,9 @@ extension PlayerViewModel {
         }
     }
 
-    func makeNextPlaybackRequest(for next: BaseItemDto) -> PlaybackManager.PlaybackRequest {
+    func makeNextPlaybackRequest(for next: BaseItemDto) -> PlaybackRequest {
         let resolvedLocalURL = next.id.flatMap { DownloadManager.shared.playableLocalFileURL(for: $0) }
-        return PlaybackManager.PlaybackRequest(
+        return PlaybackRequest(
             item: next,
             startFromBeginning: true,
             localFileURL: resolvedLocalURL
@@ -95,7 +95,7 @@ extension PlayerViewModel {
                 upNextState = .countdown(secondsRemaining: secRemaining, progressFraction: progress)
             }
 
-            if queueTransition.preloadedMedia == nil && !queueTransition.isPreloading {
+            if preloadedMedia == nil && !next.isPreloading {
                 Task {
                     await preloadNextMedia()
                 }
@@ -112,45 +112,49 @@ extension PlayerViewModel {
     }
 
     func preloadNextMedia() async {
-        guard let next = nextItem, !queueTransition.isPreloading, queueTransition.preloadedMedia == nil else { return }
-        queueTransition = .preloading
+        guard let nextItem = nextItem, !next.isPreloading, preloadedMedia == nil else { return }
+        next = .preloading
         defer {
-            if case .preloading = queueTransition {
-                queueTransition = .idle
+            if next == .preloading {
+                next = .idle
             }
         }
 
-        AppLogger.info("Preloading next media item: '\(next.name ?? "Unknown")'")
+        AppLogger.info("Preloading next media item: '\(nextItem.name ?? "Unknown")'")
 
-        let nextReq = makeNextPlaybackRequest(for: next)
+        let nextReq = makeNextPlaybackRequest(for: nextItem)
 
         if let prepared = await prepareMediaItem(for: nextReq) {
-            self.queueTransition = .preloaded(prepared)
-            AppLogger.success("Successfully preloaded next item: '\(next.name ?? "Unknown")'")
+            self.preloadedMedia = prepared
+            self.next = .ready
+            AppLogger.success("Successfully preloaded next item: '\(nextItem.name ?? "Unknown")'")
         }
     }
 
     func playNextItem() async {
-        guard let next = nextItem, !queueTransition.isSwitching else { return }
-        let preloaded = queueTransition.preloadedMedia
-        queueTransition = .switching
-        defer { queueTransition = .idle }
+        guard let nextItem = nextItem, next != .preparing else { return }
+        let preloaded = preloadedMedia
+        next = .preparing
+        defer {
+            next = .idle
+            preloadedMedia = nil
+        }
 
-        AppLogger.info("Transitioning to next item: '\(next.name ?? "Unknown")'")
+        AppLogger.info("Transitioning to next item: '\(nextItem.name ?? "Unknown")'")
 
         handlePlaybackFinished(isSwitchingToNext: true)
 
         upNextState = .hidden
 
         let mediaToPlay: PreparedMedia
-        if let preloaded, preloaded.request.item.id == next.id {
+        if let preloaded, preloaded.request.item.id == nextItem.id {
             mediaToPlay = preloaded
-            AppLogger.info("Using preloaded player item for '\(next.name ?? "Unknown")'")
+            AppLogger.info("Using preloaded player item for '\(nextItem.name ?? "Unknown")'")
         } else {
-            status = .preparing
-            let nextReq = makeNextPlaybackRequest(for: next)
+            now = .preparing
+            let nextReq = makeNextPlaybackRequest(for: nextItem)
             guard let newlyPrepared = await prepareMediaItem(for: nextReq) else {
-                status = .failed(reason: "Failed to prepare next item for playback")
+                now = .failed(reason: "Failed to prepare next item for playback")
                 AppLogger.error("Failed to prepare next item for playback")
                 return
             }
@@ -180,7 +184,7 @@ extension PlayerViewModel {
         await applyInitialResumeSeekIfNeeded(logContext: "queue item")
 
         player?.play()
-        self.status = .playing
+        self.now = .playing
         hasReportedStart = true
         await reportPlaybackStart()
         startPeriodicReporting()

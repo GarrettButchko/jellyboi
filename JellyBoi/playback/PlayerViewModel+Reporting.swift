@@ -46,7 +46,7 @@ extension PlayerViewModel {
 
     func reportPlaybackProgress() async {
         guard let client, let itemID = request.item.id else { return }
-        let isPaused = status == .paused || player?.timeControlStatus == .paused
+        let isPaused = now == .paused || player?.timeControlStatus == .paused
         let currentSeconds = timeline.currentSeconds
         let totalSeconds = timeline.durationSeconds
         let percent = timeline.progressPercent

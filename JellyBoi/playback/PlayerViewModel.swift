@@ -21,7 +21,7 @@ import SDWebImage
 final class PlayerViewModel: Identifiable {
 
     let id: String = UUID().uuidString
-    var request: PlaybackManager.PlaybackRequest
+    var request: PlaybackRequest
     let client: JellyfinClient?
     let userID: String?
     weak var libraryViewModel: LibraryViewModel?
@@ -29,13 +29,21 @@ final class PlayerViewModel: Identifiable {
     var queue: [BaseItemDto] = []
     var currentIndex: Int = 0
 
-    // Playback state & presentation
+    // Playback state & presentation ("Now" and "Next")
     var player: AVPlayer?
-    var status: PlaybackStatus = .idle
+
+    /// Discrete lifecycle state of the current media item being presented / played ("Now").
+    var now: PlaybackStatus = .idle
+
+    /// Discrete lifecycle state of the next media item in the queue ("Next").
+    var next: PlaybackStatus = .idle
+
+    /// Preloaded media item for the next queued item, if ready in memory.
+    var preloadedMedia: PreparedMedia?
+
     var areControlsVisible: Bool = true
 
     var upNextState: UpNextState = .hidden
-    var queueTransition: QueueTransitionState = .idle
     var timeline: PlaybackTimeline = PlaybackTimeline()
     var streamContext: ActiveStreamContext = ActiveStreamContext()
     let subscriptions = PlayerSubscriptions()
@@ -45,39 +53,18 @@ final class PlayerViewModel: Identifiable {
     var hasReportedStart: Bool = false
     var hasAppliedInitialSeek: Bool = false
 
-    struct PreparedMedia {
-        let request: PlaybackManager.PlaybackRequest
-        let playerItem: AVPlayerItem
-        let streamContext: ActiveStreamContext
-        let artworkImage: UIImage?
-
-        init(
-            request: PlaybackManager.PlaybackRequest,
-            playerItem: AVPlayerItem,
-            streamContext: ActiveStreamContext,
-            artworkImage: UIImage? = nil
-        ) {
-            self.request = request
-            self.playerItem = playerItem
-            self.streamContext = streamContext
-            self.artworkImage = artworkImage
-        }
-    }
-
     init(
-        request: PlaybackManager.PlaybackRequest,
+        request: PlaybackRequest,
         client: JellyfinClient?,
         userID: String?,
-        libraryViewModel: LibraryViewModel?,
-        queue: [BaseItemDto] = [],
-        initialQueueIndex: Int = 0
+        libraryViewModel: LibraryViewModel?
     ) {
         self.request = request
         self.client = client
         self.userID = userID
         self.libraryViewModel = libraryViewModel
-        self.queue = queue
-        self.currentIndex = initialQueueIndex
+        self.queue = request.queue
+        self.currentIndex = request.initialQueueIndex
 
         let dur = request.item.runTimeTicks.map { Int($0) } ?? 0
         let resume = request.startFromBeginning ? 0 : request.item.resumePlaybackTicks
@@ -91,7 +78,7 @@ final class PlayerViewModel: Identifiable {
             playMethod: .directStream
         )
 
-        AppLogger.info("Initialized PlayerViewModel for '\(request.item.name ?? "Unknown")' (ID: \(request.item.id ?? "nil"), resumeTicks: \(resume)) [Queue: \(queue.count) items, index: \(initialQueueIndex)]")
+        AppLogger.info("Initialized PlayerViewModel for '\(request.item.name ?? "Unknown")' (ID: \(request.item.id ?? "nil"), resumeTicks: \(resume)) [Queue: \(request.queue.count) items, index: \(request.initialQueueIndex)]")
     }
 
     // MARK: - Aspect Ratio Helpers
@@ -177,8 +164,8 @@ final class PlayerViewModel: Identifiable {
     // MARK: - Lifecycle & Cleanup
 
     func cleanup() {
-        guard status != .ended else { return }
-        status = .ended
+        guard now != .ended else { return }
+        now = .ended
         AppLogger.info("Cleaning up PlayerViewModel resources for '\(request.item.playbackTitle)'")
 
         subscriptions.cancelAll(player: player)
@@ -187,10 +174,11 @@ final class PlayerViewModel: Identifiable {
         streamContext.videoNaturalSize = nil
 
         upNextState = .hidden
-        if let preloaded = queueTransition.preloadedMedia {
+        if let preloaded = preloadedMedia {
             (preloaded.playerItem.asset as? AVURLAsset)?.cancelLoading()
         }
-        queueTransition = .idle
+        preloadedMedia = nil
+        next = .idle
 
         #if canImport(MediaPlayer)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil

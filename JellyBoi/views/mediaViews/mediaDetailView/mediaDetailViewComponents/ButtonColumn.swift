@@ -38,7 +38,7 @@ extension MediaDetailView {
                             .glassEffectUnion(id: "colBut", namespace: glassNamespace)
                             .transition(.scale(scale: 0.8).combined(with: .opacity))
                     }
-                    let isPlayDisabled = detailVM.isPlayDisabled || playbackManager.status.isPreparing
+                    let isPlayDisabled = detailVM.isPlayDisabled || playbackManager.isPreparing
                     Button {
                         detailVM.handlePlayTap(
                             playbackManager: playbackManager,

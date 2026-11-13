@@ -19,7 +19,7 @@ struct UpNextOverlayView: View {
 
     init(
         nextItem: BaseItemDto? = nil,
-        state: UpNextState,
+        state: PlayerViewModel.UpNextState,
         areControlsVisible: Bool = true,
         onPlayNow: @escaping () -> Void,
         onDismiss: (() -> Void)? = nil

@@ -15,6 +15,13 @@ import LoggingKit
 @MainActor
 class ServerViewModel {
 
+    static let shared = ServerViewModel()
+
+    /// Convenience global accessor for the current user's ID.
+    static var currentUserID: String? {
+        shared.currentUser?.id
+    }
+
     var serverURL: URL?
     var serverName: String?
     private(set) var client: JellyfinClient?

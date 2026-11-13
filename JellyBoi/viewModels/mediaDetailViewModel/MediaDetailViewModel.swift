@@ -286,7 +286,14 @@ class MediaDetailViewModel {
         }
     }
 
-    func load(item: BaseItemDto, client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel) async {
+    func load(
+        item: BaseItemDto,
+        client: JellyfinClient,
+        userID: String?,
+        libraryViewModel: LibraryViewModel,
+        playbackManager: PlaybackManager? = nil,
+        serverViewModel: ServerViewModel? = nil
+    ) async {
         guard let itemID = item.id else { return }
         self.client = client
         self.libraryViewModel = libraryViewModel
@@ -322,6 +329,13 @@ class MediaDetailViewModel {
             }
             if similarItems.isLoading {
                 similarItems = .empty
+            }
+            if let playbackManager, let serverViewModel {
+                startPreload(
+                    playbackManager: playbackManager,
+                    serverViewModel: serverViewModel,
+                    libraryViewModel: libraryViewModel
+                )
             }
             return
         }
@@ -363,6 +377,15 @@ class MediaDetailViewModel {
         }
 
         _ = await seriesOrCollectionTask
+        guard !Task.isCancelled else { return }
+
+        if let playbackManager, let serverViewModel {
+            startPreload(
+                playbackManager: playbackManager,
+                serverViewModel: serverViewModel,
+                libraryViewModel: libraryViewModel
+            )
+        }
 
         // STAGE 3: Secondary below-the-fold content (Similar items & Special features)
         guard !Task.isCancelled else { return }

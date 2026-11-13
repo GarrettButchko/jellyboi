@@ -130,14 +130,14 @@ extension PlayerViewModel {
 
     // MARK: - Player Preparation
 
-    func prepare(mode: PlaybackPreparationMode = .immediate) async -> Bool {
-        guard status != .ended else {
+    func prepare(mode: PreparationMode = .immediate) async -> Bool {
+        guard now != .ended else {
             AppLogger.warning("Aborted player preparation: already cleaned up")
             return false
         }
         guard !Task.isCancelled else { return false }
 
-        status = (mode == .preload) ? .preloading : .preparing
+        now = (mode == .preload) ? .preloading : .preparing
         hasAppliedInitialSeek = false
         AppLogger.info("Starting player preparation for '\(request.item.playbackTitle)' (mode: \(mode))")
 
@@ -152,10 +152,10 @@ extension PlayerViewModel {
             if Task.isCancelled {
                 return false
             }
-            if case .failed = status {
+            if case .failed = now {
                 // Keep the specific failure reason already set
             } else {
-                status = .failed(reason: "Failed to prepare media item.")
+                now = .failed(reason: "Failed to prepare media item.")
             }
             return false
         }
@@ -179,11 +179,11 @@ extension PlayerViewModel {
         guard !Task.isCancelled else { return false }
 
         if isReady {
-            status = .ready
-        } else if case .failed = status {
+            now = .ready
+        } else if case .failed = now {
             // Keep the specific failure reason
         } else {
-            status = .failed(reason: "Playback connection timed out. Please try again.")
+            now = .failed(reason: "Playback connection timed out. Please try again.")
         }
         return isReady
     }
@@ -197,7 +197,7 @@ extension PlayerViewModel {
         let avPlayer = AVPlayer(playerItem: playerItem)
         avPlayer.allowsExternalPlayback = true
         avPlayer.usesExternalPlaybackWhileExternalScreenIsActive = true
-        if status.isPreloading {
+        if now.isPreloading {
             avPlayer.rate = 0.0
         }
         return avPlayer
@@ -217,13 +217,13 @@ extension PlayerViewModel {
 
         subscriptions.timeControlStatusObserver = avPlayer.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
             Task { @MainActor [weak self] in
-                guard let self, self.status != .ended else { return }
+                guard let self, self.now != .ended else { return }
                 switch player.timeControlStatus {
                 case .playing:
-                    self.status = .playing
+                    self.now = .playing
                 case .paused:
-                    if self.status == .playing {
-                        self.status = .paused
+                    if self.now == .playing {
+                        self.now = .paused
                     }
                 case .waitingToPlayAtSpecifiedRate:
                     break
@@ -269,14 +269,14 @@ extension PlayerViewModel {
     ) async -> Bool {
         var activeItem = prepared.playerItem
         let maxMapRetries = 2
-        let wasPreloading = status.isPreloading
+        let wasPreloading = now.isPreloading
 
         for attempt in 0...maxMapRetries {
             guard !Task.isCancelled else { return false }
 
             if attempt > 0 {
                 AppLogger.warning("Retrying playback after map initialization timeout (attempt \(attempt + 1)/\(maxMapRetries + 1)). Waiting for server transcode cache...")
-                self.status = wasPreloading ? .preloading : .preparing
+                self.now = wasPreloading ? .preloading : .preparing
 
                 subscriptions.statusObserver?.invalidate()
                 subscriptions.statusObserver = nil
@@ -319,9 +319,9 @@ extension PlayerViewModel {
         return false
     }
 
-    func prepareMediaItem(for req: PlaybackManager.PlaybackRequest) async -> PreparedMedia? {
+    func prepareMediaItem(for req: PlaybackRequest) async -> PreparedMedia? {
         guard let itemID = req.item.id else {
-            status = .failed(reason: "Invalid media item.")
+            now = .failed(reason: "Invalid media item.")
             AppLogger.error("Failed to prepare playback: Item ID is nil")
             return nil
         }
@@ -499,14 +499,14 @@ extension PlayerViewModel {
                     }
                     streamURL = resolveServerURL(path: hlsPath, client: client)
                 } else {
-                    status = .failed(reason: "No compatible media source found.")
+                    now = .failed(reason: "No compatible media source found.")
                     AppLogger.error("Cannot resolve stream URL: no media source available")
                     return nil
                 }
             }
 
             guard var url = streamURL else {
-                status = .failed(reason: "Unable to construct stream URL.")
+                now = .failed(reason: "Unable to construct stream URL.")
                 AppLogger.error("Failed to construct stream URL for item \(itemID)")
                 return nil
             }
@@ -542,13 +542,13 @@ extension PlayerViewModel {
             } else {
                 reason = "Server connection is unavailable."
             }
-            status = .failed(reason: reason)
+            now = .failed(reason: reason)
             AppLogger.error("Failed to start playback: \(reason)")
             return nil
         }
 
         guard let playerItem = preparedItem else {
-            status = .failed(reason: "Failed to initialize player item.")
+            now = .failed(reason: "Failed to initialize player item.")
             return nil
         }
 
@@ -604,7 +604,7 @@ extension PlayerViewModel {
         }
         if playerItem.status == .failed {
             let err = playerItem.error?.localizedDescription ?? "Playback failed."
-            self.status = .failed(reason: err)
+            self.now = .failed(reason: err)
             return false
         }
 
@@ -638,7 +638,7 @@ extension PlayerViewModel {
                                         AppLogger.error("AVPlayerItem error event: URI=\(event.uri ?? "nil"), status=\(event.errorStatusCode), domain=\(event.errorDomain), comment=\(event.errorComment ?? "nil")")
                                     }
                                 }
-                                self.status = .failed(reason: err)
+                                self.now = .failed(reason: err)
                             }
 
                         case .unknown:
@@ -692,8 +692,8 @@ extension PlayerViewModel {
     }
 
     func applyReadyToPlay() async {
-        let wasPreloading = status.isPreloading
-        self.status = .ready
+        let wasPreloading = now.isPreloading
+        self.now = .ready
         if let current = self.player?.currentItem {
             let tracks = current.tracks
             let trackInfo = tracks.map { track -> String in
@@ -732,13 +732,13 @@ extension PlayerViewModel {
     }
 
     func startPlaybackIfNeeded() async {
-        guard status != .ended, status != .playing, let player = self.player else { return }
+        guard now != .ended, now != .playing, let player = self.player else { return }
         AppLogger.info("Starting playback on view appearance for '\(request.item.playbackTitle)'")
 
         await configureAudioSession()
 
         player.play()
-        self.status = .playing
+        self.now = .playing
         if let img = loadedArtworkImage {
             updateNowPlayingInfo(with: img)
         }

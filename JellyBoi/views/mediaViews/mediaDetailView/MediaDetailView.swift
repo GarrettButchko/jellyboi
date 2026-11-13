@@ -143,12 +143,19 @@ struct MediaDetailView: View {
                 .navigationTransition(.zoom(sourceID: AnyHashable(col), in: collectionTransition))
         }
         .task(id: item.id) {
+            detailVM.startPreload(
+                playbackManager: playbackManager,
+                serverViewModel: serverViewModel,
+                libraryViewModel: libraryViewModel
+            )
             if let client = serverViewModel.client {
                 await detailVM.load(
                     item: item,
                     client: client,
                     userID: serverViewModel.currentUser?.id,
-                    libraryViewModel: libraryViewModel
+                    libraryViewModel: libraryViewModel,
+                    playbackManager: playbackManager,
+                    serverViewModel: serverViewModel
                 )
             }
         }

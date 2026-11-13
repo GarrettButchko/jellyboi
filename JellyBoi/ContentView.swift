@@ -75,18 +75,17 @@ struct ContentView: View {
         }
         .animation(.smooth, value: viewManager.showSignInFlow)
         .overlay {
-            if playbackManager.status.isPreparing {
+            if playbackManager.isPreparing {
                 LoadingOverlay(message: playbackManager.loadingMessage)
             }
         }
         .statusOverlayLoadingIndicator {
             JellyBoiLoadingIndicator()
         }
-        .animation(statusOverlaySpring, value: playbackManager.status.isPreparing)
+        .animation(statusOverlaySpring, value: playbackManager.isPreparing)
         .alert(
             playbackManager.currentError?.title ?? "Playback Error",
-            isPresented: $bindablePlayback.showErrorAlert,
-            presenting: playbackManager.currentError
+            item: $bindablePlayback.currentError
         ) { errorInfo in
             Button("Retry") {
                 errorInfo.retryAction?()
@@ -266,9 +265,4 @@ struct ContentView: View {
             return false
         }
     }
-}
-
-#Preview {
-    ContentView()
-        .environment(ViewManager())
 }
