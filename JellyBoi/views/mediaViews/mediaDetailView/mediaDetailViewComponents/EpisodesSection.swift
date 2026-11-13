@@ -55,59 +55,11 @@ extension MediaDetailView {
                 ) {
                     switch detailVM.episodes {
                     case .loading:
-                        ScrollView(.horizontal) {
-                            HStack(alignment: .top, spacing: 12) {
-                                ForEach(0..<5, id: \.self) { _ in
-                                    SkeletonBlock(cornerRadius: 16)
-                                        .frame(width: episodeCardHeight * (16.0 / 9.0), height: episodeCardHeight)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-                        .scrollClipDisabled()
-                        .scrollIndicators(.hidden)
-                        .skeleton()
-                        .transition(.opacity)
+                        episodesSkeleton
+                            .transition(.opacity)
                     case .full(let episodes):
-                        ScrollView(.horizontal) {
-                            LazyHStack(alignment: .top, spacing: 12) {
-                                ForEach(episodes, id: \.id) { episode in
-                                    if let episodeID = episode.id {
-                                        let cardWidth = episodeCardHeight * episode.imageAspectRatio
-                                        let zoomID = episode.zoomTransitionID(rowKey: "episode")
-
-                                        MediaCard(
-                                            item: episode,
-                                            posterURL: episode.thumbnailURL(client: serverViewModel.client),
-                                            namespace: episodeTransition,
-                                            onSelect: {
-                                                episodeZoomID = zoomID
-                                                selectedEpisode = episode
-                                            },
-                                            zoomID: zoomID,
-                                            imageAspectRatio: episode.imageAspectRatio,
-                                            onContinueWatching: {
-                                                playbackManager.play(item: episode, fromBeginning: false, queue: episodes)
-                                            },
-                                            onStartFromBeginning: {
-                                                playbackManager.play(item: episode, fromBeginning: true, queue: episodes)
-                                            }
-                                        )
-                                        .equatable()
-                                        .frame(width: cardWidth, height: episodeCardHeight)
-                                        .id(episodeID)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .scrollTargetLayout()
-                        }
-                        .frame(height: episodeCardHeight)
-                        .scrollClipDisabled()
-                        .scrollIndicators(.hidden)
-                        .scrollTargetBehavior(.viewAligned)
-                        .scrollPosition(id: $detailVM.scrolledEpisodeID, anchor: .leading)
-                        .transition(.opacity)
+                        episodesContent(episodes)
+                            .transition(.opacity)
                     case .empty:
                         EmptyView()
                     }
@@ -140,6 +92,63 @@ extension MediaDetailView {
                 }
             }
         }
+    }
+    
+    private var episodesSkeleton: some View {
+        ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(0..<5, id: \.self) { _ in
+                    SkeletonBlock(cornerRadius: 16)
+                        .frame(width: episodeCardHeight * (16.0 / 9.0), height: episodeCardHeight)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .scrollClipDisabled()
+        .scrollIndicators(.hidden)
+        .skeleton()
+    }
+    
+    private func episodesContent(_ episodes: [BaseItemDto]) -> some View {
+        ScrollView(.horizontal) {
+            LazyHStack(alignment: .top, spacing: 12) {
+                ForEach(episodes, id: \.id) { episode in
+                    if let episodeID = episode.id {
+                        let cardWidth = episodeCardHeight * episode.imageAspectRatio
+                        let zoomID = episode.zoomTransitionID(rowKey: "episode")
+
+                        MediaCard(
+                            item: episode,
+                            posterURL: episode.thumbnailURL(client: serverViewModel.client),
+                            namespace: episodeTransition,
+                            onSelect: {
+                                episodeZoomID = zoomID
+                                selectedEpisode = episode
+                            },
+                            zoomID: zoomID,
+                            imageAspectRatio: episode.imageAspectRatio,
+                            onContinueWatching: {
+                                playbackManager.play(item: episode, fromBeginning: false, queue: episodes)
+                            },
+                            onStartFromBeginning: {
+                                playbackManager.play(item: episode, fromBeginning: true, queue: episodes)
+                            }
+                        )
+                        .equatable()
+                        .frame(width: cardWidth, height: episodeCardHeight)
+                        .id(episodeID)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .scrollTargetLayout()
+        }
+        .frame(height: episodeCardHeight)
+        .scrollClipDisabled()
+        .scrollIndicators(.hidden)
+        .scrollTargetBehavior(.viewAligned)
+        .scrollPosition(id: $detailVM.scrolledEpisodeID, anchor: .leading)
+        
     }
 
     private func seasonMenu(proxy: ScrollViewProxy) -> some View {

@@ -21,7 +21,7 @@ extension MediaDetailView {
             SectionRow(title: "Movies & Shows") {
                 switch detailVM.collectionItems {
                 case .loading:
-                    MediaGrid(items: .placeholders(count: 12), namespace: collectionTransition)
+                    MediaGrid(items: .placeholders, namespace: collectionTransition)
                         .skeleton()
                         .transition(.opacity)
                 case .empty:

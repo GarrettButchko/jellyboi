@@ -14,35 +14,35 @@ extension MediaDetailView {
 
     @ViewBuilder
     var castSection: some View {
-        let actors = (displayItem.people ?? []).filter { $0.type == .actor }
-        if !detailVM.isCastHidden {
-            Group{
-                if !actors.isEmpty {
+        if !detailVM.isCastHidden, (!detailVM.cast.isEmpty || detailVM.cast.isLoading) {
+            SectionRow(title: "Cast & Crew") {
+                switch detailVM.cast {
+                case .loading:
+                    castSkeleton
+                        .transition(.opacity)
+                case .full(let actors):
                     castContent(actors)
                         .transition(.opacity)
-                } else if detailVM.isLoading {
-                    castPlaceholderContent
-                        .transition(.opacity)
+                case .empty:
+                    EmptyView()
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: actors.isEmpty)
+            .animation(.easeInOut(duration: 0.2), value: detailVM.cast.isEmpty)
         }
     }
     
-    private var castPlaceholderContent: some View {
-        SectionRow(title: "Cast & Crew") {
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 16) {
-                    ForEach(BaseItemPerson.placeholders(count: 8), id: \.id) { person in
-                        CastCircle(person: person, imageURL: nil)
-                            .frame(width: 74, alignment: .top)
-                    }
+    private var castSkeleton: some View {
+        ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(BaseItemPerson.placeholders, id: \.id) { person in
+                    CastCircle(person: person, imageURL: nil)
+                        .frame(width: 74, alignment: .top)
                 }
-                .padding(.horizontal, 16)
             }
-            .scrollClipDisabled()
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 16)
         }
+        .scrollClipDisabled()
+        .scrollIndicators(.hidden)
         .skeleton()
     }
 
@@ -53,28 +53,26 @@ extension MediaDetailView {
             guard !key.isEmpty else { return false }
             return seen.insert(key).inserted
         }
-
-        return SectionRow(title: "Cast & Crew") {
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 16) {
-                    ForEach(uniquePeople, id: \.id) { person in
-                        Button {
-                            selectedPerson = person
-                        } label: {
-                            CastCircle(
-                                person: person,
-                                imageURL: person.avatarURL(client: serverViewModel.client)
-                            )
-                            .frame(width: 74, alignment: .top)
-                        }
-                        .buttonStyle(.plain)
+        
+        return ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(uniquePeople, id: \.id) { person in
+                    Button {
+                        selectedPerson = person
+                    } label: {
+                        CastCircle(
+                            person: person,
+                            imageURL: person.avatarURL(client: serverViewModel.client)
+                        )
+                        .frame(width: 74, alignment: .top)
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 16)
             }
-            .scrollClipDisabled()
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 16)
         }
+        .scrollClipDisabled()
+        .scrollIndicators(.hidden)
     }
 }
 

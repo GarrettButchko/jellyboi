@@ -122,8 +122,9 @@ struct InfoCapsule: View {
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .lineLimit(1)
         }
+        .foregroundStyle(Color.mainOpp)
         .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .glassEffect(.regular.interactive(), in: Capsule())
+        .padding(.vertical, 7)
+        .background(Color.mainOpp.opacity(0.08), in: Capsule())
     }
 }

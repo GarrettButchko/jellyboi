@@ -610,80 +610,43 @@ extension Array where Element == BaseItemDto {
     }
 }
 
-// MARK: - Placeholder Factories
+// MARK: - Placeholder Static Items
 
 extension BaseItemDto {
-    /// Generates a placeholder `BaseItemDto` with realistic character lengths for skeleton loading states.
-    public static func placeholder(
-        id: String = UUID().uuidString,
-        type: BaseItemKind = .movie,
-        titleLength: Int = 14,
-        overviewLength: Int = 80
-    ) -> BaseItemDto {
-        let title = String(repeating: "█", count: max(1, titleLength))
-        let overview = String(repeating: "█", count: max(1, overviewLength))
-        return BaseItemDto(
-            id: id,
-            name: title,
-            overview: overview,
-            type: type
-        )
-    }
+    /// A static placeholder `BaseItemDto` for skeleton loading states.
+    public static let placeholder = BaseItemDto(
+        id: "placeholder",
+        name: "Placeholder",
+        type: .movie
+    )
 
-    /// Generates an array of placeholder `BaseItemDto` objects with varied title lengths for skeleton loading states.
-    public static func placeholders(
-        count: Int = 10,
-        type: BaseItemKind = .movie
-    ) -> [BaseItemDto] {
-        let lengths = [12, 18, 8, 22, 14, 10, 16]
-        return (0..<count).map { i in
-            placeholder(
-                id: "placeholder-\(i)",
-                type: type,
-                titleLength: lengths[i % lengths.count],
-                overviewLength: 60 + (i % 4) * 20
-            )
-        }
-    }
+    /// A static array containing the placeholder `BaseItemDto` for skeleton loading states.
+    public static let placeholders: [BaseItemDto] = [placeholder]
 }
 
 extension Array where Element == BaseItemDto {
-    /// Generates an array of placeholder `BaseItemDto` objects for skeleton loading states.
-    public static func placeholders(
-        count: Int = 10,
-        type: BaseItemKind = .movie
-    ) -> [BaseItemDto] {
-        BaseItemDto.placeholders(count: count, type: type)
-    }
+    /// A static array containing the placeholder `BaseItemDto` for skeleton loading states.
+    public static let placeholders: [BaseItemDto] = BaseItemDto.placeholders
+    public static let placeholder: [BaseItemDto] = BaseItemDto.placeholders
 }
 
 extension BaseItemPerson {
-    /// Generates a placeholder `BaseItemPerson` with text lengths for skeleton loading states.
-    public static func placeholder(
-        id: String = UUID().uuidString,
-        nameLength: Int = 12,
-        roleLength: Int = 10
-    ) -> BaseItemPerson {
-        BaseItemPerson(
-            id: id,
-            name: String(repeating: "█", count: max(1, nameLength)),
-            role: String(repeating: "█", count: max(1, roleLength)),
-            type: .actor
-        )
-    }
+    /// A static placeholder `BaseItemPerson` for skeleton loading states.
+    public static let placeholder = BaseItemPerson(
+        id: "placeholder",
+        name: "Placeholder",
+        role: "Role",
+        type: .actor
+    )
 
-    /// Generates an array of placeholder `BaseItemPerson` objects for skeleton loading states.
-    public static func placeholders(count: Int = 8) -> [BaseItemPerson] {
-        let nameLengths = [14, 8, 16, 12, 10]
-        let roleLengths = [11, 15, 8, 9, 13]
-        return (0..<count).map { i in
-            placeholder(
-                id: "person-placeholder-\(i)",
-                nameLength: nameLengths[i % nameLengths.count],
-                roleLength: roleLengths[i % roleLengths.count]
-            )
-        }
-    }
+    /// A static array containing the placeholder `BaseItemPerson` for skeleton loading states.
+    public static let placeholders: [BaseItemPerson] = [placeholder]
+}
+
+extension Array where Element == BaseItemPerson {
+    /// A static array containing the placeholder `BaseItemPerson` for skeleton loading states.
+    public static let placeholders: [BaseItemPerson] = BaseItemPerson.placeholders
+    public static let placeholder: [BaseItemPerson] = BaseItemPerson.placeholders
 }
 
 // MARK: - Navigation Transition Helpers

@@ -48,66 +48,78 @@ extension PlayerViewModel {
 
     // MARK: - Metadata Creation
 
-    func createMetadata(for targetItem: BaseItemDto, artworkData: Data?) -> [AVMetadataItem] {
-        var meta: [AVMetadataItem] = []
+    func createArtworkMetadataItem(for targetItem: BaseItemDto, preloadedData: Data? = nil) -> AVMetadataItem {
+        let artworkData = preloadedData ?? loadCachedArtwork(for: targetItem)?.0
+        if let artworkData, !artworkData.isEmpty {
+            let item = AVMutableMetadataItem()
+            item.identifier = .commonIdentifierArtwork
+            item.dataType = artworkData.first == 0x89
+                ? (kCMMetadataBaseDataType_PNG as String)
+                : (kCMMetadataBaseDataType_JPEG as String)
+            item.value = artworkData as NSData
+            item.extendedLanguageTag = "und"
+            return item
+        }
+
+        let template = AVMutableMetadataItem()
+        template.identifier = .commonIdentifierArtwork
+        template.dataType = kCMMetadataBaseDataType_JPEG as String
+        template.extendedLanguageTag = "und"
+
+        return AVMetadataItem(propertiesOf: template) { [weak self] valueRequest in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    valueRequest.respond(error: NSError(domain: "PlayerMetadata", code: -1, userInfo: [NSLocalizedDescriptionKey: "Player deallocated"]))
+                    return
+                }
+                if let (data, img) = await self.loadArtwork(for: targetItem) {
+                    self.artworkState = .loaded(img)
+                    valueRequest.respond(value: data as NSData)
+                    AppLogger.debug("Fulfilled on-demand artwork metadata for '\(targetItem.playbackTitle)'")
+                } else {
+                    valueRequest.respond(error: NSError(domain: "PlayerMetadata", code: -2, userInfo: [NSLocalizedDescriptionKey: "Artwork unavailable"]))
+                }
+            }
+        }
+    }
+
+    func createMetadata(for targetItem: BaseItemDto, artworkData: Data? = nil) -> [AVMetadataItem] {
+        func makeItem(
+            _ identifier: AVMetadataIdentifier,
+            value: (NSCopying & NSObjectProtocol)?,
+            dataType: String? = nil
+        ) -> AVMetadataItem? {
+            guard let value else { return nil }
+            if let string = value as? String, string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return nil
+            }
+            let item = AVMutableMetadataItem()
+            item.identifier = identifier
+            item.value = value
+            item.extendedLanguageTag = "und"
+            if let dataType {
+                item.dataType = dataType
+            }
+            return item
+        }
 
         let titleText = targetItem.playbackTitle
-        let titleItem = AVMutableMetadataItem()
-        titleItem.identifier = .commonIdentifierTitle
-        titleItem.value = titleText as (NSCopying & NSObjectProtocol)
-        titleItem.extendedLanguageTag = "und"
-        meta.append(titleItem)
-
         let subtitleText = targetItem.playbackSubtitle
+        let genresText = targetItem.genres?.filter { !$0.isEmpty }.joined(separator: ", ")
 
-        if let sub = subtitleText {
-            let artistItem = AVMutableMetadataItem()
-            artistItem.identifier = .commonIdentifierArtist
-            artistItem.value = sub as (NSCopying & NSObjectProtocol)
-            artistItem.extendedLanguageTag = "und"
-            meta.append(artistItem)
+        let artworkItem = createArtworkMetadataItem(for: targetItem, preloadedData: artworkData)
 
-            let trackSubTitleItem = AVMutableMetadataItem()
-            trackSubTitleItem.identifier = .iTunesMetadataTrackSubTitle
-            trackSubTitleItem.value = sub as (NSCopying & NSObjectProtocol)
-            trackSubTitleItem.extendedLanguageTag = "und"
-            meta.append(trackSubTitleItem)
-        }
+        let items: [AVMetadataItem?] = [
+            makeItem(.commonIdentifierTitle, value: titleText as NSString),
+            makeItem(.commonIdentifierArtist, value: subtitleText as NSString?),
+            makeItem(.iTunesMetadataTrackSubTitle, value: subtitleText as NSString?),
+            makeItem(.commonIdentifierDescription, value: targetItem.overview as NSString?),
+            makeItem(.quickTimeMetadataGenre, value: genresText as NSString?),
+            makeItem(.iTunesMetadataContentRating, value: targetItem.officialRating as NSString?),
+            artworkItem
+        ]
 
-        if let overview = targetItem.overview, !overview.isEmpty {
-            let descItem = AVMutableMetadataItem()
-            descItem.identifier = .commonIdentifierDescription
-            descItem.value = overview as (NSCopying & NSObjectProtocol)
-            descItem.extendedLanguageTag = "und"
-            meta.append(descItem)
-        }
-
-        if let genres = targetItem.genres, !genres.isEmpty {
-            let genreItem = AVMutableMetadataItem()
-            genreItem.identifier = .quickTimeMetadataGenre
-            genreItem.value = genres.joined(separator: ", ") as (NSCopying & NSObjectProtocol)
-            genreItem.extendedLanguageTag = "und"
-            meta.append(genreItem)
-        }
-
-        if let rating = targetItem.officialRating, !rating.isEmpty {
-            let ratingItem = AVMutableMetadataItem()
-            ratingItem.identifier = .iTunesMetadataContentRating
-            ratingItem.value = rating as (NSCopying & NSObjectProtocol)
-            ratingItem.extendedLanguageTag = "und"
-            meta.append(ratingItem)
-        }
-
-        if let artworkData {
-            let artworkItem = AVMutableMetadataItem()
-            artworkItem.identifier = .commonIdentifierArtwork
-            artworkItem.dataType = kCMMetadataBaseDataType_JPEG as String
-            artworkItem.value = artworkData as (NSCopying & NSObjectProtocol)
-            artworkItem.extendedLanguageTag = "und"
-            meta.append(artworkItem)
-        }
-
-        return meta
+        return items.compactMap { $0 }
     }
 
     // MARK: - Poster Artwork & Now Playing Info
@@ -145,110 +157,54 @@ extension PlayerViewModel {
         guard !urls.isEmpty else { return nil }
 
         for url in urls {
-            if let img = await fetchImage(for: url, timeoutSeconds: timeoutSeconds) {
-                if let data = img.jpegData(compressionQuality: 0.85) ?? img.pngData() {
-                    AppLogger.debug("Downloaded poster artwork for \(currentItem.playbackTitle)")
-                    return (data, img)
-                }
+            if let result = await fetchImage(for: url, timeoutSeconds: timeoutSeconds) {
+                AppLogger.debug("Downloaded poster artwork for \(currentItem.playbackTitle)")
+                return result
             }
         }
 
         return nil
     }
 
-    nonisolated final class ArtworkFetchBox: @unchecked Sendable {
-        private var resumed = false
-        private var operation: SDWebImageOperation?
-        private let lock = NSLock()
-
-        func setOperation(_ op: SDWebImageOperation?) {
-            lock.lock()
-            defer { lock.unlock() }
-            operation = op
-        }
-
-        func resume(with continuation: CheckedContinuation<UIImage?, Never>, image: UIImage?) {
-            lock.lock()
-            defer { lock.unlock() }
-            guard !resumed else { return }
-            resumed = true
-            operation?.cancel()
-            operation = nil
-            continuation.resume(returning: image)
-        }
-
-        func cancel() {
-            lock.lock()
-            defer { lock.unlock() }
-            operation?.cancel()
-            operation = nil
-        }
-    }
-
-    func fetchImage(for url: URL, timeoutSeconds: Double) async -> UIImage? {
-        let fetchBox = ArtworkFetchBox()
-
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                let op = SDWebImageManager.shared.loadImage(
-                    with: url,
-                    options: [.continueInBackground, .retryFailed, .highPriority],
-                    progress: nil
-                ) { [weak self] image, _, error, _, _, _ in
-                    guard self != nil else {
-                        fetchBox.resume(with: continuation, image: nil)
-                        return
-                    }
-                    if let image {
-                        fetchBox.resume(with: continuation, image: image)
-                    } else {
-                        if let error {
-                            AppLogger.debug("SDWebImage fetch failed for \(url.lastPathComponent): \(error.localizedDescription)")
-                        }
-                        fetchBox.resume(with: continuation, image: nil)
-                    }
-                }
-                fetchBox.setOperation(op)
-
-                Task {
-                    try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
-                    fetchBox.resume(with: continuation, image: nil)
-                }
+    func fetchImage(for url: URL, timeoutSeconds: Double = 5.0) async -> (Data, UIImage)? {
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = timeoutSeconds
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let image = UIImage(data: data) else {
+                return nil
             }
-        } onCancel: {
-            fetchBox.cancel()
+            let cacheKey = SDWebImageManager.shared.cacheKey(for: url) ?? url.absoluteString
+            await SDImageCache.shared.store(image, imageData: data, forKey: cacheKey, toDisk: true)
+            return (data, image)
+        } catch {
+            AppLogger.debug("Network artwork fetch failed for \(url.lastPathComponent): \(error.localizedDescription)")
+            return nil
         }
     }
 
     func startAsyncArtworkFetchIfNeeded() {
-        guard loadedArtworkImage == nil else { return }
+        guard artworkState.image == nil else { return }
         subscriptions.cancelArtworkTask()
+        artworkState = .loading
         subscriptions.artworkTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            if let (data, img) = await self.loadArtwork(timeoutSeconds: 8.0) {
+            if let (_, img) = await self.loadArtwork(timeoutSeconds: 8.0) {
                 guard !Task.isCancelled else { return }
-                self.loadedArtworkImage = img
-                self.updateNowPlayingInfo(with: img)
-
-                if let currentItem = self.player?.currentItem {
-                    var meta = currentItem.externalMetadata
-                    meta.removeAll(where: { $0.identifier == .commonIdentifierArtwork })
-                    let artworkItem = AVMutableMetadataItem()
-                    artworkItem.identifier = .commonIdentifierArtwork
-                    artworkItem.dataType = kCMMetadataBaseDataType_JPEG as String
-                    artworkItem.value = data as (NSCopying & NSObjectProtocol)
-                    artworkItem.extendedLanguageTag = "und"
-                    meta.append(artworkItem)
-                    currentItem.externalMetadata = meta
-                    AppLogger.debug("Attached delayed poster artwork to active playerItem metadata")
+                self.artworkState = .loaded(img)
+            } else {
+                guard !Task.isCancelled else { return }
+                if self.artworkState == .loading {
+                    self.artworkState = .none
                 }
             }
         }
     }
 
-    func updateNowPlayingInfo(with artworkImage: UIImage) {
+    func updateNowPlayingInfo(with artworkImage: UIImage? = nil) {
         #if canImport(MediaPlayer)
-        var nowPlayingInfo: [String: Any] = [:]
+        var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         nowPlayingInfo[MPMediaItemPropertyTitle] = request.item.playbackTitle
         if let sub = request.item.playbackSubtitle {
             nowPlayingInfo[MPMediaItemPropertyArtist] = sub
@@ -257,11 +213,13 @@ extension PlayerViewModel {
         nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = timeline.currentSeconds
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = now.isPlaying ? 1.0 : 0.0
 
-        let artwork = MPMediaItemArtwork(boundsSize: artworkImage.size) { _ in artworkImage }
-        nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+        if let artworkImage {
+            let artwork = MPMediaItemArtwork(boundsSize: artworkImage.size) { _ in artworkImage }
+            nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+        }
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-        AppLogger.debug("Updated MPNowPlayingInfoCenter with title: '\(request.item.playbackTitle)', artist: '\(request.item.playbackSubtitle ?? "nil")', artwork: \(Int(artworkImage.size.width))x\(Int(artworkImage.size.height))")
+        AppLogger.debug("Updated MPNowPlayingInfoCenter for '\(request.item.playbackTitle)'")
         #endif
     }
 }

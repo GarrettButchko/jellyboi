@@ -90,7 +90,7 @@ struct HomeView: View {
                                 ForEach(0..<3, id: \.self) { _ in
                                     SectionRow(
                                         title: "Movies & Shows",
-                                        items: .placeholders(count: 8),
+                                        items: .placeholders,
                                         namespace: zoomTransition
                                     )
                                     .skeleton()

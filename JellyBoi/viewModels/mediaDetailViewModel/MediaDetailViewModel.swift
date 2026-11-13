@@ -21,6 +21,7 @@ class MediaDetailViewModel {
     var detailedItem: BaseItemDto?
     var sourceItem: BaseItemDto?
     var seriesItem: BaseItemDto?
+    var cast: LoadingState<BaseItemPerson> = .empty
     var similarItems: LoadingState<BaseItemDto> = .empty
     var specialFeatures: LoadingState<BaseItemDto> = .empty
     var seasons: [BaseItemDto] = []
@@ -34,6 +35,7 @@ class MediaDetailViewModel {
     var heroReady = false
     var isLoading = false
 
+    var isLoadingCast: Bool { cast.isLoading }
     var isLoadingCollectionItems: Bool { collectionItems.isLoading }
     var isLoadingEpisodes: Bool { episodes.isLoading }
     var isLoadingSpecialFeatures: Bool { specialFeatures.isLoading }
@@ -64,6 +66,8 @@ class MediaDetailViewModel {
     init(item: BaseItemDto? = nil) {
         if let item {
             self.sourceItem = item
+            let actors = (item.people ?? []).filter { $0.type == .actor }
+            self.cast = actors.isEmpty ? .loading : .full(actors)
             if item.type == .boxSet, let id = item.id, let cached = Self.collectionItemsCache[id] {
                 self.collectionItems = cached.isEmpty ? .empty : .full(cached)
             }
@@ -228,6 +232,9 @@ class MediaDetailViewModel {
         self.hasInitialEpisodeScrolled = false
         self.scrolledEpisodeID = nil
 
+        let actors = (item.people ?? []).filter { $0.type == .actor }
+        self.cast = actors.isEmpty ? .loading : .full(actors)
+
         if let id = item.id, let lvm = libraryViewModel {
             if let cached = lvm.cachedSpecialFeatures(for: id) {
                 self.specialFeatures = cached.isEmpty ? .empty : .full(cached)
@@ -312,6 +319,10 @@ class MediaDetailViewModel {
                 self.mediaSources = sources
                 configureInitialStreamSelection()
             }
+            if cast.isLoading {
+                let actors = (resolvedItem.people ?? []).filter { $0.type == .actor }
+                self.cast = actors.isEmpty ? .empty : .full(actors)
+            }
             if item.type == .series || resolvedItem.type == .series {
                 let downloadedEps = DownloadManager.shared.downloadedEpisodes
                     .filter { ($0.seriesID ?? $0.parentBackdropItemID) == itemID }
@@ -363,6 +374,9 @@ class MediaDetailViewModel {
         guard !Task.isCancelled else { return }
 
         self.detailedItem = detailResult
+
+        let actors = (detailResult?.people ?? sourceItem?.people ?? []).filter { $0.type == .actor }
+        self.cast = actors.isEmpty ? .empty : .full(actors)
 
         if let sources = detailedItem?.mediaSources ?? sourceItem?.mediaSources, !sources.isEmpty {
             self.mediaSources = sources

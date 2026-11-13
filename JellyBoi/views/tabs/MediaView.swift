@@ -195,7 +195,7 @@ struct MediaView: View {
     private var favoritesContent: some View {
         Group {
             if viewModel.isLoading && viewModel.currentFavoriteItems.isEmpty {
-                MediaGrid(items: .placeholders(count: 18), namespace: zoomTransition)
+                MediaGrid(items: .placeholders, namespace: zoomTransition)
                     .skeleton()
                     .transition(.opacity)
             } else if viewModel.currentFavoriteItems.isEmpty {
@@ -243,7 +243,7 @@ struct MediaView: View {
         Group {
             if viewModel.regularItems.isEmpty {
                 if viewModel.isLoading {
-                    MediaGrid(items: .placeholders(count: 18), namespace: zoomTransition)
+                    MediaGrid(items: .placeholders, namespace: zoomTransition)
                         .skeleton()
                         .transition(.opacity)
                 } else if let error = viewModel.errorMessage {

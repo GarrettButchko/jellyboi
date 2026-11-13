@@ -162,6 +162,63 @@ extension PlayerViewModel {
             self == .dismissed
         }
     }
+
+    /// Represents the activation state of the AVAudioSession for media playback.
+    enum AudioSessionState: Equatable, Sendable {
+        /// Audio session is inactive / not configured by this player.
+        case inactive
+        /// Audio session has been actively configured and started.
+        case active
+
+        var isActive: Bool {
+            self == .active
+        }
+    }
+
+    /// Represents the state of the poster artwork image used in Now Playing metadata.
+    enum ArtworkState: Equatable, @unchecked Sendable {
+        /// No artwork loaded or fetch not requested.
+        case none
+        /// Artwork is actively being fetched.
+        case loading
+        /// Artwork image successfully loaded and available.
+        case loaded(UIImage)
+
+        var image: UIImage? {
+            if case .loaded(let img) = self { return img }
+            return nil
+        }
+
+        var isLoading: Bool {
+            self == .loading
+        }
+    }
+
+    /// Represents the reporting lifecycle of playback with the Jellyfin server.
+    enum ReportingState: Equatable, Sendable {
+        /// Initial playback start has not yet been reported.
+        case notReported
+        /// Playback start has been reported and periodic reporting is active.
+        case reported
+        /// Playback has reported stop / ended.
+        case stopped
+
+        var isReported: Bool {
+            self == .reported
+        }
+    }
+
+    /// Represents whether the initial resume position seek has completed.
+    enum SeekState: Equatable, Sendable {
+        /// Initial resume seek is pending.
+        case pending
+        /// Initial resume seek has been applied (or not needed).
+        case applied
+
+        var isApplied: Bool {
+            self == .applied
+        }
+    }
 }
 
 // MARK: - Playback Timeline & Stream Context

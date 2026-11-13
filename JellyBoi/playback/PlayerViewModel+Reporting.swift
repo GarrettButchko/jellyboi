@@ -38,6 +38,7 @@ extension PlayerViewModel {
         )
         do {
             try await client.reportPlaybackStart(state)
+            reportingState = .reported
             AppLogger.debug("Successfully reported playback start")
         } catch {
             AppLogger.warning("Failed to report playback start: \(error.localizedDescription)")
@@ -74,8 +75,8 @@ extension PlayerViewModel {
     }
 
     func sendPlaybackStopped(positionTicks: Int) {
-        guard hasReportedStart, let client, let itemID = request.item.id else { return }
-        hasReportedStart = false
+        guard reportingState == .reported, let client, let itemID = request.item.id else { return }
+        reportingState = .stopped
         updateLocalProgress(positionTicks: positionTicks)
         let sessionID = streamContext.playSessionID
         let sourceID = streamContext.mediaSourceID

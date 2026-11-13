@@ -93,7 +93,7 @@ public struct SkeletonBlock: View {
 
             SectionRow(
                 title: "Popular Movies",
-                items: .placeholders(count: 6)
+                items: .placeholders
             )
             .skeleton()
         }

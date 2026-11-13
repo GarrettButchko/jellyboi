@@ -166,16 +166,16 @@ extension PlayerViewModel {
         let nextResume = mediaToPlay.request.startFromBeginning ? 0 : mediaToPlay.request.item.resumePlaybackTicks
         self.timeline = PlaybackTimeline(currentPositionTicks: nextResume, initialResumeTicks: nextResume, durationTicks: dur)
         self.streamContext = mediaToPlay.streamContext
-        self.loadedArtworkImage = mediaToPlay.artworkImage
-        self.hasReportedStart = false
-        self.hasAppliedInitialSeek = false
+        self.artworkState = mediaToPlay.artworkImage.map { .loaded($0) } ?? .none
+        self.reportingState = .notReported
+        self.seekState = .pending
         self.currentIndex += 1
 
         player?.replaceCurrentItem(with: mediaToPlay.playerItem)
 
         observeItemDidPlayToEnd(for: mediaToPlay.playerItem)
 
-        if let img = loadedArtworkImage {
+        if let img = artworkState.image {
             updateNowPlayingInfo(with: img)
         }
 
@@ -185,7 +185,6 @@ extension PlayerViewModel {
 
         player?.play()
         self.now = .playing
-        hasReportedStart = true
         await reportPlaybackStart()
         startPeriodicReporting()
         AppLogger.success("Now playing next item: '\(request.item.playbackTitle)'")

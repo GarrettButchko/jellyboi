@@ -48,10 +48,12 @@ final class PlayerViewModel: Identifiable {
     var streamContext: ActiveStreamContext = ActiveStreamContext()
     let subscriptions = PlayerSubscriptions()
 
-    var hasActivatedAudioSession: Bool = false
-    var loadedArtworkImage: UIImage?
-    var hasReportedStart: Bool = false
-    var hasAppliedInitialSeek: Bool = false
+    // MARK: - Playback Sub-States & Resource Tracking
+
+    var audioSessionState: AudioSessionState = .inactive
+    var artworkState: ArtworkState = .none
+    var reportingState: ReportingState = .notReported
+    var seekState: SeekState = .pending
 
     init(
         request: PlaybackRequest,
@@ -117,18 +119,18 @@ final class PlayerViewModel: Identifiable {
     // MARK: - Audio Session Management
 
     func configureAudioSession() async {
-        guard !hasActivatedAudioSession else { return }
+        guard audioSessionState != .active else { return }
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo)
             try await activateAudioSession()
-            hasActivatedAudioSession = true
+            audioSessionState = .active
             AppLogger.debug("Configured AVAudioSession (.playback, .moviePlayback, .longFormVideo)")
         } catch {
             AppLogger.warning("Long-form video audio session policy failed: \(error.localizedDescription); falling back")
             do {
                 try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
                 try await activateAudioSession()
-                hasActivatedAudioSession = true
+                audioSessionState = .active
             } catch {
                 AppLogger.error("Audio session configuration failed: \(error.localizedDescription)", error)
             }
@@ -170,7 +172,7 @@ final class PlayerViewModel: Identifiable {
 
         subscriptions.cancelAll(player: player)
 
-        loadedArtworkImage = nil
+        artworkState = .none
         streamContext.videoNaturalSize = nil
 
         upNextState = .hidden
@@ -193,9 +195,9 @@ final class PlayerViewModel: Identifiable {
         player?.replaceCurrentItem(with: nil)
         player = nil
 
-        if hasActivatedAudioSession {
+        if audioSessionState == .active {
             deactivateAudioSession()
-            hasActivatedAudioSession = false
+            audioSessionState = .inactive
         }
 
         sendPlaybackStopped(positionTicks: timeline.currentPositionTicks)

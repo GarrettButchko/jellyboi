@@ -9,124 +9,10 @@ import Foundation
 import CoreGraphics
 import AVKit
 import CoreMedia
-import Get
 import JellyfinAPI
 import LoggingKit
 
 extension PlayerViewModel {
-
-    // MARK: - Device Profile
-
-    static var appleDeviceProfile: DeviceProfile {
-        DeviceProfile(
-            directPlayProfiles: [
-                DirectPlayProfile(
-                    audioCodec: "aac,mp3,ac3,eac3,alac,flac",
-                    container: "mp4,m4v,mov",
-                    type: .video,
-                    videoCodec: "h264,hevc"
-                ),
-                DirectPlayProfile(
-                    audioCodec: "aac,mp3,alac,flac,wav",
-                    container: "mp3,m4a,aac,flac,wav",
-                    type: .audio
-                )
-            ],
-            maxStaticBitrate: 140_000_000,
-            maxStreamingBitrate: 140_000_000,
-            name: "Apple Native Player",
-            subtitleProfiles: [
-                SubtitleProfile(format: "vtt", method: .hls),
-                SubtitleProfile(format: "webvtt", method: .hls),
-                SubtitleProfile(format: "subrip", method: .hls),
-                SubtitleProfile(format: "srt", method: .hls),
-                SubtitleProfile(format: "ass", method: .encode),
-                SubtitleProfile(format: "ssa", method: .encode)
-            ],
-            transcodingProfiles: [
-                TranscodingProfile(
-                    protocol: .hls,
-                    audioCodec: "aac,mp3,ac3,eac3",
-                    container: "mp4",
-                    context: .streaming,
-                    enableAudioVbrEncoding: true,
-                    enableMpegtsM2TsMode: false,
-                    enableSubtitlesInManifest: true,
-                    isBreakOnNonKeyFrames: true,
-                    isCopyTimestamps: true,
-                    isEstimateContentLength: false,
-                    maxAudioChannels: "6",
-                    minSegments: 1,
-                    segmentLength: 6,
-                    transcodeSeekInfo: .auto,
-                    type: .video,
-                    videoCodec: "h264,hevc"
-                ),
-                TranscodingProfile(
-                    protocol: .hls,
-                    audioCodec: "aac,mp3,ac3,eac3",
-                    container: "ts",
-                    context: .streaming,
-                    enableAudioVbrEncoding: true,
-                    enableMpegtsM2TsMode: false,
-                    enableSubtitlesInManifest: true,
-                    isBreakOnNonKeyFrames: true,
-                    isCopyTimestamps: true,
-                    isEstimateContentLength: false,
-                    maxAudioChannels: "6",
-                    minSegments: 1,
-                    segmentLength: 6,
-                    transcodeSeekInfo: .auto,
-                    type: .video,
-                    videoCodec: "h264"
-                ),
-                TranscodingProfile(
-                    protocol: .hls,
-                    audioCodec: "aac,mp3",
-                    container: "mp4",
-                    context: .streaming,
-                    enableAudioVbrEncoding: true,
-                    enableMpegtsM2TsMode: false,
-                    enableSubtitlesInManifest: true,
-                    isBreakOnNonKeyFrames: true,
-                    isCopyTimestamps: true,
-                    isEstimateContentLength: false,
-                    maxAudioChannels: "6",
-                    minSegments: 1,
-                    segmentLength: 6,
-                    transcodeSeekInfo: .auto,
-                    type: .audio
-                )
-            ]
-        )
-    }
-
-    // MARK: - Server Networking Helpers
-
-    // Two ways a When requesting playback info, the Jellyfin server's transcodingURL can be returned either as:
-    // 1: A full absolute URL (e.g. https://jellyfin.local:8096/videos/.../master.m3u8 when behind certain reverse proxies or base URL configurations).
-    // 2: A relative path (e.g. /videos/.../master.m3u8).
-    func resolveServerURL(path: String, client: JellyfinClient) -> URL? {
-        if path.hasPrefix("http://") || path.hasPrefix("https://") {
-            return URL(string: path)
-        }
-        return client.url(path: path)
-    }
-
-    // Key for jellyfin server to give video
-    func authorizationHeader(for client: JellyfinClient) -> String {
-        var rawFields = [
-            "DeviceId": client.configuration.deviceID,
-            "Device": client.configuration.deviceName,
-            "Client": client.configuration.client,
-            "Version": client.configuration.version,
-        ]
-        if let token = client.configuration.accessToken {
-            rawFields["Token"] = token
-        }
-        let fields = rawFields.map { "\($0.key)=\"\($0.value)\"" }.joined(separator: ", ")
-        return "MediaBrowser \(fields)"
-    }
 
     // MARK: - Player Preparation
 
@@ -138,7 +24,7 @@ extension PlayerViewModel {
         guard !Task.isCancelled else { return false }
 
         now = (mode == .preload) ? .preloading : .preparing
-        hasAppliedInitialSeek = false
+        seekState = .pending
         AppLogger.info("Starting player preparation for '\(request.item.playbackTitle)' (mode: \(mode))")
 
         if mode == .immediate {
@@ -190,7 +76,7 @@ extension PlayerViewModel {
 
     private func applyPreparedMedia(_ prepared: PreparedMedia) {
         self.streamContext = prepared.streamContext
-        self.loadedArtworkImage = prepared.artworkImage
+        self.artworkState = prepared.artworkImage.map { .loaded($0) } ?? .none
     }
 
     private func createConfiguredPlayer(for playerItem: AVPlayerItem) -> AVPlayer {
@@ -241,7 +127,7 @@ extension PlayerViewModel {
             MainActor.assumeIsolated {
                 let seconds = CMTimeGetSeconds(time)
                 if seconds.isFinite && seconds >= 0 {
-                    if self.hasAppliedInitialSeek || self.timeline.initialResumeTicks == 0 {
+                    if self.seekState == .applied || self.timeline.initialResumeTicks == 0 {
                         self.timeline.currentPositionTicks = Int(seconds * 10_000_000.0)
                     }
                 }
@@ -249,7 +135,7 @@ extension PlayerViewModel {
                     let durationSec = CMTimeGetSeconds(dur)
                     if durationSec.isFinite && durationSec > 0 {
                         self.timeline.durationTicks = Int(durationSec * 10_000_000.0)
-                        if !self.hasAppliedInitialSeek && self.timeline.initialResumeTicks == 0 && !self.request.startFromBeginning {
+                        if self.seekState != .applied && self.timeline.initialResumeTicks == 0 && !self.request.startFromBeginning {
                             if let percent = self.request.item.userData?.playedPercentage, percent > 0 {
                                 let calculated = Int((Double(self.timeline.durationTicks) * percent) / 100.0)
                                 self.timeline.initialResumeTicks = calculated
@@ -317,260 +203,6 @@ extension PlayerViewModel {
             AppLogger.error("Failed to achieve readiness after \(maxMapRetries + 1) attempts")
         }
         return false
-    }
-
-    func prepareMediaItem(for req: PlaybackRequest) async -> PreparedMedia? {
-        guard let itemID = req.item.id else {
-            now = .failed(reason: "Invalid media item.")
-            AppLogger.error("Failed to prepare playback: Item ID is nil")
-            return nil
-        }
-        guard !Task.isCancelled else { return nil }
-
-        let resumeTicks: Int = {
-            if req.startFromBeginning { return 0 }
-            if timeline.initialResumeTicks > 0 { return timeline.initialResumeTicks }
-            return req.item.resumePlaybackTicks
-        }()
-        if timeline.initialResumeTicks == 0 && resumeTicks > 0 {
-            self.timeline.initialResumeTicks = resumeTicks
-            self.timeline.currentPositionTicks = resumeTicks
-        }
-        var preparedItem: AVPlayerItem?
-        var usedLocal = false
-        var resolvedPlayMethod: PlayMethod = .directStream
-        var sessionID: String?
-        var selectedSource: MediaSourceInfo?
-        var natSize: CGSize?
-
-        let isLocalPlayable = req.localFileURL.map { url in
-            let ext = url.pathExtension.lowercased()
-            return ["mp4", "m4v", "mov"].contains(ext)
-        } ?? false
-
-        if let localURL = req.localFileURL, isLocalPlayable {
-            let asset = AVURLAsset(url: localURL)
-            let isPlayable = (try? await asset.load(.isPlayable)) ?? false
-            if isPlayable {
-                AppLogger.info("Preparing local file playback from: \(localURL.path)")
-                let pItem = AVPlayerItem(asset: asset)
-
-                if let tracks = try? await asset.loadTracks(withMediaType: .video),
-                   let videoTrack = tracks.first,
-                   let naturalSize = try? await videoTrack.load(.naturalSize),
-                   naturalSize.width > 0, naturalSize.height > 0 {
-                    natSize = naturalSize
-                    let trackDAR = naturalSize.width / naturalSize.height
-                    if let targetDAR = self.targetAspectRatio, abs(trackDAR - targetDAR) / targetDAR > 0.02 {
-                        let preferredTransform = (try? await videoTrack.load(.preferredTransform)) ?? .identity
-                        let renderWidth = naturalSize.height * targetDAR
-                        let renderHeight = naturalSize.height
-                        let scaleX = renderWidth / naturalSize.width
-
-                        var layerConfig = AVVideoCompositionLayerInstruction.Configuration(assetTrack: videoTrack)
-                        let adjustedTransform = preferredTransform.scaledBy(x: scaleX, y: 1.0)
-                        layerConfig.setTransform(adjustedTransform, at: .zero)
-                        let layerInstruction = AVVideoCompositionLayerInstruction(configuration: layerConfig)
-
-                        var instructionConfig = AVVideoCompositionInstruction.Configuration()
-                        instructionConfig.timeRange = CMTimeRange(start: .zero, duration: .positiveInfinity)
-                        instructionConfig.layerInstructions = [layerInstruction]
-                        let instruction = AVVideoCompositionInstruction(configuration: instructionConfig)
-
-                        var compositionConfig = AVVideoComposition.Configuration()
-                        compositionConfig.instructions = [instruction]
-                        compositionConfig.renderSize = CGSize(width: renderWidth, height: renderHeight)
-                        let nominalFrameRate = (try? await videoTrack.load(.nominalFrameRate)) ?? 0
-                        let fps = nominalFrameRate > 0 ? Int32(round(nominalFrameRate)) : 30
-                        compositionConfig.frameDuration = CMTime(value: 1, timescale: fps)
-
-                        let composition = AVVideoComposition(configuration: compositionConfig)
-                        pItem.videoComposition = composition
-                    }
-                }
-
-                preparedItem = pItem
-                resolvedPlayMethod = .directPlay
-                usedLocal = true
-            } else {
-                AppLogger.warning("Local file at \(localURL.path) cannot be opened by AVPlayer. Falling back to server stream.")
-            }
-        }
-
-        if !usedLocal, let client {
-            if let localURL = req.localFileURL {
-                AppLogger.warning("Downloaded file at '\(localURL.path)' is not playable natively offline. Streaming from server instead.")
-            }
-            var streamURL: URL?
-
-            let targetBitrate: Int? = req.maxBitrate
-            let allowDirect = req.maxBitrate == nil
-            let subIndex = req.subtitleStreamIndex
-            let effectiveMaxBitrate = targetBitrate ?? 140_000_000
-            let playbackDto = PlaybackInfoDto(
-                allowAudioStreamCopy: true,
-                allowVideoStreamCopy: allowDirect,
-                audioStreamIndex: req.audioStreamIndex,
-                deviceProfile: Self.appleDeviceProfile,
-                enableDirectPlay: allowDirect,
-                enableDirectStream: allowDirect,
-                enableTranscoding: true,
-                maxStreamingBitrate: effectiveMaxBitrate,
-                mediaSourceID: req.mediaSourceID,
-                startTimeTicks: resumeTicks,
-                subtitleStreamIndex: subIndex,
-                userID: userID
-            )
-
-            do {
-                let playbackInfo = try await client.send(
-                    Paths.getPostedPlaybackInfo(
-                        itemID: itemID,
-                        parameters: .init(userID: userID, maxStreamingBitrate: effectiveMaxBitrate),
-                        playbackDto
-                    )
-                ).value
-                sessionID = playbackInfo.playSessionID
-
-                let matchingSource = playbackInfo.mediaSources?.first(where: { $0.id == req.mediaSourceID })
-                    ?? playbackInfo.mediaSources?.first
-
-                if let first = matchingSource {
-                    selectedSource = first
-                    if let transURL = first.transcodingURL, !transURL.isEmpty {
-                        if req.maxBitrate != nil {
-                            resolvedPlayMethod = .transcode
-                        } else if first.isSupportsDirectStream == true {
-                            resolvedPlayMethod = .directStream
-                        } else {
-                            resolvedPlayMethod = .transcode
-                        }
-                        var fullTransURL = transURL
-                        if let maxBitrate = req.maxBitrate, !fullTransURL.contains("MaxStreamingBitrate=") {
-                            let sep = fullTransURL.contains("?") ? "&" : "?"
-                            fullTransURL += "\(sep)VideoBitRate=\(maxBitrate)&MaxStreamingBitrate=\(maxBitrate)"
-                        }
-                        streamURL = resolveServerURL(path: fullTransURL, client: client)
-                        AppLogger.info("Using server-provided transcoding URL: \(streamURL?.absoluteString ?? fullTransURL)")
-                    }
-                }
-            } catch is CancellationError {
-                AppLogger.debug("Player preparation cancelled during getPostedPlaybackInfo")
-                return nil
-            } catch {
-                if Task.isCancelled {
-                    return nil
-                }
-                AppLogger.warning("Failed to get posted playback info: \(error.localizedDescription)")
-            }
-
-            guard !Task.isCancelled else { return nil }
-
-            if streamURL == nil {
-                let source = selectedSource ?? req.item.mediaSources?.first
-                let container = source?.container?.lowercased() ?? ""
-                let isAppleNativeContainer = ["mp4", "m4v", "mov"].contains(container)
-                let hasCustomStreams = req.audioStreamIndex != nil || (req.subtitleStreamIndex != nil && req.subtitleStreamIndex! >= 0) || req.maxBitrate != nil
-                let canDirectPlay = source?.isSupportsDirectPlay == true && isAppleNativeContainer && !hasCustomStreams
-
-                if canDirectPlay {
-                    resolvedPlayMethod = .directPlay
-                    AppLogger.info("Media container is '\(container)'; using direct static stream")
-                    streamURL = client.directVideoStreamURL(
-                        itemID: itemID,
-                        sessionID: sessionID,
-                        mediaSourceID: source?.id
-                    )
-                } else if let validSource = source {
-                    resolvedPlayMethod = (req.maxBitrate != nil) ? .transcode : .directStream
-                    AppLogger.info("Container '\(container)' requires HLS remuxing/transcoding for AVPlayer; requesting master.m3u8")
-                    let sourceID = validSource.id ?? req.mediaSourceID ?? itemID
-                    let sid = sessionID ?? UUID().uuidString
-                    sessionID = sid
-                    var hlsPath = "/Videos/\(itemID)/master.m3u8?MediaSourceId=\(sourceID)&PlaySessionId=\(sid)&VideoCodec=h264,hevc&AudioCodec=aac,mp3,ac3,eac3&TranscodingMaxAudioChannels=6&SegmentContainer=mp4&MinSegments=1&BreakOnNonKeyFrames=True&StartTimeTicks=\(resumeTicks)"
-                    if let audioIndex = req.audioStreamIndex {
-                        hlsPath += "&AudioStreamIndex=\(audioIndex)"
-                    }
-                    if let subtitleIndex = req.subtitleStreamIndex {
-                        hlsPath += "&SubtitleStreamIndex=\(subtitleIndex)"
-                    }
-                    if let maxBitrate = req.maxBitrate {
-                        hlsPath += "&VideoBitRate=\(maxBitrate)&MaxStreamingBitrate=\(maxBitrate)"
-                    }
-                    streamURL = resolveServerURL(path: hlsPath, client: client)
-                } else {
-                    now = .failed(reason: "No compatible media source found.")
-                    AppLogger.error("Cannot resolve stream URL: no media source available")
-                    return nil
-                }
-            }
-
-            guard var url = streamURL else {
-                now = .failed(reason: "Unable to construct stream URL.")
-                AppLogger.error("Failed to construct stream URL for item \(itemID)")
-                return nil
-            }
-
-            if let token = client.configuration.accessToken,
-               var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-                var queryItems = components.queryItems ?? []
-                if !queryItems.contains(where: { $0.name == "api_key" }) {
-                    queryItems.append(URLQueryItem(name: "api_key", value: token))
-                    components.queryItems = queryItems
-                    if let updatedURL = components.url {
-                        url = updatedURL
-                    }
-                }
-            }
-
-            AppLogger.info("Resolved streaming URL: \(url.absoluteString)")
-            var headers: [String: String] = [
-                "Authorization": authorizationHeader(for: client)
-            ]
-            if let token = client.configuration.accessToken {
-                headers["X-Emby-Token"] = token
-            }
-
-            let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
-            preparedItem = AVPlayerItem(asset: asset)
-        } else if !usedLocal {
-            let reason: String
-            if let localURL = req.localFileURL, !isLocalPlayable {
-                reason = "This video is downloaded in .\(localURL.pathExtension.uppercased()) format, which iOS cannot play offline. Please connect to your server to stream or re-download as MP4."
-            } else if req.localFileURL != nil {
-                reason = "The downloaded file could not be opened and server connection is unavailable."
-            } else {
-                reason = "Server connection is unavailable."
-            }
-            now = .failed(reason: reason)
-            AppLogger.error("Failed to start playback: \(reason)")
-            return nil
-        }
-
-        guard let playerItem = preparedItem else {
-            now = .failed(reason: "Failed to initialize player item.")
-            return nil
-        }
-
-        let artwork = loadCachedArtwork(for: req.item)
-        let meta = createMetadata(for: req.item, artworkData: artwork?.0)
-        playerItem.externalMetadata = meta
-
-        let streamCtx = ActiveStreamContext(
-            playSessionID: sessionID,
-            mediaSourceID: selectedSource?.id,
-            mediaSource: selectedSource,
-            maxBitrate: req.maxBitrate,
-            videoNaturalSize: natSize,
-            playMethod: resolvedPlayMethod
-        )
-
-        return PreparedMedia(
-            request: req,
-            playerItem: playerItem,
-            streamContext: streamCtx,
-            artworkImage: artwork?.1
-        )
     }
 
     // MARK: - Readiness & Initial Playback
@@ -674,8 +306,8 @@ extension PlayerViewModel {
     }
 
     func applyInitialResumeSeekIfNeeded(logContext: String = "") async {
-        guard !hasAppliedInitialSeek else { return }
-        hasAppliedInitialSeek = true
+        guard seekState != .applied else { return }
+        seekState = .applied
         guard timeline.initialResumeTicks > 0 else { return }
 
         let seconds = timeline.initialResumeSeconds
@@ -739,11 +371,10 @@ extension PlayerViewModel {
 
         player.play()
         self.now = .playing
-        if let img = loadedArtworkImage {
+        if let img = artworkState.image {
             updateNowPlayingInfo(with: img)
         }
-        if !self.hasReportedStart {
-            self.hasReportedStart = true
+        if reportingState != .reported {
             await self.reportPlaybackStart()
             self.startPeriodicReporting()
         }
