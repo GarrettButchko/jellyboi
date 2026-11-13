@@ -32,38 +32,53 @@ extension MediaDetailView {
         [GridItem(.adaptive(minimum: horizontalSizeClass == .regular ? 160 : 110), spacing: 16)]
     }
 
+    private var shouldIncludeCollection: Bool {
+        displayItem.type == .boxSet
+    }
+
     @ViewBuilder
     var collectionSection: some View {
-        if displayItem.type == .boxSet {
+        if shouldIncludeCollection {
             SectionRow(title: "Movies & Shows") {
                 if detailVM.collectionStatus.isLoading {
-                    MediaGrid(items: defaultCollectionItems, namespace: collectionTransition)
-                } else if !detailVM.collectionItems.isEmpty {
-                    LazyVGrid(columns: collectionColumns, spacing: 16) {
-                        ForEach(detailVM.collectionItems, id: \.id) { item in
-                            MediaCard(
-                                item: item,
-                                posterURL: item.posterURL(client: serverViewModel.client),
-                                namespace: collectionTransition,
-                                onSelect: {
-                                    selectedCollectionItem = item
-                                }
-                            )
-                            .equatable()
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 24)
+                    collectionSkeleton
                 } else {
-                    EmptyStateView(
-                        icon: "film.stack",
-                        title: "No Media Found",
-                        message: "No movies or TV shows found in this collection."
-                    )
-                    .padding(.top, 20)
+                    collectionContent
                 }
             }
-            .skeleton(when: detailVM.collectionStatus.isLoading, value: detailVM.collectionStatus)
+            .skeleton(when: detailVM.collectionStatus.isLoading, value: detailVM.collectionItems.count)
+        }
+    }
+
+    private var collectionSkeleton: some View {
+        MediaGrid(items: defaultCollectionItems, namespace: collectionTransition)
+    }
+
+    @ViewBuilder
+    private var collectionContent: some View {
+        if detailVM.collectionItems.isEmpty {
+            EmptyStateView(
+                icon: "film.stack",
+                title: "No Media Found",
+                message: "No movies or TV shows found in this collection."
+            )
+            .padding(.top, 20)
+        } else {
+            LazyVGrid(columns: collectionColumns, spacing: 16) {
+                ForEach(detailVM.collectionItems, id: \.id) { item in
+                    MediaCard(
+                        item: item,
+                        posterURL: item.posterURL(client: serverViewModel.client),
+                        namespace: collectionTransition,
+                        onSelect: {
+                            selectedCollectionItem = item
+                        }
+                    )
+                    .equatable()
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
         }
     }
 }

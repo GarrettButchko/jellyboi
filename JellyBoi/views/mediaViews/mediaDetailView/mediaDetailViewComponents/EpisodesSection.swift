@@ -57,9 +57,15 @@ extension MediaDetailView {
         horizontalSizeClass == .regular ? 140 : 120
     }
 
+    private var shouldIncludeEpisodes: Bool {
+        !detailVM.isEpisodesHidden
+            && displayItem.type == .series
+            && (!detailVM.episodes.isEmpty || detailVM.episodesStatus.isLoading)
+    }
+
     @ViewBuilder
     var episodesSection: some View {
-        if !detailVM.isEpisodesHidden, displayItem.type == .series, !detailVM.episodesStatus.isEmpty {
+        if shouldIncludeEpisodes {
             ScrollViewReader { proxy in
                 SectionRow(
                     title: "Episodes",
@@ -75,7 +81,7 @@ extension MediaDetailView {
                         episodesContent(detailVM.episodes)
                     }
                 }
-                .skeleton(when: detailVM.episodesStatus.isLoading, value: detailVM.episodesStatus)
+                .skeleton(when: detailVM.episodesStatus.isLoading, value: detailVM.episodes.count)
                 .animation(.skeleton, value: detailVM.seasons.count)
                 .task(id: detailVM.episodes.count) {
                     guard !detailVM.hasInitialEpisodeScrolled, !detailVM.episodes.isEmpty else { return }

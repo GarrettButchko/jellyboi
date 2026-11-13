@@ -37,7 +37,8 @@ extension MediaDetailView {
 
     @ViewBuilder
     var specialFeaturesSection: some View {
-        if !detailVM.isSpecialFeaturesHidden, detailVM.secondaryStatus.isLoading || !detailVM.specialFeatures.isEmpty {
+        if !detailVM.isSpecialFeaturesHidden,
+           detailVM.secondaryStatus.isLoading || !detailVM.specialFeatures.isEmpty {
             SectionRow(title: "Special Features") {
                 if detailVM.secondaryStatus.isLoading {
                     specialFeaturesSkeleton
@@ -45,7 +46,7 @@ extension MediaDetailView {
                     specialFeaturesContent(detailVM.specialFeatures)
                 }
             }
-            .skeleton(when: detailVM.secondaryStatus.isLoading, value: detailVM.secondaryStatus)
+            .skeleton(when: detailVM.secondaryStatus.isLoading, value: detailVM.specialFeatures.count)
         }
     }
 

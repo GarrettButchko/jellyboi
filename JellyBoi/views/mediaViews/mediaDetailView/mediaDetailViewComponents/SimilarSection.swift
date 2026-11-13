@@ -29,37 +29,37 @@ extension MediaDetailView {
 
     @ViewBuilder
     var similarItemsSection: some View {
-        if !detailVM.areSimilarItemsHidden, detailVM.secondaryStatus.isLoading || !detailVM.similarItems.isEmpty {
+        if !detailVM.areSimilarItemsHidden && (!detailVM.similarItems.isEmpty || detailVM.secondaryStatus.isLoading){
             SectionRow(title: "More Like This") {
                 if detailVM.secondaryStatus.isLoading {
                     SectionRowMediaList(
                         items: defaultSimilarItems
                     )
                 } else {
-                    SectionRowMediaList(
-                        items: detailVM.similarItems,
-                        namespace: relatedTransition,
-                        rowKey: "related",
-                        onSelect: { relatedItem, zoomID in
-                            relatedZoomID = zoomID
-                            selectedRelatedItem = relatedItem
-                        },
-                        posterURL: { relatedItem in
-                            guard let client = serverViewModel.client else { return nil }
-                            if relatedItem.type == .episode {
-                                return relatedItem.seriesPosterURL(client: client)
-                                    ?? relatedItem.posterURL(client: client)
-                            }
-                            return relatedItem.posterURL(client: client)
-                        }
-                    )
+                    similarItemsContent
                 }
             }
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .top)),
-                removal: .opacity
-            ))
-            .skeleton(when: detailVM.secondaryStatus.isLoading, value: detailVM.secondaryStatus)
+            .skeleton(when: detailVM.secondaryStatus.isLoading, value: detailVM.similarItems.count)
         }
+    }
+
+    private var similarItemsContent: some View {
+        SectionRowMediaList(
+            items: detailVM.similarItems,
+            namespace: relatedTransition,
+            rowKey: "related",
+            onSelect: { relatedItem, zoomID in
+                relatedZoomID = zoomID
+                selectedRelatedItem = relatedItem
+            },
+            posterURL: { relatedItem in
+                guard let client = serverViewModel.client else { return nil }
+                if relatedItem.type == .episode {
+                    return relatedItem.seriesPosterURL(client: client)
+                        ?? relatedItem.posterURL(client: client)
+                }
+                return relatedItem.posterURL(client: client)
+            }
+        )
     }
 }

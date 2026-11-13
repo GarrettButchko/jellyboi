@@ -22,6 +22,9 @@ class MediaDetailViewModel {
     var seriesItem: BaseItemDto?
 
     // MARK: - Consolidated Loading Status Enums
+
+    /// Single source of truth for the primary metadata of this screen: `.loading` from the moment
+    /// the screen is created until the details resolve (fetched, reused, or served offline).
     var primaryDetailsStatus: DetailSectionStatus = .idle
     var episodesStatus: DetailSectionStatus = .idle
     var collectionStatus: DetailSectionStatus = .idle
@@ -44,7 +47,13 @@ class MediaDetailViewModel {
     var selectedMediaSourceID: String?
     var selectedAudioStreamIndex: Int?
     var selectedSubtitleStreamIndex: Int? = -1
-    var isLoading = false
+
+    /// True once the item details for this screen have been resolved (fetched, reused, or served
+    /// offline). The base item handed to the screen only carries a partial copy of the metadata,
+    /// so sections that depend on the full item wait for this before rendering real content.
+    var hasResolvedItemDetails: Bool {
+        primaryDetailsStatus.isLoaded || primaryDetailsStatus.isEmpty
+    }
 
     // MARK: - Shared Static Cache
     static var seasonsCache: [String: [BaseItemDto]] = [:]
@@ -81,8 +90,7 @@ class MediaDetailViewModel {
             self.cast = (item.type != .boxSet) ? actors : []
 
             // Primary Details Status
-            let hasPrimaryInfo = !(item.overview ?? "").isEmpty || !actors.isEmpty || !(item.tags ?? []).isEmpty
-            self.primaryDetailsStatus = hasPrimaryInfo ? .loaded : .loading
+            self.primaryDetailsStatus = .loading
 
             if item.type == .boxSet {
                 if let id = item.id, let cached = Self.collectionItemsCache[id] {
@@ -350,8 +358,7 @@ class MediaDetailViewModel {
         let actors = (item.people ?? []).filter { $0.type == .actor }
         self.cast = (item.type != .boxSet) ? actors : []
 
-        let hasPrimaryInfo = !(item.overview ?? "").isEmpty || !actors.isEmpty || !(item.tags ?? []).isEmpty
-        self.primaryDetailsStatus = hasPrimaryInfo ? .loaded : .loading
+        self.primaryDetailsStatus = .loading
 
         if item.type != .boxSet && item.type != .episode {
             let hasCachedFeatures = item.id.flatMap { libraryViewModel?.cachedSpecialFeatures(for: $0) }
@@ -457,8 +464,6 @@ class MediaDetailViewModel {
         self.sourceItem = resolvedItem
         self.hasInitialEpisodeScrolled = false
         self.scrolledEpisodeID = nil
-        isLoading = true
-        defer { isLoading = false }
 
         if !NetworkMonitor.shared.isConnected {
             withAnimation(.skeleton) {
@@ -507,7 +512,7 @@ class MediaDetailViewModel {
         // Check if primary details are already fully shown (actors and synopsis present)
         let resolvedActors = (resolvedItem.people ?? []).filter { $0.type == .actor }
         let hasCompletePrimaryData = !resolvedActors.isEmpty && !(resolvedItem.overview ?? "").isEmpty
-        let shouldFetchPrimaryDetails = !hasCompletePrimaryData || primaryDetailsStatus != .loaded
+        let shouldFetchPrimaryDetails = !hasCompletePrimaryData
 
         // STAGE 1 & 2 in parallel: Fetch essential details and series/seasons concurrently
         async let detailFetch: BaseItemDto? = {
@@ -563,7 +568,7 @@ class MediaDetailViewModel {
                         heroAspectRatio = newRatio
                     }
                 }
-            } else if primaryDetailsStatus == .loading {
+            } else {
                 // Keep existing resolved data if network returned nil or was skipped
                 let actors = (resolvedItem.people ?? []).filter { $0.type == .actor }
                 self.cast = actors

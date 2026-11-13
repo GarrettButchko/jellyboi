@@ -25,24 +25,18 @@ private let defaultExtraInfoRows: [DefaultExtraInfoRow] = [
 
 extension MediaDetailView {
 
-    /// Shown while the screen is still loading and the item has no extra info yet, so the section
-    /// fades in with the rest of the details instead of popping into existence.
-    private var isExtraInfoPlaceholderVisible: Bool {
-        !detailVM.hasExtraInfo && (detailVM.isLoading || detailVM.primaryDetailsStatus.isLoading)
-    }
-
     @ViewBuilder
     var extraInfoSection: some View {
-        if detailVM.hasExtraInfo || isExtraInfoPlaceholderVisible {
+        if !detailVM.hasResolvedItemDetails || detailVM.hasExtraInfo {
             Group {
-                if detailVM.hasExtraInfo {
+                if detailVM.hasResolvedItemDetails {
                     extraInfoContent
                 } else {
                     extraInfoSkeleton
                 }
             }
             .padding(.horizontal, 20)
-            .skeleton(when: isExtraInfoPlaceholderVisible, value: detailVM.hasExtraInfo)
+            .skeleton(when: !detailVM.hasResolvedItemDetails, value: detailVM.hasExtraInfo)
         }
     }
 

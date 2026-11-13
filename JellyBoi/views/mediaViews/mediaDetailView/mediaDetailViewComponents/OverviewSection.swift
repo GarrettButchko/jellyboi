@@ -15,6 +15,12 @@ private let defaultOverview = "This is a placeholder overview text describing th
 
 extension MediaDetailView {
 
+    /// The synopsis is only masked while there is nothing to show yet: an item that already carries
+    /// an overview keeps rendering it sharp while the rest of the details resolve.
+    private var isOverviewPlaceholderVisible: Bool {
+        (displayItem.overview ?? "").isEmpty && detailVM.primaryDetailsStatus.isLoading
+    }
+
     @ViewBuilder
     var overviewSection: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -30,7 +36,7 @@ extension MediaDetailView {
                     }
                 }
             }
-            .skeleton(when: detailVM.primaryDetailsStatus.isLoading, value: detailVM.primaryDetailsStatus)
+            .skeleton(when: isOverviewPlaceholderVisible, value: detailVM.primaryDetailsStatus)
 
             infoChipsScrollView
         }

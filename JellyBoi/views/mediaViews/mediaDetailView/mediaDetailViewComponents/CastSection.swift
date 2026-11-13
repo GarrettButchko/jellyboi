@@ -30,26 +30,25 @@ private let defaultCastPeople: [BaseItemPerson] = (0..<8).map { index in
 
 extension MediaDetailView {
 
-    /// The cast placeholder is shown while the screen is still loading and the cast list is still
-    /// empty — `primaryDetailsStatus` alone flips to `.loaded` as soon as the item has an overview,
-    /// which used to hide the whole section (no skeleton, no content) until the cast arrived.
-    private var isCastPlaceholderVisible: Bool {
-        detailVM.cast.isEmpty
-            && displayItem.type != .boxSet
-            && (detailVM.isLoading || detailVM.primaryDetailsStatus.isLoading)
+    /// The cast row is shown while the primary details are still resolving and the cast list is
+    /// still empty, so the section keeps its skeleton until the fetch (or cache) lands.
+    private var shouldIncludeCast: Bool {
+        displayItem.type != .boxSet
+            && !detailVM.isCastHidden
+            && (!detailVM.cast.isEmpty || detailVM.primaryDetailsStatus.isLoading)
     }
 
     @ViewBuilder
     var castSection: some View {
-        if !detailVM.isCastHidden, !detailVM.cast.isEmpty || isCastPlaceholderVisible {
+        if shouldIncludeCast {
             SectionRow(title: "Cast & Crew") {
-                if detailVM.cast.isEmpty {
+                if detailVM.primaryDetailsStatus.isLoading {
                     castSkeleton
                 } else {
                     castContent(detailVM.cast)
                 }
             }
-            .skeleton(when: isCastPlaceholderVisible, value: detailVM.cast.count)
+            .skeleton(when: detailVM.primaryDetailsStatus.isLoading, value: detailVM.cast.count)
         }
     }
     

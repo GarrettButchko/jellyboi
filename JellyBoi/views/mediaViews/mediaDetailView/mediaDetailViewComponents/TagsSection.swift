@@ -9,14 +9,25 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 
+// MARK: - Skeleton Default Items
+
+private let defaultTags: [String] = ["Action", "Adventure", "Drama", "Science Fiction", "Thriller"]
+
 extension MediaDetailView {
 
     @ViewBuilder
     var tagsSection: some View {
-        if !detailVM.areTagsHidden, let tags = displayItem.tags, !tags.isEmpty {
-            tagsContent(tags)
-                .padding(.horizontal, 20)
-                .animation(.skeleton, value: tags)
+        if !detailVM.areTagsHidden,
+           detailVM.primaryDetailsStatus.isLoading || !(displayItem.tags ?? []).isEmpty {
+            Group {
+                if detailVM.primaryDetailsStatus.isLoading {
+                    tagsContent(defaultTags)
+                } else {
+                    tagsContent(displayItem.tags ?? [])
+                }
+            }
+            .padding(.horizontal, 20)
+            .skeleton(when: detailVM.primaryDetailsStatus.isLoading, value: displayItem.tags?.count ?? 0)
         }
     }
 
