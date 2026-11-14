@@ -125,6 +125,7 @@ extension PlayerViewModel {
     ) async -> ServerPreparationResult? {
         let resolver = PlaybackStreamResolver(client: client, userID: userID, request: req)
         let resolution: PlaybackStreamResolver.Resolution
+        let resolutionStartedAt = Date()
         do {
             resolution = try await resolver.resolve(itemID: itemID, resumeTicks: resumeTicks)
         } catch is CancellationError {
@@ -134,6 +135,7 @@ extension PlayerViewModel {
             now = .failed(reason: error.localizedDescription)
             return nil
         }
+        AppLogger.info("Playback stream resolved in \(String(format: "%.2f", Date().timeIntervalSince(resolutionStartedAt)))s using \(resolution.playMethod)")
 
         // Apply the token here and only here. The server can return a URL that already carries an
         // `api_key`, and the direct-stream path used to add one too, so this is the single point
@@ -145,6 +147,7 @@ extension PlayerViewModel {
 
         let asset = JellyfinAuthorization.asset(url: authenticatedURL, client: client)
         let playerItem = AVPlayerItem(asset: asset)
+        AppLogger.info("Created AVPlayerItem for \(resolution.playMethod); waiting for HLS/player readiness")
 
         return ServerPreparationResult(
             playerItem: playerItem,

@@ -77,6 +77,7 @@ extension PlayerViewModel {
         }
         guard !Task.isCancelled else { return false }
 
+        let preparationStartedAt = Date()
         now = (mode == .preload) ? .preloading : .preparing
         seekState = .pending
         AppLogger.info("Starting player preparation for '\(request.item.playbackTitle)' (mode: \(mode))")
@@ -99,6 +100,7 @@ extension PlayerViewModel {
             }
             return false
         }
+        AppLogger.info("Media item prepared in \(String(format: "%.2f", Date().timeIntervalSince(preparationStartedAt)))s")
 
         guard !Task.isCancelled else { return false }
 
@@ -120,6 +122,7 @@ extension PlayerViewModel {
 
         if isReady {
             now = .ready
+            AppLogger.success("Playback preparation reached ready in \(String(format: "%.2f", Date().timeIntervalSince(preparationStartedAt)))s")
         } else if case .failed = now {
             // Keep the specific failure reason
         } else {
@@ -210,9 +213,12 @@ extension PlayerViewModel {
         var activeItem = prepared.playerItem
         let maxMapRetries = 2
         let wasPreloading = now.isPreloading
+        let readinessStartedAt = Date()
 
         for attempt in 0...maxMapRetries {
             guard !Task.isCancelled else { return false }
+            let attemptStartedAt = Date()
+            AppLogger.info("Waiting for player readiness (attempt \(attempt + 1)/\(maxMapRetries + 1))")
 
             if attempt > 0 {
                 AppLogger.warning("Retrying playback after map initialization timeout (attempt \(attempt + 1)/\(maxMapRetries + 1)). Waiting for server transcode cache...")
@@ -235,6 +241,10 @@ extension PlayerViewModel {
 
             let isReady = await waitForReadiness(playerItem: activeItem)
             guard !Task.isCancelled else { return false }
+            let attemptElapsed = String(format: "%.2f", Date().timeIntervalSince(attemptStartedAt))
+            let totalElapsed = String(format: "%.2f", Date().timeIntervalSince(readinessStartedAt))
+            let itemStatus = activeItem.status == .readyToPlay ? "readyToPlay" : (activeItem.status == .failed ? "failed" : "unknown")
+            AppLogger.info("Player readiness attempt \(attempt + 1) finished in \(attemptElapsed)s (total \(totalElapsed)s, status: \(itemStatus))")
 
             if isReady {
                 if attempt > 0 {
@@ -262,13 +272,16 @@ extension PlayerViewModel {
     // MARK: - Readiness & Initial Playback
 
     func waitForReadiness(playerItem: AVPlayerItem) async -> Bool {
+        let waitStartedAt = Date()
         if playerItem.status == .readyToPlay {
             await applyReadyToPlay()
+            AppLogger.info("Player item was already readyToPlay after \(String(format: "%.2f", Date().timeIntervalSince(waitStartedAt)))s")
             return true
         }
         if playerItem.status == .failed {
             let err = playerItem.error?.localizedDescription ?? "Playback failed."
             self.now = .failed(reason: err)
+            AppLogger.error("Player item was already failed after \(String(format: "%.2f", Date().timeIntervalSince(waitStartedAt)))s: \(err)")
             return false
         }
 
@@ -287,6 +300,7 @@ extension PlayerViewModel {
                         case .readyToPlay:
                             AppLogger.success("PlayerItem is readyToPlay.")
                             await self.applyReadyToPlay()
+                            AppLogger.info("PlayerItem became readyToPlay after \(String(format: "%.2f", Date().timeIntervalSince(waitStartedAt)))s")
                             _ = box.resume(returning: true)
 
                         case .failed:
@@ -297,6 +311,7 @@ extension PlayerViewModel {
                             if box.resume(returning: false) {
                                 let err = currentItem.error?.localizedDescription ?? "Playback failed."
                                 AppLogger.error("PlayerItem failed with error: \(err)")
+                                AppLogger.error("PlayerItem readiness failed after \(String(format: "%.2f", Date().timeIntervalSince(waitStartedAt)))s")
                                 if let log = currentItem.errorLog() {
                                     for event in log.events {
                                         AppLogger.error("AVPlayerItem error event: URI=\(event.uri ?? "nil"), status=\(event.errorStatusCode), domain=\(event.errorDomain), comment=\(event.errorComment ?? "nil")")
