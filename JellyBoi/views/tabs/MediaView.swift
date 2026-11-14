@@ -21,110 +21,93 @@ private let defaultMediaGridItems: [BaseItemDto] = (0..<12).map { index in
 
 struct MediaView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
-    @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(MediaViewModel.self) private var viewModel
-    @State private var headerHeight: CGFloat = 132
     @State private var selectedItem: BaseItemDto?
     @State private var scrollPosition = ScrollPosition()
     @Namespace private var zoomTransition
 
-    private var pageTitle: String {
-        if viewModel.showDownloadsOnly {
-            return "Downloads"
-        } else if viewModel.showFavoritesOnly {
-            return "Favorites"
-        } else {
-            return "Library"
+    // MARK: - Header
+
+    /// Native scope dropdown; its icon mirrors the active scope.
+    private var scopeMenuButton: some View {
+        Menu {
+            Picker("Section", selection: scopeSelection) {
+                ForEach(viewModel.availableScopes(downloadManager: downloadManager), id: \.self) { scope in
+                    Label(scope.title, systemImage: scope.icon)
+                        .tag(scope)
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: viewModel.scope.icon)
+                    .font(.system(size: 17, weight: .semibold))
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(Color.mainOpp)
         }
+        .accessibilityLabel("Section")
+        .accessibilityValue(viewModel.scope.title)
+        .accessibilityHint("Opens the section menu")
     }
 
-    @ViewBuilder
-    private func topHeaderOverlay(isCollapsed: Bool) -> some View {
-        @Bindable var viewModel = viewModel
-        TabPageHeader(
-            title: pageTitle,
-            isCollapsed: isCollapsed,
-            headerHeight: $headerHeight
-        ) {
-            HStack(spacing: 10) {
-                Picker("Filter", selection: $viewModel.filter) {
-                    ForEach(MediaFilter.allCases, id: \.self) { filter in
-                        Text(filter.title).tag(filter)
-                    }
+    /// Writes the native menu selection back into the view model.
+    private var scopeSelection: Binding<MediaScope> {
+        Binding(
+            get: { viewModel.scope },
+            set: { scope in
+                guard scope != viewModel.scope else { return }
+                withAnimation(.smooth(duration: 0.22)) {
+                    viewModel.scope = scope
                 }
-                .pickerStyle(.segmented)
-                .padding(6)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
-
-                Button {
-                    withAnimation(.smooth(duration: 0.25)) {
-                        viewModel.toggleFavorites()
-                    }
-                } label: {
-                    Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
-                        .frame(width: 44, height: 44)
-                        .glassEffect(.regular.interactive(), in: Circle())
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    withAnimation(.smooth(duration: 0.25)) {
-                        viewModel.toggleDownloads()
-                    }
-                } label: {
-                    Image(systemName: viewModel.showDownloadsOnly ? "square.and.arrow.down.fill" : "square.and.arrow.down")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(viewModel.showDownloadsOnly ? Color.appAccent : Color.mainOpp)
-                        .frame(width: 44, height: 44)
-                        .glassEffect(.regular.interactive(), in: Circle())
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
-        }
+        )
     }
 
     var body: some View {
-        @Bindable var viewModel = viewModel
         NavigationStack {
             ZStack(alignment: .top) {
                 Color.bg
                     .ignoresSafeArea()
 
                 ScrollToTopScrollView(
-                    position: $scrollPosition,
-                    topInset: headerHeight,
-                    header: { isCollapsed in
-                        topHeaderOverlay(isCollapsed: isCollapsed)
-                    }
+                    position: $scrollPosition
                 ) {
                     Group {
-                        if viewModel.showDownloadsOnly {
-                            downloadsContent
-                        } else if viewModel.showFavoritesOnly {
+                        switch viewModel.scope {
+                        case .movies:
+                            libraryContent(
+                                items: viewModel.regularMovies,
+                                emptyIcon: "film",
+                                emptyTitle: "No Movies"
+                            )
+                        case .tvShows:
+                            libraryContent(
+                                items: viewModel.regularShows,
+                                emptyIcon: "tv",
+                                emptyTitle: "No TV Shows"
+                            )
+                        case .favorites:
                             favoritesContent
-                        } else {
-                            regularContent
+                        case .downloads:
+                            downloadsContent
                         }
                     }
-                    .onChange(of: viewModel.filter) { _, _ in
+                    .onChange(of: viewModel.scope) { _, _ in
                         withAnimation { scrollPosition.scrollToTop() }
                     }
-                    .onChange(of: viewModel.showFavoritesOnly) { _, _ in
-                        withAnimation { scrollPosition.scrollToTop() }
-                    }
-                    .onChange(of: viewModel.showDownloadsOnly) { _, _ in
-                        withAnimation { scrollPosition.scrollToTop() }
+                    .onChange(of: viewModel.availableScopes(downloadManager: downloadManager)) { _, scopes in
+                        // Fall back to Movies if the active scope empties out
+                        // (last favorite removed, last download deleted).
+                        guard !scopes.contains(viewModel.scope) else { return }
+                        withAnimation(.smooth(duration: 0.25)) {
+                            viewModel.scope = .movies
+                        }
                     }
                 }
-                .animation(.easeInOut(duration: 0.2), value: viewModel.filter)
-                .animation(.easeInOut(duration: 0.2), value: viewModel.showFavoritesOnly)
-                .animation(.easeInOut(duration: 0.2), value: viewModel.showDownloadsOnly)
+                .animation(.easeInOut(duration: 0.2), value: viewModel.scope)
                 .refreshable {
                     if let client = serverViewModel.client {
                         await viewModel.refresh(using: client)
@@ -138,126 +121,31 @@ struct MediaView: View {
             .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
                 selectedItem = nil
             }
-            .toolbarVisibility(.hidden, for: .navigationBar)
+            .navigationTitle(viewModel.scope.title)
+            .toolbarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    scopeMenuButton
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    ProfileAvatarButton()
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
             .background(Color.bg.ignoresSafeArea())
         }
     }
 
-    // MARK: - Completed Downloads Content
-
-    private var downloadedMovies: [BaseItemDto] {
-        downloadManager.downloadedMovies.map { movie in
-            if let id = movie.id, let liveItem = libraryViewModel.item(for: id) {
-                return liveItem
-            }
-            return movie
-        }
-    }
-
-    private var downloadedShows: [BaseItemDto] {
-        viewModel.downloadedShows(downloadManager: downloadManager)
-    }
-
-    private var downloadedEpisodes: [BaseItemDto] {
-        viewModel.downloadedEpisodes(downloadManager: downloadManager).map { episode in
-            if let id = episode.id, let liveItem = libraryViewModel.item(for: id) {
-                return liveItem
-            }
-            return episode
-        }
-    }
+    // MARK: - Movies & TV Shows
 
     @ViewBuilder
-    private var downloadsContent: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            switch viewModel.filter {
-            case .movies:
-                if !downloadedMovies.isEmpty {
-                    mediaGrid(for: downloadedMovies)
-                } else {
-                    emptyDownloadsView
-                }
-
-            case .tvShows:
-                if !downloadedShows.isEmpty && !downloadedEpisodes.isEmpty {
-                    VStack(alignment: .leading, spacing: 28) {
-                        favoriteSection(title: "Shows", items: downloadedShows)
-                        favoriteSection(title: "Episodes", items: downloadedEpisodes)
-                    }
-                } else if !downloadedShows.isEmpty {
-                    favoriteSection(title: "Shows", items: downloadedShows)
-                } else if !downloadedEpisodes.isEmpty {
-                    favoriteSection(title: "Episodes", items: downloadedEpisodes)
-                } else {
-                    emptyDownloadsView
-                }
-            }
-        }
-        .id(viewModel.filter)
-        .transition(.opacity)
-    }
-
-    private var emptyDownloadsView: some View {
-        EmptyStateView(
-            icon: "square.and.arrow.down",
-            title: "No Downloads",
-            message: "You haven't downloaded any \(viewModel.filter.title.lowercased()) yet."
-        )
-    }
-
-    // MARK: - Favorites Content (Filtered by Movies, TV Shows)
-
-    @ViewBuilder
-    private var favoritesContent: some View {
+    private func libraryContent(
+        items: [BaseItemDto],
+        emptyIcon: String,
+        emptyTitle: String
+    ) -> some View {
         Group {
-            if viewModel.isLoading && viewModel.currentFavoriteItems.isEmpty {
-                MediaGrid(items: defaultMediaGridItems, namespace: zoomTransition)
-                    .skeleton()
-                    .transition(.opacity)
-            } else if viewModel.currentFavoriteItems.isEmpty {
-                let message: String = {
-                    switch viewModel.filter {
-                    case .movies: return "You haven't starred any movies yet."
-                    case .tvShows: return "You haven't starred any TV shows or episodes yet."
-                    }
-                }()
-                EmptyStateView(
-                    icon: "star",
-                    title: "No Favorite \(viewModel.filter.title)",
-                    message: message
-                )
-            } else {
-                Group {
-                    switch viewModel.filter {
-                    case .movies:
-                        mediaGrid(for: viewModel.favoriteMovies)
-
-                    case .tvShows:
-                        if !viewModel.favoriteShows.isEmpty && !viewModel.favoriteEpisodes.isEmpty {
-                            VStack(alignment: .leading, spacing: 28) {
-                                favoriteSection(title: "Shows", items: viewModel.favoriteShows)
-                                favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
-                            }
-                        } else if !viewModel.favoriteShows.isEmpty {
-                            favoriteSection(title: "Shows", items: viewModel.favoriteShows)
-                        } else {
-                            favoriteSection(title: "Episodes", items: viewModel.favoriteEpisodes)
-                        }
-                    }
-                }
-                .id(viewModel.filter)
-                .transition(.opacity)
-            }
-        }
-        .animation(.skeleton, value: viewModel.isLoading)
-    }
-
-    // MARK: - Regular Library Content
-
-    @ViewBuilder
-    private var regularContent: some View {
-        Group {
-            if viewModel.regularItems.isEmpty {
+            if items.isEmpty {
                 if viewModel.isLoading {
                     MediaGrid(items: defaultMediaGridItems, namespace: zoomTransition)
                         .skeleton()
@@ -269,57 +157,87 @@ struct MediaView: View {
                         message: error,
                         buttonTitle: "Try Again"
                     ) {
-                        Task {
-                            if let client = serverViewModel.client {
-                                await viewModel.refresh(using: client)
-                            }
-                        }
+                        Task { await refreshLibrary() }
                     }
                 } else {
-                    let emptyIcon: String = {
-                        switch viewModel.filter {
-                        case .movies: return "film"
-                        case .tvShows: return "tv"
-                        }
-                    }()
                     EmptyStateView(
                         icon: emptyIcon,
-                        title: "No \(viewModel.filter.title)",
+                        title: emptyTitle,
                         message: "Nothing here yet. Pull to refresh or add media to your Jellyfin server.",
                         buttonTitle: "Refresh"
                     ) {
-                        Task {
-                            if let client = serverViewModel.client {
-                                await viewModel.refresh(using: client)
-                            }
-                        }
+                        Task { await refreshLibrary() }
                     }
                 }
             } else {
-                mediaGrid(for: viewModel.regularItems)
-                    .id(viewModel.filter)
+                mediaGrid(for: items)
+                    .id(viewModel.scope)
                     .transition(.opacity)
             }
         }
         .animation(.skeleton, value: viewModel.isLoading)
     }
 
+    // MARK: - Favorites
+
+    @ViewBuilder
+    private var favoritesContent: some View {
+        let favoriteSections = viewModel.favoriteSections
+        Group {
+            if viewModel.isLoading && favoriteSections.isEmpty {
+                MediaGrid(items: defaultMediaGridItems, namespace: zoomTransition)
+                    .skeleton()
+                    .transition(.opacity)
+            } else if favoriteSections.isEmpty {
+                EmptyStateView(
+                    icon: "star",
+                    title: "No Favorites",
+                    message: "You haven't starred any movies, shows, or episodes yet."
+                )
+            } else {
+                sectionsView(favoriteSections)
+            }
+        }
+        .animation(.skeleton, value: viewModel.isLoading)
+    }
+
+    // MARK: - Downloads
+
+    @ViewBuilder
+    private var downloadsContent: some View {
+        let downloadSections = viewModel.downloadSections(downloadManager: downloadManager)
+        if downloadSections.isEmpty {
+            EmptyStateView(
+                icon: "square.and.arrow.down",
+                title: "No Downloads",
+                message: "You haven't downloaded any movies, shows, or episodes yet."
+            )
+        } else {
+            sectionsView(downloadSections)
+        }
+    }
+
     // MARK: - Reusable Components
 
-    private func mediaGrid(for items: [BaseItemDto]) -> some View {
-        MediaGrid(items: items, namespace: zoomTransition) { item in
+    @ViewBuilder
+    private func sectionsView(_ sections: [MediaSection]) -> some View {
+        VStack(alignment: .leading, spacing: 28) {
+            ForEach(sections) { section in
+                mediaGrid(for: section.items, title: section.title)
+            }
+        }
+        .id(viewModel.scope)
+        .transition(.opacity)
+    }
+
+    private func mediaGrid(for items: [BaseItemDto], title: String? = nil) -> some View {
+        MediaGrid(items: items, title: title, namespace: zoomTransition) { item in
             selectedItem = item
         }
     }
 
-    private func favoriteSection(title: String, items: [BaseItemDto]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(Color.mainOpp)
-                .padding(.horizontal, 16)
-
-            mediaGrid(for: items)
-        }
+    private func refreshLibrary() async {
+        guard let client = serverViewModel.client else { return }
+        await viewModel.refresh(using: client)
     }
 }

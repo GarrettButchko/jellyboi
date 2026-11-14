@@ -41,19 +41,20 @@ private struct HeaderContainer<Header: View>: View {
     }
 }
 
+/// Renders the overlay locally for hosts that don't provide a
+/// `ScrollOverlayCoordinator` (previews, or screens presented outside the tab
+/// view). Inside the tab view the overlay lives in the tab bar accessory.
 private struct ScrollOverlayContainer: View {
     let coordinator: ScrollStateCoordinator
-    let threshold: CGFloat
     let onScrollToTop: () -> Void
-    @State private var sttButtonHeight: CGFloat = 0
 
     var body: some View {
         ScrollTabBarOverlay(
             isVisible: coordinator.showBottomBar,
-            threshold: threshold,
-            STTButtonHeight: $sttButtonHeight,
             action: onScrollToTop
         )
+        .safeAreaPadding(.bottom, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 }
 
@@ -74,9 +75,18 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
 
     @State private var internalPosition = ScrollPosition()
     @State private var coordinator = ScrollStateCoordinator()
+    @State private var overlaySourceID = UUID()
+
+    @Environment(ScrollOverlayCoordinator.self) private var overlayCoordinator: ScrollOverlayCoordinator?
 
     private var effectivePosition: Binding<ScrollPosition> {
         externalPosition ?? $internalPosition
+    }
+
+    private func scrollToTop() {
+        withAnimation {
+            effectivePosition.wrappedValue.scrollTo(edge: .top)
+        }
     }
 
     public init(
@@ -130,19 +140,31 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
                 }
                 if coordinator.showBottomBar != newState.showBottomBar {
                     coordinator.showBottomBar = newState.showBottomBar
+                    overlayCoordinator?.updateScrollToTopVisibility(
+                        newState.showBottomBar,
+                        for: overlaySourceID
+                    )
                 }
             }
 
             HeaderContainer(coordinator: coordinator, header: header)
 
-            ScrollOverlayContainer(
-                coordinator: coordinator,
-                threshold: Self.bottomBarThreshold
-            ) {
-                withAnimation {
-                    effectivePosition.wrappedValue.scrollTo(edge: .top)
-                }
+            // The tab view owns the overlay through its bottom accessory and
+            // renders a single instance for every tab. Only draw it locally
+            // when no shared coordinator is available.
+            if overlayCoordinator == nil {
+                ScrollOverlayContainer(coordinator: coordinator, onScrollToTop: scrollToTop)
             }
+        }
+        .onAppear {
+            overlayCoordinator?.activate(
+                overlaySourceID,
+                isScrollToTopVisible: coordinator.showBottomBar,
+                scrollToTop: scrollToTop
+            )
+        }
+        .onDisappear {
+            overlayCoordinator?.deactivate(overlaySourceID)
         }
     }
 }

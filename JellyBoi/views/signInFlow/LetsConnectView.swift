@@ -171,7 +171,7 @@ struct LetsConnectView: View {
     private var urlRow: some View {
         HStack(spacing: 10) {
             Image(systemName: "globe")
-                .foregroundStyle(.accent)
+                .foregroundStyle(Color.appAccent)
                 .frame(width: 20, height: 20)
 
             TextField(text: $serverURL) {
@@ -233,7 +233,7 @@ struct LetsConnectView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "server.rack")
-                    .foregroundStyle(.accent)
+                    .foregroundStyle(Color.appAccent)
                     .frame(width: 20)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -280,7 +280,7 @@ struct LetsConnectView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
         }
-        .glassEffect(.regular.tint(.accent).interactive(), in: RoundedRectangle(cornerRadius: 14))
+        .glassEffect(.regular.tint(Color.appAccent).interactive(), in: RoundedRectangle(cornerRadius: 14))
         .foregroundStyle(.white)
         .disabled(!isVerified)
         .opacity(isVerified ? 1 : 0.4)

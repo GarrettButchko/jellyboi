@@ -9,11 +9,32 @@ import Foundation
 import JellyfinAPI
 import LoggingKit
 
-public final class DownloadStorage: @unchecked Sendable {
+/// File-system persistence for downloads. `nonisolated` because the index is read back on a
+/// background task at launch; every member is safe to call from any thread.
+public nonisolated final class DownloadStorage: @unchecked Sendable {
     private let fileManager = FileManager.default
     private let indexFileName = "downloads_index.json"
 
-    public init() {}
+    /// Resolved once at init. Recomputing it performed a directory-existence check on every
+    /// lookup, which added up because download-backed views ask about many files per update.
+    private let directory: URL
+
+    /// In-memory record of which recorded files exist on disk.
+    ///
+    /// File existence used to be answered with a synchronous `stat` every single time, from the
+    /// main actor, for every completed download on every view update. While a download is running
+    /// those updates happen several times per second, so the file-system round trips behind those
+    /// checks showed up as scroll hitches. The app is the only writer of this directory, so the
+    /// cache is kept in sync by the mutating helpers below.
+    ///
+    /// Positive results only: a miss still queries the file system, so a file that was written or
+    /// replaced can never be reported as missing because of a stale negative entry.
+    private let existenceLock = NSLock()
+    private var knownExistingFiles: Set<String> = []
+
+    public init() {
+        directory = Self.downloadsDirectoryURL
+    }
 
     public static var downloadsDirectoryURL: URL {
         let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
@@ -29,24 +50,59 @@ public final class DownloadStorage: @unchecked Sendable {
     }
 
     public var downloadsDirectory: URL {
-        Self.downloadsDirectoryURL
+        directory
     }
 
     private var indexFileURL: URL {
         downloadsDirectory.appendingPathComponent(indexFileName)
     }
 
+    // MARK: - Existence Cache
+
+    private func isKnownExisting(_ fileName: String) -> Bool {
+        existenceLock.lock()
+        defer { existenceLock.unlock() }
+        return knownExistingFiles.contains(fileName)
+    }
+
+    private func markExisting(_ fileName: String) {
+        existenceLock.lock()
+        knownExistingFiles.insert(fileName)
+        existenceLock.unlock()
+    }
+
+    private func markMissing(_ fileName: String) {
+        existenceLock.lock()
+        knownExistingFiles.remove(fileName)
+        existenceLock.unlock()
+    }
+
+    /// Replaces the cache with the file names verified on disk while reading the index.
+    public func primeExistenceCache(knownExistingFileNames: Set<String>) {
+        existenceLock.lock()
+        knownExistingFiles = knownExistingFileNames
+        existenceLock.unlock()
+    }
+
+    /// Records that a file was just written into the downloads directory.
+    public func markFileCreated(fileName: String) {
+        markExisting(fileName)
+    }
+
     public func localFileURL(for fileName: String) -> URL? {
-        let fileURL = downloadsDirectory.appendingPathComponent(fileName)
-        if fileManager.fileExists(atPath: fileURL.path) {
-            return fileURL
-        }
-        return nil
+        guard fileExists(for: fileName) else { return nil }
+        return downloadsDirectory.appendingPathComponent(fileName)
     }
 
     public func fileExists(for fileName: String) -> Bool {
-        let fileURL = downloadsDirectory.appendingPathComponent(fileName)
-        return fileManager.fileExists(atPath: fileURL.path)
+        if isKnownExisting(fileName) {
+            return true
+        }
+        let exists = fileManager.fileExists(atPath: downloadsDirectory.appendingPathComponent(fileName).path)
+        if exists {
+            markExisting(fileName)
+        }
+        return exists
     }
 
     public func saveIndex(items: [DownloadItem]) {
@@ -68,6 +124,7 @@ public final class DownloadStorage: @unchecked Sendable {
 
             var loaded: [String: DownloadItem] = [:]
             var didHeal = false
+            var existingFileNames: Set<String> = []
             for var item in items {
                 var fileURL = downloadsDirectory.appendingPathComponent(item.fileName)
                 var fileExists = fileManager.fileExists(atPath: fileURL.path)
@@ -109,6 +166,7 @@ public final class DownloadStorage: @unchecked Sendable {
                 if item.status == .completed {
                     if fileExists {
                         loaded[item.id] = item
+                        existingFileNames.insert(item.fileName)
                     } else {
                         // Completed download whose file was removed from storage -> drop from index
                         didHeal = true
@@ -142,6 +200,7 @@ public final class DownloadStorage: @unchecked Sendable {
                     return a.dateAdded < b.dateAdded
                 }
             let queue = uncompletedItems.map(\.id)
+            primeExistenceCache(knownExistingFileNames: existingFileNames)
             AppLogger.info("Loaded \(loaded.count) downloads from index (\(queue.count) queued)")
             return (loaded, queue, didHeal)
         } catch {
@@ -153,6 +212,7 @@ public final class DownloadStorage: @unchecked Sendable {
     public func deleteFile(fileName: String) {
         let fileURL = downloadsDirectory.appendingPathComponent(fileName)
         try? fileManager.removeItem(at: fileURL)
+        markMissing(fileName)
     }
 
     public func deleteFiles(fileNames: [String]) {
@@ -168,6 +228,7 @@ public final class DownloadStorage: @unchecked Sendable {
         for file in files where file.hasPrefix(itemID) {
             let fileURL = dir.appendingPathComponent(file)
             try? fileManager.removeItem(at: fileURL)
+            markMissing(file)
             AppLogger.info("Deleted download file: \(file)")
         }
     }
@@ -181,6 +242,7 @@ public final class DownloadStorage: @unchecked Sendable {
             if !validFileNames.contains(file) {
                 let fileURL = dir.appendingPathComponent(file)
                 try? fileManager.removeItem(at: fileURL)
+                markMissing(file)
                 AppLogger.info("Cleaned up orphaned file: \(file)")
             }
         }

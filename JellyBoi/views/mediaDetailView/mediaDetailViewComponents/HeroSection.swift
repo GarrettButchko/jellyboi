@@ -18,7 +18,17 @@ extension MediaDetailView {
         #if DEBUG
         if DebugSettings.shared.hidePoster { return nil }
         #endif
-        return displayItem.detailPosterURL(client: serverViewModel.client)
+        // Main detail artwork is always requested at full quality.
+        if displayItem.type == .episode {
+            return displayItem.thumbnailURL(
+                client: serverViewModel.client,
+                parameters: .thumbnail(maxWidth: 360, quality: 100)
+            )
+        }
+        return displayItem.posterURL(
+            client: serverViewModel.client,
+            parameters: .detailPoster(quality: 100)
+        )
     }
 
     /// The exact image URL loaded by the source card (cached in memory for instant display during transitions).

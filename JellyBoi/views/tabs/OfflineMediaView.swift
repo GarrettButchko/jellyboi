@@ -41,8 +41,8 @@ struct OfflineMediaView: View {
 
                 ScrollToTopScrollView(
                     topInset: headerHeight,
-                    header: { isCollapsed in
-                        topHeaderOverlay(isCollapsed: isCollapsed)
+                    header: {
+                        topHeaderOverlay()
                     }
                 ) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -67,7 +67,14 @@ struct OfflineMediaView: View {
             .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
                 selectedItem = nil
             }
-            .toolbarVisibility(.hidden, for: .navigationBar)
+            .navigationTitle("Downloads")
+            .toolbarTitleDisplayMode(.inlineLarge)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ProfileAvatarButton()
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
             .background(Color.bg.ignoresSafeArea())
             .onReceive(NotificationCenter.default.publisher(for: .networkStatusDidChange)) { notification in
                 let connected = notification.userInfo?["isConnected"] as? Bool ?? networkMonitor.isConnected
@@ -83,12 +90,8 @@ struct OfflineMediaView: View {
 
     // MARK: - Header
 
-    private func topHeaderOverlay(isCollapsed: Bool) -> some View {
-        TabPageHeader(
-            title: "Downloads",
-            isCollapsed: isCollapsed,
-            headerHeight: $headerHeight
-        ) {
+    private func topHeaderOverlay() -> some View {
+        TabPageHeader(headerHeight: $headerHeight) {
             Picker("Filter", selection: $filter) {
                 ForEach(MediaFilter.allCases, id: \.self) { f in
                     Text(f.title).tag(f)

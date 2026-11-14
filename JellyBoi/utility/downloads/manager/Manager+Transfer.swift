@@ -55,10 +55,20 @@ extension DownloadManager {
     }
 
     func handleCompleted(itemID: String, stagedLocation: URL) {
-        guard var item = downloads[itemID] else {
-            try? FileManager.default.removeItem(at: stagedLocation)
+        guard downloads[itemID] != nil else {
+            // A background transfer can finish before the persisted index has been read back at
+            // launch. Wait for it rather than deleting the file that was just produced.
+            afterDownloadsRestore { [weak self] in
+                guard let self else { return }
+                guard self.downloads[itemID] != nil else {
+                    try? FileManager.default.removeItem(at: stagedLocation)
+                    return
+                }
+                self.handleCompleted(itemID: itemID, stagedLocation: stagedLocation)
+            }
             return
         }
+        guard var item = downloads[itemID] else { return }
         let destinationURL = storage.downloadsDirectory.appendingPathComponent(item.fileName)
 
         let rawContainer = item.item.container?.lowercased() ?? ""
@@ -129,6 +139,21 @@ extension DownloadManager {
     }
 
     func handleError(itemID: String, error: Error, resumeData: Data?) {
+        guard downloads[itemID] != nil else {
+            // A cancelled or deleted download still delivers a late delegate callback. Once the
+            // record is gone there is nothing left to recover, and re-entering this path would
+            // recurse through `afterDownloadsRestore` until the stack overflows.
+            guard isRestoringDownloads else { return }
+
+            // The index may still be loading at launch; let the failure/recovery path run once the
+            // recorded download state exists instead of dropping the error on the floor.
+            let deferred = DeferredDownloadError(error)
+            afterDownloadsRestore { [weak self] in
+                guard let self, self.downloads[itemID] != nil else { return }
+                self.handleError(itemID: itemID, error: deferred.value, resumeData: resumeData)
+            }
+            return
+        }
         guard var item = downloads[itemID] else { return }
 
         // Do not overwrite an already completed download
@@ -277,6 +302,7 @@ extension DownloadManager {
         if activeDownloadingID == itemID {
             activeDownloadingID = nil
         }
+        storage.markFileCreated(fileName: item.fileName)
         saveIndex()
 
         let remainingActive = activeDownloads

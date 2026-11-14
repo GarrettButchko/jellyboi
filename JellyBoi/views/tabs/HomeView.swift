@@ -40,10 +40,6 @@ struct HomeView: View {
     @Environment(AppPreferences.self) private var preferences
     @Namespace private var zoomTransition
     
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    
-    @State private var headerHeight: CGFloat = 74
     @State private var heroCoordinator = HomeHeroCoordinator()
     @State private var safeAreaTop: CGFloat = 0
     @State private var selectedItem: BaseItemDto?
@@ -57,17 +53,7 @@ struct HomeView: View {
                 Color.bg
                     .ignoresSafeArea()
 
-                ScrollToTopScrollView(
-                    topInset: headerHeight,
-                    header: { isCollapsed in
-                        TabPageHeader(
-                            title: "Home",
-                            isCollapsed: isCollapsed,
-                            headerHeight: $headerHeight,
-                            showGradient: horizontalSizeClass != .regular && verticalSizeClass != .compact
-                        )
-                    }
-                ) {
+                ScrollToTopScrollView {
                     LazyVStack(alignment: .leading, spacing: 24) {
                             if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
                                 EmptyStateView(
@@ -115,7 +101,7 @@ struct HomeView: View {
                                         return item.imageWithTitleURL(client: client, seriesLookup: { libraryViewModel.item(for: $0) })
                                             ?? item.backdropURL(client: client)
                                     } onSelect: { item in
-                                        zoomSourceID = AnyHashable(item)
+                                        zoomSourceID = item.zoomTransitionID(isCarousel: true)
                                         selectedItem = item
                                     } onSnap: { index, item in
                                         withAnimation(.smooth(duration: 0.4)) {
@@ -175,7 +161,7 @@ struct HomeView: View {
                                 defaultItem: viewModel.carouselItems.first,
                                 client: serverViewModel.client,
                                 seriesLookup: { libraryViewModel.item(for: $0) },
-                                offsetY: -(headerHeight + safeAreaTop + 500)
+                                offsetY: -(safeAreaTop + 500)
                             )
                         }
                 }
@@ -186,7 +172,7 @@ struct HomeView: View {
                 }
                 .navigationDestination(item: $selectedItem) { item in
                     MediaDetailView(item: item)
-                        .navigationTransition(.zoom(sourceID: zoomSourceID ?? AnyHashable(item), in: zoomTransition))
+                        .navigationTransition(.zoom(sourceID: zoomSourceID ?? item.zoomTransitionID(), in: zoomTransition))
                 }
                 .navigationDestination(isPresented: $isShowingCollections) {
                     MediaResultsView(collections: viewModel.collections)
@@ -199,9 +185,15 @@ struct HomeView: View {
                     isShowingCollections = false
                     selectedStat = nil
                 }
-                .toolbarVisibility(.hidden, for: .navigationBar)
             }
-            .toolbarVisibility(.hidden, for: .navigationBar)
+            .navigationTitle("Home")
+            .toolbarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ProfileAvatarButton()
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
             .background(Color.bg.ignoresSafeArea())
         }
         .background(Color.bg.ignoresSafeArea())

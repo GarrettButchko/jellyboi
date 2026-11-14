@@ -152,15 +152,6 @@ struct SettingsView: View {
             .background(Color.bg.ignoresSafeArea())
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .font(.system(.body, design: .rounded, weight: .semibold))
-                    .foregroundStyle(Color.appAccent)
-                }
-            }
         }
         .toggleStyle(SwitchToggleStyle(tint: .green))
         .presentationDragIndicator(.visible)

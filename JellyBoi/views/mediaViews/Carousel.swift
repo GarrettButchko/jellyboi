@@ -359,7 +359,7 @@ struct Carousel: View {
                     shouldLoadContent: shouldLoadContent
                 )
                 .matchedTransitionSource(
-                    id: AnyHashable(looped.item),
+                    id: looped.item.zoomTransitionID(isCarousel: true),
                     in: namespace
                 )
             } else {

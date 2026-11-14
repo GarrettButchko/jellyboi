@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import BaseColors
 import JellyfinAPI
 
 struct MediaGrid: View {
@@ -13,15 +14,18 @@ struct MediaGrid: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     let items: [BaseItemDto]
+    var title: String? = nil
     var namespace: Namespace.ID? = nil
     var onSelect: ((BaseItemDto) -> Void)? = nil
 
     init(
         items: [BaseItemDto],
+        title: String? = nil,
         namespace: Namespace.ID? = nil,
         onSelect: ((BaseItemDto) -> Void)? = nil
     ) {
         self.items = items
+        self.title = title
         self.namespace = namespace
         self.onSelect = onSelect
     }
@@ -31,21 +35,30 @@ struct MediaGrid: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 16) {
-            ForEach(items, id: \.id) { item in
-                MediaCard(
-                    item: item,
-                    posterURL: posterURL(for: item, client: serverViewModel?.client),
-                    namespace: namespace,
-                    onSelect: {
-                        onSelect?(item)
-                    },
-                    imageAspectRatio: item.type == .episode ? MediaAspectRatio.poster : nil
-                )
-                .equatable()
+        VStack(alignment: .leading, spacing: 12) {
+            if let title {
+                Text(title)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(Color.mainOpp)
+                    .padding(.horizontal, 16)
             }
+
+            LazyVGrid(columns: columns, spacing: 16) {
+                ForEach(items, id: \.id) { item in
+                    MediaCard(
+                        item: item,
+                        posterURL: posterURL(for: item, client: serverViewModel?.client),
+                        namespace: namespace,
+                        onSelect: {
+                            onSelect?(item)
+                        },
+                        imageAspectRatio: item.type == .episode ? MediaAspectRatio.poster : nil
+                    )
+                    .equatable()
+                }
+            }
+            .padding(.horizontal, 16)
         }
-        .padding(.horizontal, 16)
     }
 
     private func posterURL(for item: BaseItemDto, client: JellyfinClient?) -> URL? {

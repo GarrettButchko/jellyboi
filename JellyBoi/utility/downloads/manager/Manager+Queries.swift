@@ -35,12 +35,10 @@ extension DownloadManager {
     }
 
     public var completedDownloads: [DownloadItem] {
-        Array(downloads.values)
-            .filter { item in
-                guard item.status == .completed else { return false }
-                return storage.fileExists(for: item.fileName)
-            }
-            .sorted { ($0.dateCompleted ?? $0.dateAdded) > ($1.dateCompleted ?? $1.dateAdded) }
+        // Backed by a snapshot that is only rebuilt when the index changes shape, so view bodies
+        // can read it freely without touching the file system or being invalidated by progress
+        // updates for an in-flight download.
+        completedSnapshot
     }
 
     public var hasActiveDownloads: Bool {
@@ -152,6 +150,7 @@ extension DownloadManager {
         guard var downloadItem = downloads[itemID] else { return }
         downloadItem.item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
         downloads[itemID] = downloadItem
+        markCompletedSnapshotMetadataDirty()
         saveIndex()
     }
 
@@ -169,6 +168,7 @@ extension DownloadManager {
         }
 
         if changed {
+            markCompletedSnapshotMetadataDirty()
             saveIndex()
         }
     }

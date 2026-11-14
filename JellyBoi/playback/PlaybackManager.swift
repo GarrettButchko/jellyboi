@@ -28,7 +28,14 @@ final class PlaybackManager {
     /// Coordination phase of the foreground playback session.
     private(set) var sessionPhase: SessionPhase = .idle
 
-    let loadingMessage = "Loading Stream…"
+    /// Whether the in-flight preparation is for a downloaded local file.
+    private(set) var isPreparingLocalMedia = false
+
+    /// Message shown by the loading overlay while playback is being prepared.
+    var loadingMessage: String {
+        isPreparingLocalMedia ? "Loading Video…" : "Loading Stream…"
+    }
+
     var currentError: PlaybackErrorInfo? {
         didSet {
             if currentError == nil, sessionPhase.isFailed {
@@ -228,6 +235,7 @@ final class PlaybackManager {
         AppLogger.info("Awaiting in-flight preload for '\(target.item.name ?? "")'")
 
         resetActivePlayback()
+        isPreparingLocalMedia = isLocalMedia(target)
         sessionPhase = .preparing
 
         activeTask = Task { @MainActor [weak self] in
@@ -256,6 +264,7 @@ final class PlaybackManager {
     }
 
     private func startPlayback(_ target: PlaybackTarget, retry retryTarget: PlaybackTarget) {
+        isPreparingLocalMedia = isLocalMedia(target)
         sessionPhase = .preparing
         activeTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -294,6 +303,18 @@ final class PlaybackManager {
         }
         sessionPhase = .idle
         currentError = nil
+        isPreparingLocalMedia = false
+    }
+
+    /// Aborts an in-flight preparation requested by `play(_:)`, dismissing the loading overlay.
+    ///
+    /// Any preload that was being awaited is discarded too, so nothing keeps loading in the
+    /// background after the user taps Stop.
+    func cancelPreparation() {
+        guard sessionPhase.isPreparing else { return }
+        AppLogger.info("Cancelling in-flight playback preparation")
+        discardPreload()
+        resetActivePlayback()
     }
 
     private func fail(_ reason: String, retry target: PlaybackTarget?) {
@@ -327,9 +348,17 @@ final class PlaybackManager {
             current.cleanup()
         }
         sessionPhase = .idle
+        isPreparingLocalMedia = false
     }
 
     // MARK: - Target Construction
+
+    /// Whether `target` will be prepared from a downloaded file rather than the server stream.
+    private func isLocalMedia(_ target: PlaybackTarget) -> Bool {
+        if target.localFileURL != nil { return true }
+        guard let itemID = target.item.id else { return false }
+        return DownloadManager.shared.playableLocalFileURL(for: itemID) != nil
+    }
 
     /// Resolves a container to the concrete item that should be played, using cached library data only.
     ///

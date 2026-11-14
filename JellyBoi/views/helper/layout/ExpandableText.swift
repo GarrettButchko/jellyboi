@@ -94,7 +94,7 @@ struct ExpandableText: View {
             .mask {
                 if isDescriptionTruncated {
                     let maskWidth = max(moreButtonSize.width + 16, 80)
-                    let maskHeight = max(moreButtonSize.height + 8, 28)
+                    let maskHeight = max(moreButtonSize.height + 16, 28)
 
                     VStack(spacing: 0) {
                         Color.black

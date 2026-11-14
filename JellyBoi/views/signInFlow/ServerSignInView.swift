@@ -100,10 +100,10 @@ struct ServerSignInView: View {
                 HStack {
                     Image(systemName: "server.rack")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.accent)
+                        .foregroundStyle(Color.appAccent)
                     Text(name)
                         .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(.accent)
+                        .foregroundStyle(Color.appAccent)
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 6)
@@ -124,7 +124,7 @@ struct ServerSignInView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Image(systemName: "person")
-                        .foregroundStyle(.accent)
+                        .foregroundStyle(Color.appAccent)
                         .frame(width: 20, height: 20)
                     TextField("Username", text: $viewModel.username)
                         .textFieldStyle(.plain)
@@ -150,7 +150,7 @@ struct ServerSignInView: View {
 
                 HStack(spacing: 10) {
                     Image(systemName: "lock")
-                        .foregroundStyle(.accent)
+                        .foregroundStyle(Color.appAccent)
                         .frame(width: 20, height: 20)
                     SecureField("Password", text: $viewModel.password)
                         .textFieldStyle(.plain)
@@ -201,7 +201,7 @@ struct ServerSignInView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
             }
-            .glassEffect(.regular.tint(.accent).interactive(), in: RoundedRectangle(cornerRadius: 14))
+            .glassEffect(.regular.tint(Color.appAccent).interactive(), in: RoundedRectangle(cornerRadius: 14))
             .foregroundStyle(.white)
             .disabled(viewModel.username.isEmpty || viewModel.signInState == .loading)
             .opacity(viewModel.username.isEmpty ? 0.4 : 1)
@@ -318,7 +318,7 @@ struct ServerSignInView: View {
                                 }
                             }
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.accent)
+                            .foregroundStyle(Color.appAccent)
                         }
                     }
                 }

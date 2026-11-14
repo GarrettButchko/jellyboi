@@ -14,12 +14,12 @@ extension DownloadStatus {
     }
 }
 
-public enum DownloadGroupType: String, Codable, Sendable {
+public nonisolated enum DownloadGroupType: String, Codable, Sendable {
     case show
     case collection
 }
 
-public struct DownloadGroupInfo: Codable, Sendable, Equatable, Hashable {
+public nonisolated struct DownloadGroupInfo: Codable, Sendable, Equatable, Hashable {
     public let id: String
     public let title: String
     public let type: DownloadGroupType
@@ -37,6 +37,7 @@ public struct DownloadGroupInfo: Codable, Sendable, Equatable, Hashable {
         self.primaryImageTag = primaryImageTag
     }
 
+    @MainActor
     public func posterURL(client: JellyfinClient?) -> URL? {
         guard let client else { return nil }
         return client.itemImageURL(
@@ -46,7 +47,7 @@ public struct DownloadGroupInfo: Codable, Sendable, Equatable, Hashable {
     }
 }
 
-public struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
+public nonisolated struct DownloadItem: Codable, Identifiable, Sendable, Equatable {
     public let id: String
     public var item: BaseItemDto
     public let fileName: String

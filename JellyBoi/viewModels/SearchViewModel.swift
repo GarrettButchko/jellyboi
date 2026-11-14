@@ -29,7 +29,6 @@ public struct GenreCount: Identifiable, Hashable, Sendable {
 class SearchViewModel {
     var library = LibraryViewModel()
     var searchText = ""
-    var showFavoritesOnly: Bool = false
 
     private let ranker = MediaSearchRanker()
 
@@ -39,17 +38,15 @@ class SearchViewModel {
 
     // MARK: Derived state
 
-    /// Movies + shows only, narrowed to favorites when toggled.
+    /// Movies + shows only.
     /// Used for genre browse, `items(inGenre:)`, and `previewItem(forGenre:)`.
     private var pool: [BaseItemDto] {
-        let all = library.movies + library.tvShows
-        return showFavoritesOnly ? all.filter { $0.userData?.isFavorite == true } : all
+        library.movies + library.tvShows
     }
 
     /// Full pool including episodes and collections, used when the user is actively searching.
     private var searchPool: [BaseItemDto] {
-        let all = library.movies + library.tvShows + library.episodes + library.collections
-        return showFavoritesOnly ? all.filter { $0.userData?.isFavorite == true } : all
+        library.movies + library.tvShows + library.episodes + library.collections
     }
 
     /// Items matching the current search text, ordered by relevance score descending.
@@ -66,7 +63,7 @@ class SearchViewModel {
         #if DEBUG
         if DebugSettings.shared.simulateSearchEmptyLibrary || DebugSettings.shared.hideSearchGenres { return [] }
         #endif
-        if !showFavoritesOnly && !library.genres.isEmpty {
+        if !library.genres.isEmpty {
             return library.genres
         }
         var counts: [String: Int] = [:]

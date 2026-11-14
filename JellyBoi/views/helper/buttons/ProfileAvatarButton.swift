@@ -35,6 +35,8 @@ struct ProfileAvatarButton: View {
                 fallbackIcon
             }
         }
+        .padding(5)
+        .glassEffect(.regular.interactive(), in: Circle())
         .sheet(isPresented: $showProfile, onDismiss: {
             if pendingSignOut {
                 pendingSignOut = false
@@ -43,7 +45,6 @@ struct ProfileAvatarButton: View {
         }) {
             SettingsView(onSignOut: { pendingSignOut = true })
         }
-        .padding(.trailing, 20)
     }
 
     private var fallbackIcon: some View {

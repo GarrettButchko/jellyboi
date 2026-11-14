@@ -80,15 +80,9 @@ struct MediaResultsView: View {
 
     @Namespace private var zoomTransition
     @State private var selectedItem: BaseItemDto?
-    @State private var headerHeight: CGFloat = 74
 
     var body: some View {
-        ScrollToTopScrollView(
-            topInset: headerHeight,
-            header: { isCollapsed in
-                TabPageHeader(title: title, isCollapsed: isCollapsed, headerHeight: $headerHeight, showBackButton: true)
-            }
-        ) {
+        ScrollToTopScrollView {
             if items.isEmpty {
                 EmptyStateView(
                     icon: emptyIcon,
@@ -109,7 +103,8 @@ struct MediaResultsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
             selectedItem = nil
         }
-        .toolbarVisibility(.hidden, for: .navigationBar)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.large)
         .background(Color.bg.ignoresSafeArea())
     }
 }

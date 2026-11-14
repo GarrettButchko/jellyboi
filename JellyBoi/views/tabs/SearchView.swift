@@ -40,7 +40,6 @@ struct SearchView: View {
 
     @State private var selectedItem: BaseItemDto?
     @State private var selectedGenre: String?
-    @State private var headerHeight: CGFloat = 132
     @State private var scrollPosition = ScrollPosition()
 
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -48,52 +47,20 @@ struct SearchView: View {
     var body: some View {
         @Bindable var viewModel = viewModel
         NavigationStack {
-            ZStack(alignment: .top) {
-                ScrollToTopScrollView(
-                    position: $scrollPosition,
-                    topInset: headerHeight,
-                    header: { isCollapsed in
-                        TabPageHeader(title: "Search", isCollapsed: isCollapsed, headerHeight: $headerHeight) {
-                            GlassEffectContainer(spacing: 12) {
-                                HStack(spacing: 10) {
-                                    searchField
-
-                                    Button {
-                                        withAnimation(.smooth(duration: 0.25)) {
-                                            viewModel.showFavoritesOnly.toggle()
-                                        }
-                                    } label: {
-                                        Image(systemName: viewModel.showFavoritesOnly ? "star.fill" : "star")
-                                            .font(.system(size: 14, weight: .semibold))
-                                            .foregroundStyle(viewModel.showFavoritesOnly ? Color.yellow : Color.mainOpp)
-                                            .frame(width: 44, height: 44)
-                                            .glassEffect(.regular.interactive(), in: Circle())
-                                            .contentShape(Circle())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-                    }
-                ) {
-                    Group {
-                        if viewModel.searchText.isEmpty {
-                            genreBrowse
-                        } else {
-                            searchResults
-                        }
-                    }
-                    .onChange(of: viewModel.searchText) { _, _ in
-                        withAnimation { scrollPosition.scrollToTop() }
-                    }
-                    .onChange(of: viewModel.showFavoritesOnly) { _, _ in
-                        withAnimation { scrollPosition.scrollToTop() }
+            ScrollToTopScrollView(position: $scrollPosition) {
+                Group {
+                    if viewModel.searchText.isEmpty {
+                        genreBrowse
+                    } else {
+                        searchResults
                     }
                 }
-                .animation(.smooth(duration: 0.25), value: viewModel.searchText.isEmpty)
-                .animation(.smooth(duration: 0.25), value: viewModel.showFavoritesOnly)
+                .padding(.top, 12)
+                .onChange(of: viewModel.searchText) { _, _ in
+                    withAnimation { scrollPosition.scrollToTop() }
+                }
             }
+            .animation(.smooth(duration: 0.25), value: viewModel.searchText.isEmpty)
             // Detail destination — zoom into a media item
             .navigationDestination(item: $selectedItem) { item in
                 MediaDetailView(item: item)
@@ -106,42 +73,11 @@ struct SearchView: View {
             .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
                 selectedItem = nil
             }
-            .toolbarVisibility(.hidden, for: .navigationBar)
+            // Applied inside the NavigationStack so the search-role tab hosts the
+            // field in the tab bar (bottom) instead of the navigation bar.
+            .searchable(text: $viewModel.searchText)
             .background(Color.bg.ignoresSafeArea())
         }
-    }
-
-    // MARK: - Search field
-
-    private var searchField: some View {
-        @Bindable var viewModel = viewModel
-        return HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Color.mainOpp.opacity(0.5))
-
-            TextField("Movies, shows, genres, tags…", text: $viewModel.searchText)
-                .font(.system(.body, design: .rounded))
-                .foregroundStyle(Color.mainOpp)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.search)
-
-            if !viewModel.searchText.isEmpty {
-                Button {
-                    viewModel.searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color.mainOpp.opacity(0.4))
-                }
-                .transition(.opacity.combined(with: .scale))
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
-        .animation(.smooth(duration: 0.2), value: viewModel.searchText.isEmpty)
     }
 
     // MARK: - Genre browse (empty state)
@@ -161,21 +97,12 @@ struct SearchView: View {
                 .skeleton()
                 .transition(.opacity)
             } else if viewModel.genres.isEmpty {
-                if viewModel.showFavoritesOnly {
-                    EmptyStateView(
-                        icon: "star",
-                        title: "No Favorites",
-                        message: "You haven't added any favorites yet."
-                    )
-                    .transition(.opacity)
-                } else {
-                    EmptyStateView(
-                        icon: "film.stack",
-                        title: "No Media in Library",
-                        message: "Add movies or TV shows to your Jellyfin server to search and browse genres."
-                    )
-                    .transition(.opacity)
-                }
+                EmptyStateView(
+                    icon: "film.stack",
+                    title: "No Media in Library",
+                    message: "Add movies or TV shows to your Jellyfin server to search and browse genres."
+                )
+                .transition(.opacity)
             } else {
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)],
@@ -199,21 +126,12 @@ struct SearchView: View {
     private var searchResults: some View {
         Group {
             if viewModel.results.isEmpty {
-                if viewModel.showFavoritesOnly {
-                    EmptyStateView(
-                        icon: "star",
-                        title: "No Favorite Results",
-                        message: "No favorite titles found matching \"\(viewModel.searchText)\"."
-                    )
-                    .transition(.opacity)
-                } else {
-                    EmptyStateView(
-                        icon: "magnifyingglass",
-                        title: "No Results",
-                        message: "No titles found matching \"\(viewModel.searchText)\"."
-                    )
-                    .transition(.opacity)
-                }
+                EmptyStateView(
+                    icon: "magnifyingglass",
+                    title: "No Results",
+                    message: "No titles found matching \"\(viewModel.searchText)\"."
+                )
+                .transition(.opacity)
             } else {
                 MediaGrid(items: viewModel.results, namespace: zoomTransition) { item in
                     selectedItem = item

@@ -18,7 +18,6 @@ struct ContentView: View {
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(PlaybackManager.self) private var playbackManager
     @Environment(NetworkMonitor.self) private var networkMonitor
-    @Environment(AppPreferences.self) private var preferences
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var isOffline: Bool = false
@@ -75,8 +74,13 @@ struct ContentView: View {
         }
         .animation(.smooth, value: viewManager.showSignInFlow)
         .overlay {
-            if playbackManager.isPreparing {
-                LoadingOverlay(message: playbackManager.loadingMessage)
+            if playbackManager.isPreparing{
+                PlaybackLoadingOverlay(
+                    message: playbackManager.loadingMessage,
+                    onStop: {
+                        playbackManager.cancelPreparation()
+                    }
+                )
             }
         }
         .statusOverlayLoadingIndicator {
@@ -173,7 +177,6 @@ struct ContentView: View {
                 }
             }
         }
-        .tint(preferences.accentColor)
         .toggleStyle(SwitchToggleStyle(tint: .green))
         .task {
             guard viewManager.isSignedIn else { return }

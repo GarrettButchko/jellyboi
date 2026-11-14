@@ -11,7 +11,7 @@ import SwiftUI
 
 // MARK: - Unified Download Status
 
-public enum DownloadStatus: String, Codable, Sendable {
+public nonisolated enum DownloadStatus: String, Codable, Sendable {
     case queued
     case downloading
     case converting

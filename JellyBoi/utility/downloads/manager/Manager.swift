@@ -26,6 +26,12 @@ public final class DownloadManager: NSObject, URLSessionDownloadDelegate {
 
     public internal(set) var downloads: [String: DownloadItem] = [:]
 
+    /// Completed downloads, newest first, refreshed only when the index changes shape.
+    ///
+    /// Views read this instead of `downloads` so progress ticks for an in-flight download don't
+    /// invalidate every screen that lists downloaded media.
+    public internal(set) var completedSnapshot: [DownloadItem] = []
+
     public var client: JellyfinClient? {
         didSet {
             if client != nil {
@@ -63,8 +69,29 @@ public final class DownloadManager: NSObject, URLSessionDownloadDelegate {
     @ObservationIgnored
     var cachedPosterThumbnails: [String: Data] = [:]
 
+    /// True while an index write is in flight, so bursts of changes collapse into one write.
+    @ObservationIgnored
+    private var isSavingIndex = false
+
+    /// Set when a change arrives while a write is already running.
+    @ObservationIgnored
+    private var indexSavePending = false
+
+    /// Set when item metadata inside the completed snapshot changed without the record itself
+    /// comparing differently (`DownloadItem.==` intentionally ignores `item`).
+    @ObservationIgnored
+    private var completedSnapshotNeedsRefresh = false
+
     @ObservationIgnored
     private var backgroundCompletionHandlers: [String: () -> Void] = [:]
+
+    /// True while the persisted download index is still being read back at launch.
+    @ObservationIgnored
+    var isRestoringDownloads = false
+
+    /// Main-actor work waiting for the persisted downloads to finish loading.
+    @ObservationIgnored
+    private var restoreWaiters: [CheckedContinuation<Void, Never>] = []
 
     public var downloadsDirectory: URL {
         storage.downloadsDirectory
@@ -83,13 +110,40 @@ public final class DownloadManager: NSObject, URLSessionDownloadDelegate {
         delegateQueue.maxConcurrentOperationCount = 1
         self.session = URLSession(configuration: config, delegate: self, delegateQueue: delegateQueue)
 
-        let loaded = storage.loadIndex()
-        self.downloads = loaded.items
-        self.downloadQueue = loaded.queue
-        let validFileNames = Set(loaded.items.values.map(\.fileName))
-        storage.cleanupOrphanedFiles(validFileNames: validFileNames)
-        if loaded.didHeal {
-            saveIndex()
+        // Reading the index back means decoding JSON, checking every recorded file on disk, and
+        // sweeping the Downloads directory for orphans. That is too much I/O to do before the
+        // first frame, so it runs on a background task and is applied to the observable state on
+        // the main actor.
+        isRestoringDownloads = true
+        let clientIsSet = client != nil
+        Task {
+            // Keychain reads are cheap, so they stay on the main actor; only the bool crosses over.
+            let canStartQueue = clientIsSet
+                || KeychainStore.read(StoredSession.self, for: storedSessionKeychainKey) != nil
+            let storage = self.storage
+            let restored = await Task.detached(priority: .userInitiated) {
+                let loaded = storage.loadIndex()
+                storage.cleanupOrphanedFiles(
+                    validFileNames: Set(loaded.items.values.map(\.fileName))
+                )
+                return RestoredDownloads(
+                    items: loaded.items,
+                    queue: loaded.queue,
+                    didHeal: loaded.didHeal,
+                    canStartQueue: canStartQueue
+                )
+            }.value
+
+            self.downloads = restored.items
+            self.downloadQueue = restored.queue
+            self.refreshCompletedSnapshot()
+            if restored.didHeal {
+                self.saveIndex()
+            }
+            self.finishRestoringDownloads()
+            if restored.canStartQueue {
+                self.processQueue()
+            }
         }
 
         // Reconnect to any background tasks already in progress by the daemon
@@ -108,10 +162,6 @@ public final class DownloadManager: NSObject, URLSessionDownloadDelegate {
                 }
                 self.processQueue()
             }
-        }
-
-        if client != nil || canRestoreClientFromKeychain {
-            processQueue()
         }
 
         NotificationCenter.default.addObserver(
@@ -155,11 +205,38 @@ public final class DownloadManager: NSObject, URLSessionDownloadDelegate {
         }
     }
 
-    // MARK: - Jellyfin Client Restoration
+    // MARK: - Index Restoration
 
-    private var canRestoreClientFromKeychain: Bool {
-        KeychainStore.read(StoredSession.self, for: storedSessionKeychainKey) != nil
+    /// Runs `work` on the main actor once the persisted downloads are available, so launch-time
+    /// background-session callbacks never observe an empty index.
+    func afterDownloadsRestore(_ work: @escaping @MainActor () -> Void) {
+        guard isRestoringDownloads else {
+            work()
+            return
+        }
+        Task { @MainActor in
+            await waitForDownloadsRestore()
+            work()
+        }
     }
+
+    private func waitForDownloadsRestore() async {
+        guard isRestoringDownloads else { return }
+        await withCheckedContinuation { continuation in
+            restoreWaiters.append(continuation)
+        }
+    }
+
+    private func finishRestoringDownloads() {
+        isRestoringDownloads = false
+        let waiters = restoreWaiters
+        restoreWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
+    // MARK: - Jellyfin Client Restoration
 
     /// Returns the in-memory client, or rebuilds one from the stored session so downloads started by
     /// the background daemon can continue without a foreground launch.
@@ -186,6 +263,66 @@ public final class DownloadManager: NSObject, URLSessionDownloadDelegate {
     // MARK: - Persistence
 
     func saveIndex() {
-        storage.saveIndex(items: Array(downloads.values))
+        refreshCompletedSnapshot()
+
+        // Encoding the whole index and writing it atomically is disk work that used to run on the
+        // main actor for every queue/state change. Keep it off the main thread and fold bursts of
+        // changes into a single write.
+        guard !isSavingIndex else {
+            indexSavePending = true
+            return
+        }
+        isSavingIndex = true
+        let snapshot = Array(downloads.values)
+        let storage = self.storage
+        Task.detached(priority: .utility) {
+            storage.saveIndex(items: snapshot)
+            await self.finishIndexSave()
+        }
+    }
+
+    private func finishIndexSave() {
+        isSavingIndex = false
+        guard indexSavePending else { return }
+        indexSavePending = false
+        saveIndex()
+    }
+
+    /// Rebuilds `completedSnapshot`. Only reassigns when the result actually changed so observers
+    /// of download state are not invalidated by progress-only updates.
+    func refreshCompletedSnapshot() {
+        let completed = downloads.values
+            .filter { $0.status == .completed && storage.fileExists(for: $0.fileName) }
+            .sorted { ($0.dateCompleted ?? $0.dateAdded) > ($1.dateCompleted ?? $1.dateAdded) }
+
+        // `DownloadItem`'s equality ignores its metadata, so item updates (playback position,
+        // favorites) have to flag themselves to get through the guard below.
+        let metadataChanged = completedSnapshotNeedsRefresh
+        completedSnapshotNeedsRefresh = false
+
+        guard metadataChanged || completed != completedSnapshot else { return }
+        completedSnapshot = completed
+    }
+
+    /// Marks the completed snapshot as stale even if the records themselves compare equal.
+    func markCompletedSnapshotMetadataDirty() {
+        completedSnapshotNeedsRefresh = true
+    }
+}
+
+/// Persisted download state read back off the main actor during launch.
+private struct RestoredDownloads: Sendable {
+    let items: [String: DownloadItem]
+    let queue: [String]
+    let didHeal: Bool
+    let canStartQueue: Bool
+}
+
+/// Carries a URLSession error across the short wait for the downloads index to finish loading.
+struct DeferredDownloadError: @unchecked Sendable {
+    let value: Error
+
+    init(_ value: Error) {
+        self.value = value
     }
 }

@@ -17,6 +17,7 @@ public final class DownloadActivityCoordinator {
     private var lastUpdateTime: Date = .distantPast
     private var lastProgress: Double = -1.0
     private var lastTitle: String? = nil
+    private var lastStatus: DownloadStatus? = nil
     private var lastPosterData: Data? = nil
     private var finishDismissalTask: Task<Void, Never>?
 
@@ -29,6 +30,16 @@ public final class DownloadActivityCoordinator {
             return current
         }
         return Activity<DownloadActivityAttributes>.activities.first(where: { $0.activityState == .active })
+    }
+
+    /// Whether an update with this progress/status would be dropped by the throttle. Callers use
+    /// this to skip building a presentation (grouping, artwork lookups) when nothing would be sent.
+    public func isThrottling(progress: Double, status: DownloadStatus) -> Bool {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return true }
+        if status == .completed || status == .failed { return false }
+        let timeSinceLast = Date().timeIntervalSince(lastUpdateTime)
+        let progressDiff = abs(progress - lastProgress)
+        return timeSinceLast < 1.5 && progressDiff < 0.05 && status == lastStatus
     }
 
     public func update(presentation: DownloadSummaryPresentation, force: Bool = false) {
@@ -58,6 +69,7 @@ public final class DownloadActivityCoordinator {
         lastUpdateTime = now
         lastProgress = presentation.progress
         lastTitle = presentation.title
+        lastStatus = presentation.status
 
         if presentation.isSingleElement {
             if let posterData = presentation.posterImageData {
@@ -175,6 +187,7 @@ public final class DownloadActivityCoordinator {
         currentActivity = nil
         lastProgress = -1.0
         lastTitle = nil
+        lastStatus = nil
         lastPosterData = nil
 
         for activity in activitiesToEnd {

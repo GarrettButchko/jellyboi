@@ -45,6 +45,24 @@ struct LibraryDataSnapshot: Sendable {
     let watchedHours: Int
 }
 
+/// Derived collections rebuilt from the normalized store. Computed off the main actor.
+private struct LibraryAggregates: Sendable {
+    let movies: [BaseItemDto]
+    let tvShows: [BaseItemDto]
+    let episodes: [BaseItemDto]
+    let collections: [BaseItemDto]
+    let recommended: [BaseItemDto]
+    let recentlyAddedMovies: [BaseItemDto]
+    let recentlyAddedShows: [BaseItemDto]
+    let recentlyAdded: [BaseItemDto]
+    let resumeShows: [BaseItemDto]
+    let episodesBySeriesID: [String: [BaseItemDto]]
+    let inProgressMovies: [BaseItemDto]
+    let topWatchedMovies: [BaseItemDto]
+    let completedCount: Int
+    let watchedHours: Int
+}
+
 /// Owns all of the media fetched from the server. This is fetched **once** when a
 /// client becomes available and is shared across every tab. Individual tab view
 /// models read from this shared source and filter/derive what they need locally.
@@ -186,6 +204,9 @@ class LibraryViewModel {
     private var userDataTask: Task<Void, Never>?
     @ObservationIgnored
     private var progressUpdateTask: Task<Void, Never>?
+    /// Background recompute of the derived collections. A newer pass cancels the previous one.
+    @ObservationIgnored
+    private var aggregateTask: Task<Void, Never>?
     @ObservationIgnored
     private var isFetching = false
     @ObservationIgnored
@@ -216,6 +237,7 @@ class LibraryViewModel {
     deinit {
         userDataTask?.cancel()
         progressUpdateTask?.cancel()
+        aggregateTask?.cancel()
     }
 
     // MARK: - State
@@ -571,16 +593,73 @@ class LibraryViewModel {
 
     // MARK: - Aggregates
 
+    /// Rebuilds the derived collections after the normalized store changes.
+    ///
+    /// The pass resolves every ID list and walks all items (grouping every episode by series,
+    /// sorting Continue Watching, summing watch time). That is too much work for the main actor
+    /// when it is triggered by a websocket burst or a playback progress tick, so it runs on a
+    /// background task and only the finished result is written back. Calls coalesce: a newer
+    /// update cancels the pass that is still running.
     private func updateAggregates() {
-        movies = movieIDs.compactMap { itemsByID[$0] }
-        tvShows = tvShowIDs.compactMap { itemsByID[$0] }
-        episodes = episodeIDs.compactMap { itemsByID[$0] }
-        collections = collectionIDs.compactMap { itemsByID[$0] }
-        recommended = recommendedIDs.compactMap { itemsByID[$0] }
-        recentlyAddedMovies = recentlyAddedMovieIDs.compactMap { itemsByID[$0] }
-        recentlyAddedShows = recentlyAddedShowIDs.compactMap { itemsByID[$0] }
-        recentlyAdded = recentlyAddedIDs.compactMap { itemsByID[$0] }
-        resumeShows = resumeShowIDs.compactMap { itemsByID[$0] }.filter { !$0.isUnplayedFirstEpisode }
+        aggregateTask?.cancel()
+
+        let itemsByID = self.itemsByID
+        let movieIDs = self.movieIDs
+        let tvShowIDs = self.tvShowIDs
+        let episodeIDs = self.episodeIDs
+        let collectionIDs = self.collectionIDs
+        let recommendedIDs = self.recommendedIDs
+        let recentlyAddedMovieIDs = self.recentlyAddedMovieIDs
+        let recentlyAddedShowIDs = self.recentlyAddedShowIDs
+        let recentlyAddedIDs = self.recentlyAddedIDs
+        let resumeShowIDs = self.resumeShowIDs
+
+        // Cheap (≤ 20 items) and uses a main-actor presentation helper, so resolve it here
+        // instead of inside the background pass.
+        let resumeShows = resumeShowIDs.compactMap { itemsByID[$0] }.filter { !$0.isUnplayedFirstEpisode }
+
+        aggregateTask = Task { [weak self] in
+            let aggregates = await Task.detached(priority: .userInitiated) {
+                Self.deriveAggregates(
+                    itemsByID: itemsByID,
+                    movieIDs: movieIDs,
+                    tvShowIDs: tvShowIDs,
+                    episodeIDs: episodeIDs,
+                    collectionIDs: collectionIDs,
+                    recommendedIDs: recommendedIDs,
+                    recentlyAddedMovieIDs: recentlyAddedMovieIDs,
+                    recentlyAddedShowIDs: recentlyAddedShowIDs,
+                    recentlyAddedIDs: recentlyAddedIDs,
+                    resumeShows: resumeShows
+                )
+            }.value
+
+            guard !Task.isCancelled, let self else { return }
+            self.apply(aggregates)
+        }
+    }
+
+    /// Pure, main-actor-free derivation of everything the UI reads from the library.
+    private nonisolated static func deriveAggregates(
+        itemsByID: [String: BaseItemDto],
+        movieIDs: [String],
+        tvShowIDs: [String],
+        episodeIDs: [String],
+        collectionIDs: [String],
+        recommendedIDs: [String],
+        recentlyAddedMovieIDs: [String],
+        recentlyAddedShowIDs: [String],
+        recentlyAddedIDs: [String],
+        resumeShows: [BaseItemDto]
+    ) -> LibraryAggregates {
+        let movies = movieIDs.compactMap { itemsByID[$0] }
+        let tvShows = tvShowIDs.compactMap { itemsByID[$0] }
+        let episodes = episodeIDs.compactMap { itemsByID[$0] }
+        let collections = collectionIDs.compactMap { itemsByID[$0] }
+        let recommended = recommendedIDs.compactMap { itemsByID[$0] }
+        let recentlyAddedMovies = recentlyAddedMovieIDs.compactMap { itemsByID[$0] }
+        let recentlyAddedShows = recentlyAddedShowIDs.compactMap { itemsByID[$0] }
+        let recentlyAdded = recentlyAddedIDs.compactMap { itemsByID[$0] }
 
         var grouped: [String: [BaseItemDto]] = [:]
         for ep in episodes {
@@ -588,9 +667,8 @@ class LibraryViewModel {
                 grouped[seriesID, default: []].append(ep)
             }
         }
-        episodesBySeriesID = grouped
 
-        inProgressMovies = movies
+        let inProgressMovies = movies
             .filter {
                 guard let percent = $0.userData?.playedPercentage else { return false }
                 return percent > 0 && percent < 85
@@ -598,21 +676,55 @@ class LibraryViewModel {
             .sorted {
                 ($0.userData?.lastPlayedDate ?? .distantPast) > ($1.userData?.lastPlayedDate ?? .distantPast)
             }
-        topWatchedMovies = Array(
+        let topWatchedMovies = Array(
             inProgressMovies.sorted {
                 let a = (($0.userData?.playedPercentage ?? 0) / 100.0) * Double($0.runTimeTicks ?? 0)
                 let b = (($1.userData?.playedPercentage ?? 0) / 100.0) * Double($1.runTimeTicks ?? 0)
                 return a > b
             }.prefix(6)
         )
-        completedCount = movies.filter { $0.userData?.isPlayed == true }.count
-        watchedHours = Int(
+        let completedCount = movies.filter { $0.userData?.isPlayed == true }.count
+        let watchedHours = Int(
             movies.reduce(0.0) { acc, item in
                 guard let ticks = item.runTimeTicks,
                       let percent = item.userData?.playedPercentage, percent > 0 else { return acc }
                 return acc + (percent / 100.0) * Double(ticks) / 10_000_000
             } / 3_600
         )
+
+        return LibraryAggregates(
+            movies: movies,
+            tvShows: tvShows,
+            episodes: episodes,
+            collections: collections,
+            recommended: recommended,
+            recentlyAddedMovies: recentlyAddedMovies,
+            recentlyAddedShows: recentlyAddedShows,
+            recentlyAdded: recentlyAdded,
+            resumeShows: resumeShows,
+            episodesBySeriesID: grouped,
+            inProgressMovies: inProgressMovies,
+            topWatchedMovies: topWatchedMovies,
+            completedCount: completedCount,
+            watchedHours: watchedHours
+        )
+    }
+
+    private func apply(_ aggregates: LibraryAggregates) {
+        movies = aggregates.movies
+        tvShows = aggregates.tvShows
+        episodes = aggregates.episodes
+        collections = aggregates.collections
+        recommended = aggregates.recommended
+        recentlyAddedMovies = aggregates.recentlyAddedMovies
+        recentlyAddedShows = aggregates.recentlyAddedShows
+        recentlyAdded = aggregates.recentlyAdded
+        resumeShows = aggregates.resumeShows
+        episodesBySeriesID = aggregates.episodesBySeriesID
+        inProgressMovies = aggregates.inProgressMovies
+        topWatchedMovies = aggregates.topWatchedMovies
+        completedCount = aggregates.completedCount
+        watchedHours = aggregates.watchedHours
     }
 
     // MARK: - Prefetching & Artwork

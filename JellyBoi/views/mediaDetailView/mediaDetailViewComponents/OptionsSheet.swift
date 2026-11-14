@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 import BaseColors
 import JellyfinAPI
 
@@ -96,7 +97,7 @@ extension MediaDetailView {
                         )
                     } label: {
                         if isQualitySelected(option) {
-                            Label(option.label, systemImage: "checkmark")
+                            checkedMenuLabel(option.label)
                         } else {
                             Text(option.label)
                         }
@@ -130,7 +131,7 @@ extension MediaDetailView {
                     Button {
                         // Default
                     } label: {
-                        Label("Default Audio", systemImage: "checkmark")
+                        checkedMenuLabel("Default Audio")
                     }
                 } else {
                     ForEach(detailVM.availableAudioStreams, id: \.index) { stream in
@@ -145,7 +146,7 @@ extension MediaDetailView {
                             )
                         } label: {
                             if isSelected {
-                                Label(label, systemImage: "checkmark")
+                                checkedMenuLabel(label)
                             } else {
                                 Text(label)
                             }
@@ -182,7 +183,7 @@ extension MediaDetailView {
                     )
                 } label: {
                     if isOff {
-                        Label("Off", systemImage: "checkmark")
+                        checkedMenuLabel("Off")
                     } else {
                         Text("Off")
                     }
@@ -200,7 +201,7 @@ extension MediaDetailView {
                         )
                     } label: {
                         if isSelected {
-                            Label(label, systemImage: "checkmark")
+                            checkedMenuLabel(label)
                         } else {
                             Text(label)
                         }
@@ -214,6 +215,25 @@ extension MediaDetailView {
             }
             .menuStyle(.button)
         }
+    }
+
+    // MARK: - Menu Checkmark Label
+
+    /// `Menu` items are rendered by UIKit, which templates symbol images and drops
+    /// SwiftUI `foregroundStyle` from labels, leaving the checkmark accent colored.
+    /// Baking the color into a non-template image keeps it `Color.mainOpp` instead.
+    private func checkedMenuLabel(_ title: String) -> some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(uiImage: checkmarkImage)
+        }
+        .tint(Color.mainOpp)
+    }
+
+    private var checkmarkImage: UIImage {
+        let symbol = UIImage(systemName: "checkmark") ?? UIImage()
+        return symbol.withTintColor(UIColor(Color.mainOpp), renderingMode: .alwaysOriginal)
     }
 
     // MARK: - Dropdown Label Component
@@ -265,7 +285,7 @@ extension MediaDetailView {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
         }
-        .glassEffect(.regular.tint(.accent).interactive(), in: Capsule())
+        .glassEffect(.regular.tint(Color.appAccent).interactive(), in: Capsule())
         .foregroundStyle(.white)
         .buttonStyle(.plain)
         .padding(.top, 4)

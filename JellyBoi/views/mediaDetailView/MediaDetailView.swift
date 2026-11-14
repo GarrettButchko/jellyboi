@@ -20,7 +20,6 @@ struct MediaDetailView: View {
     @Environment(LibraryViewModel.self) var libraryViewModel
     @Environment(PlaybackManager.self) var playbackManager
     @Environment(DownloadManager.self) var downloadManager
-    @Environment(\.dismiss) var dismiss
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
 
     @State var detailVM: MediaDetailViewModel
@@ -35,7 +34,6 @@ struct MediaDetailView: View {
     @State var showOptionsSheet: Bool = false
     @State var optionsSheetHeight: CGFloat = 0
     @State var heroArtworkHeight: CGFloat = 0
-    @State var backButtonHeight: CGFloat = 0
 
     // Zoom transitions
     @Namespace var episodeTransition
@@ -59,9 +57,7 @@ struct MediaDetailView: View {
 
     var body: some View {
         @Bindable var detailVM = detailVM
-        ScrollToTopScrollView(
-            topInset: backButtonHeight + 8
-        ) {
+        ScrollToTopScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 heroSection
 
@@ -86,9 +82,8 @@ struct MediaDetailView: View {
             .animation(.skeleton, value: detailVM.heroAspectRatio)
         }
         .background(Color.bg.ignoresSafeArea())
-        .toolbarVisibility(.hidden, for: .navigationBar)
-        .overlay(alignment: .top) {
-            topNavigationBar
+        .toolbar {
+            mediaDetailToolbar
         }
         .sheet(isPresented: $showOptionsSheet) {
             optionsSheet

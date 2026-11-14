@@ -6,14 +6,62 @@
 //
 
 import SwiftUI
+import Observation
 
-/// Floating overlay that sits over a scroll view and appears once the user
-/// has scrolled past `threshold` points. Animates in from the bottom with
-/// smooth opacity/scale transitions without tearing down views mid-scroll.
+/// Shared state that lets a single `ScrollTabBarOverlay` live at the tab bar
+/// level instead of inside every individual scroll view.
+///
+/// Each `ScrollToTopScrollView` registers itself as the active source when it
+/// appears, reports its discrete scroll state, and unregisters when it goes
+/// away. The tab view's bottom accessory renders one overlay from that state.
+@Observable
+@MainActor
+final class ScrollOverlayCoordinator {
+    /// Whether the active scroll source is scrolled far enough to show the
+    /// scroll-to-top button.
+    private(set) var isScrollToTopVisible: Bool = false
+
+    /// Identifier of the scroll view that currently owns the overlay.
+    private(set) var activeSourceID: UUID?
+
+    @ObservationIgnored
+    private var scrollToTopAction: (() -> Void)?
+
+    /// Makes `id` the active scroll source, restoring the visibility it had
+    /// before it went off screen (for example after popping a detail view).
+    func activate(
+        _ id: UUID,
+        isScrollToTopVisible: Bool,
+        scrollToTop: @escaping () -> Void
+    ) {
+        activeSourceID = id
+        scrollToTopAction = scrollToTop
+        self.isScrollToTopVisible = isScrollToTopVisible
+    }
+
+    /// Updates visibility only when the reporting view is still the active one.
+    func updateScrollToTopVisibility(_ isVisible: Bool, for id: UUID) {
+        guard activeSourceID == id else { return }
+        isScrollToTopVisible = isVisible
+    }
+
+    func deactivate(_ id: UUID) {
+        guard activeSourceID == id else { return }
+        activeSourceID = nil
+        scrollToTopAction = nil
+        isScrollToTopVisible = false
+    }
+
+    func scrollToTop() {
+        scrollToTopAction?()
+    }
+}
+
+/// Floating overlay rendered as the tab view's bottom accessory, directly
+/// above the tab bar. Shows the active download bar and, once the current
+/// screen is scrolled past the threshold, a scroll-to-top button.
 struct ScrollTabBarOverlay: View {
     let isVisible: Bool
-    var threshold: CGFloat = 300
-    @Binding var STTButtonHeight: CGFloat
     let action: () -> Void
     @Environment(DownloadManager.self) private var downloadManager
 
@@ -42,37 +90,19 @@ struct ScrollTabBarOverlay: View {
         return nil
     }
 
-    init(
-        scrollOffset: CGFloat,
-        threshold: CGFloat = 300,
-        STTButtonHeight: Binding<CGFloat>,
-        action: @escaping () -> Void
-    ) {
-        self.isVisible = scrollOffset > threshold
-        self.threshold = threshold
-        self._STTButtonHeight = STTButtonHeight
-        self.action = action
-    }
-
-    init(
-        isVisible: Bool,
-        threshold: CGFloat = 300,
-        STTButtonHeight: Binding<CGFloat>,
-        action: @escaping () -> Void
-    ) {
-        self.isVisible = isVisible
-        self.threshold = threshold
-        self._STTButtonHeight = STTButtonHeight
-        self.action = action
-    }
-
     var body: some View {
+        // Resolved once per update instead of once per reference below: this overlay sits above
+        // every tab, so it re-evaluates on every download progress tick.
+        let active = downloadManager.activeDownloads
+        let presentation = downloadManager.currentPresentation
+        let hasActiveDownloads = !active.isEmpty
+
         ZStack(alignment: .bottom) {
-            if !downloadManager.activeDownloads.isEmpty {
+            if hasActiveDownloads {
                 HStack(spacing: 8) {
                     ActiveDownloadFloatingBar(
-                        presentation: downloadManager.currentPresentation,
-                        activeDownloads: downloadManager.activeDownloads
+                        presentation: presentation,
+                        activeDownloads: active
                     ) {
                         if let single = singleGroup {
                             activeSheetTarget = .group(id: single.id, name: single.name)
@@ -82,29 +112,23 @@ struct ScrollTabBarOverlay: View {
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
 
-                    CircleScrollToTopButton(action: action)
-                        .opacity(isVisible ? 1.0 : 0.0)
-                        .scaleEffect(isVisible ? 1.0 : 0.6)
-                        .allowsHitTesting(isVisible)
+                    if isVisible {
+                        CircleScrollToTopButton(action: action)
+                            .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    }
                 }
-                .padding(.bottom, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.spring(response: 0.38, dampingFraction: 0.78), value: isVisible)
-                .animation(.spring(response: 0.38, dampingFraction: 0.78), value: downloadManager.activeDownloads.count > 1)
-                .animation(.spring(response: 0.38, dampingFraction: 0.78), value: downloadManager.activeDownloads.count)
-            } else {
+                .animation(.spring(response: 0.38, dampingFraction: 0.78), value: active.count > 1)
+                .animation(.spring(response: 0.38, dampingFraction: 0.78), value: active.count)
+            } else if isVisible {
                 ScrollToTopButton(action: action)
-                    .padding(.bottom, 8)
-                    .opacity(isVisible ? 1.0 : 0.0)
-                    .offset(y: isVisible ? 0 : 20)
-                    .scaleEffect(isVisible ? 1.0 : 0.8)
-                    .allowsHitTesting(isVisible)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .allowsHitTesting(!downloadManager.activeDownloads.isEmpty || isVisible)
+        .allowsHitTesting(hasActiveDownloads || isVisible)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isVisible)
-        .animation(.spring(response: 0.38, dampingFraction: 0.78), value: !downloadManager.activeDownloads.isEmpty)
+        .animation(.spring(response: 0.38, dampingFraction: 0.78), value: hasActiveDownloads)
         .sheet(item: $activeSheetTarget) { target in
             switch target {
             case .main:

@@ -10,16 +10,6 @@ import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
 
-#if canImport(UIKit)
-private var safeAreaTop: CGFloat {
-    UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .first?.keyWindow?.safeAreaInsets.top ?? 0
-}
-#else
-private var safeAreaTop: CGFloat { 0 }
-#endif
-
 // MARK: - Skeleton Default Items
 
 private let defaultCastCrewMediaItem = BaseItemDto(
@@ -35,6 +25,12 @@ private let defaultCastCrewMediaItems: [BaseItemDto] = (0..<12).map { index in
         type: defaultCastCrewMediaItem.type
     )
 }
+
+private let defaultCastCrewBiography = "This is a placeholder biography describing the life and career of the person for the skeleton loading state across multiple lines."
+
+private let defaultCastCrewBirthday = "January 1, 1970 (55 years old)"
+
+private let defaultCastCrewBirthplace = "Los Angeles, California, USA"
 
 struct CastCrewView: View {
     @State private var viewModel: CastCrewViewModel
@@ -62,33 +58,16 @@ struct CastCrewView: View {
                 // Top area: Back button, full-size person image on left, name, birthday & birthplace on right
                 VStack{
                     topArea
-                    
-                    // Overview / description with 3-line truncation and more/less button
-                    if let overview = viewModel.overview, !overview.isEmpty {
-                        ExpandableText(overview, sheetTitle: "Biography")
-                            .padding(.horizontal, 16)
-                            .padding(.top, 6)
-                    }
-                    
-                    ScrollView(.horizontal) {
-                        HStack{
-                            if let birthday = viewModel.birthDateFormatted {
-                                InfoCapsule(icon: "calendar", text: birthday)
-                            }
-                            
-                            if let birthplace = viewModel.birthPlaceFormatted {
-                                Button {
-                                    openMaps(for: birthplace)
-                                } label: {
-                                    InfoCapsule(icon: "mappin.and.ellipse", text: birthplace)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .scrollIndicators(.hidden)
-                    .contentMargins(.horizontal, 16)
-                    .padding(.top, 6)
+
+                    // Overview / biography with 3-line truncation and more/less button
+                    biographyText
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                        .skeleton(when: isBiographyPlaceholderVisible, value: viewModel.overview)
+
+                    infoCapsules
+                        .padding(.top, 6)
+                        .skeleton(when: isInfoPlaceholderVisible, value: viewModel.birthDateFormatted)
                 }
 
                 // Content: Movies & Shows, and Episodes
@@ -172,7 +151,6 @@ struct CastCrewView: View {
                 }
             }
             .animation(.skeleton, value: viewModel.isLoading)
-            .padding(.top, safeAreaTop)
             .padding(.bottom, 24)
         }
         .scrollEdgeEffectHidden(scrollOffset <= 0, for: .top)
@@ -181,15 +159,7 @@ struct CastCrewView: View {
         } action: { _, newValue in
             scrollOffset = newValue
         }
-        .overlay(alignment: .topLeading){
-            HStack {
-                BackButton()
-                Spacer()
-            }
-            .padding(.leading, 16)
-        }
         .background(Color.bg.ignoresSafeArea())
-        .toolbarVisibility(.hidden, for: .navigationBar)
         .navigationDestination(item: $selectedMediaItem) { item in
             MediaDetailView(item: item)
                 .navigationTransition(.zoom(
@@ -244,6 +214,57 @@ struct CastCrewView: View {
         .padding(.horizontal, 16)
     }
 
+    // MARK: - Biography
+
+    /// The biography is only masked while there is nothing to show yet: once the details
+    /// resolve the real text fades in place of the placeholder.
+    private var isBiographyPlaceholderVisible: Bool {
+        (viewModel.overview ?? "").isEmpty && viewModel.isLoading
+    }
+
+    @ViewBuilder
+    private var biographyText: some View {
+        if let overview = viewModel.overview, !overview.isEmpty {
+            ExpandableText(overview, sheetTitle: "Biography")
+        } else if viewModel.isLoading {
+            ExpandableText(defaultCastCrewBiography, sheetTitle: "Biography")
+        }
+    }
+
+    // MARK: - Info Capsules
+
+    /// Only show the capsule skeletons when neither birthday nor birthplace has resolved yet.
+    private var isInfoPlaceholderVisible: Bool {
+        viewModel.birthDateFormatted == nil
+            && viewModel.birthPlaceFormatted == nil
+            && viewModel.isLoading
+    }
+
+    private var infoCapsules: some View {
+        ScrollView(.horizontal) {
+            HStack {
+                if let birthday = viewModel.birthDateFormatted {
+                    InfoCapsule(icon: "calendar", text: birthday)
+                } else if viewModel.isLoading {
+                    InfoCapsule(icon: "calendar", text: defaultCastCrewBirthday)
+                }
+
+                if let birthplace = viewModel.birthPlaceFormatted {
+                    Button {
+                        openMaps(for: birthplace)
+                    } label: {
+                        InfoCapsule(icon: "mappin.and.ellipse", text: birthplace)
+                    }
+                    .buttonStyle(.plain)
+                } else if viewModel.isLoading {
+                    InfoCapsule(icon: "mappin.and.ellipse", text: defaultCastCrewBirthplace)
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .contentMargins(.horizontal, 16)
+    }
+
     // MARK: - Person Image
 
     @ViewBuilder
@@ -258,10 +279,14 @@ struct CastCrewView: View {
                         .resizable()
                         .scaledToFill()
                         .transition(.fade(duration: 0.3))
+                } else if viewModel.isLoading {
+                    SkeletonBlock(cornerRadius: 16)
                 } else {
                     personPlaceholder
                 }
             }
+        } else if viewModel.isLoading {
+            SkeletonBlock(cornerRadius: 16)
         } else {
             personPlaceholder
         }

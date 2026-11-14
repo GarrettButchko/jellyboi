@@ -113,7 +113,6 @@ struct JellyBoiApp: App {
                 .environment(downloadManager)
                 .environment(networkMonitor)
                 .environment(preferences)
-                .tint(preferences.accentColor)
                 .toggleStyle(SwitchToggleStyle(tint: .green))
         }
     }
