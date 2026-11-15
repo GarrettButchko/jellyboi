@@ -1,51 +1,33 @@
-//
-//  SearchView.swift
-//  JellyBoi
-//
-//  Created by Garrett Butchko on 8/19/26.
-//
-
 import SwiftUI
 import BaseColors
-import JellyfinAPI
 import SDWebImageSwiftUI
-import MarqueeText
+import JellyfinAPI
 
 // MARK: - Skeleton Default Genres
 
-private let defaultGenre = GenreCount(name: "Action", count: 99)
-
 private let defaultGenres: [GenreCount] = [
-    defaultGenre,
-    GenreCount(name: "Adventure", count: 99),
-    GenreCount(name: "Animation", count: 99),
-    GenreCount(name: "Comedy", count: 99),
-    GenreCount(name: "Crime", count: 99),
-    GenreCount(name: "Documentary", count: 99),
-    GenreCount(name: "Drama", count: 99),
-    GenreCount(name: "Family", count: 99),
-    GenreCount(name: "Fantasy", count: 99),
-    GenreCount(name: "Horror", count: 99),
-    GenreCount(name: "Mystery", count: 99),
-    GenreCount(name: "Sci-Fi", count: 99)
+    GenreCount(name: "Action", count: 12),
+    GenreCount(name: "Comedy", count: 8),
+    GenreCount(name: "Drama", count: 15),
+    GenreCount(name: "Sci-Fi", count: 6),
+    GenreCount(name: "Horror", count: 4),
+    GenreCount(name: "Animation", count: 9),
+    GenreCount(name: "Thriller", count: 7),
+    GenreCount(name: "Romance", count: 5),
+    GenreCount(name: "Documentary", count: 3),
+    GenreCount(name: "Fantasy", count: 6)
 ]
 
-// MARK: - SearchView
-
 struct SearchView: View {
-    @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(SearchViewModel.self) private var viewModel
-    @Namespace private var zoomTransition
-
-    @State private var selectedItem: BaseItemDto?
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var selectedItemID: String?
     @State private var selectedGenre: String?
     @State private var scrollPosition = ScrollPosition()
-
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Namespace private var zoomTransition
 
     var body: some View {
-        @Bindable var viewModel = viewModel
         NavigationStack {
             ScrollToTopScrollView(position: $scrollPosition) {
                 Group {
@@ -61,20 +43,18 @@ struct SearchView: View {
                 }
             }
             .animation(.smooth(duration: 0.25), value: viewModel.searchText.isEmpty)
-            // Detail destination — zoom into a media item
-            .navigationDestination(item: $selectedItem) { item in
-                MediaDetailView(item: item)
-                    .navigationTransition(.zoom(sourceID: item.zoomTransitionID(), in: zoomTransition))
+            .navigationDestination(item: $selectedItemID) { itemID in
+                if let item = libraryViewModel.item(for: itemID) {
+                    MediaDetailView(item: item)
+                        .navigationTransition(.zoom(sourceID: item.zoomTransitionID(), in: zoomTransition))
+                }
             }
-            // Genre destination — push a filtered poster grid
             .navigationDestination(item: $selectedGenre) { genre in
-                MediaResultsView(genre: genre, items: viewModel.items(inGenre: genre))
+                MediaResultsView(genre: genre, itemIDs: viewModel.itemIDs(inGenre: genre))
             }
             .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
-                selectedItem = nil
+                selectedItemID = nil
             }
-            // Applied inside the NavigationStack so the search-role tab hosts the
-            // field in the tab bar (bottom) instead of the navigation bar.
             .searchable(text: $viewModel.searchText)
             .background(Color.bg.ignoresSafeArea())
         }
@@ -84,7 +64,7 @@ struct SearchView: View {
 
     private var genreBrowse: some View {
         Group {
-            if viewModel.isLoading {
+            if viewModel.isLoading && viewModel.genres.isEmpty {
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 200 : 160), spacing: 12)],
                     spacing: 12
@@ -125,7 +105,7 @@ struct SearchView: View {
 
     private var searchResults: some View {
         Group {
-            if viewModel.results.isEmpty {
+            if viewModel.resultIDs.isEmpty {
                 EmptyStateView(
                     icon: "magnifyingglass",
                     title: "No Results",
@@ -133,8 +113,8 @@ struct SearchView: View {
                 )
                 .transition(.opacity)
             } else {
-                MediaGrid(items: viewModel.results, namespace: zoomTransition) { item in
-                    selectedItem = item
+                MediaGrid(itemIDs: viewModel.resultIDs, namespace: zoomTransition) { itemID in
+                    selectedItemID = itemID
                 }
                 .transition(.opacity)
             }
@@ -152,7 +132,6 @@ private struct GenreChip: View {
         let style = GenreStyle.forGenre(genre.name)
         Button(action: onTap) {
             ZStack(alignment: .bottomLeading) {
-                // Large icon in the top right corner
                 Image(systemName: style.icon)
                     .font(.system(size: 40, weight: .bold))
                     .foregroundStyle(.white.opacity(0.85))
@@ -161,7 +140,6 @@ private struct GenreChip: View {
                     .padding(.trailing, 12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
 
-                // Text on the bottom still
                 Text(genre.name)
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
@@ -178,13 +156,4 @@ private struct GenreChip: View {
         }
         .buttonStyle(.plain)
     }
-}
-
-// MARK: - Preview
-
-#Preview {
-    SearchView()
-        .environment(SearchViewModel())
-        .environment(ServerViewModel())
-        .environment(LibraryViewModel())
 }

@@ -14,24 +14,10 @@ import SDWebImageSwiftUI
 @Observable
 @MainActor
 final class HomeHeroCoordinator {
-    var heroItem: BaseItemDto? = nil
+    var heroItemID: String? = nil
 }
 
-// MARK: - Skeleton Default Items
-
-private let defaultHomeItem = BaseItemDto(
-    id: "default-home-item",
-    name: "Media Title",
-    type: .movie
-)
-
-private let defaultHomeItems: [BaseItemDto] = (0..<8).map { index in
-    BaseItemDto(
-        id: "default-home-\(index)",
-        name: defaultHomeItem.name,
-        type: defaultHomeItem.type
-    )
-}
+private let defaultHomeItemIDs: [String] = (0..<8).map { "default-home-\($0)" }
 
 struct HomeView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
@@ -42,7 +28,7 @@ struct HomeView: View {
     
     @State private var heroCoordinator = HomeHeroCoordinator()
     @State private var safeAreaTop: CGFloat = 0
-    @State private var selectedItem: BaseItemDto?
+    @State private var selectedItemID: String?
     @State private var zoomSourceID: AnyHashable?
     @State private var isShowingCollections: Bool = false
     @State private var selectedStat: HomeStatCategory?
@@ -55,7 +41,7 @@ struct HomeView: View {
 
                 ScrollToTopScrollView {
                     LazyVStack(alignment: .leading, spacing: 24) {
-                            if let error = viewModel.errorMessage, viewModel.movies.isEmpty {
+                            if let error = viewModel.errorMessage, viewModel.movieIDs.isEmpty {
                                 EmptyStateView(
                                     icon: "wifi.exclamationmark",
                                     title: "Couldn't load your library",
@@ -68,7 +54,7 @@ struct HomeView: View {
                                         }
                                     }
                                 }
-                            } else if viewModel.isLoading {
+                            } else if viewModel.isLoading && viewModel.isLibraryEmpty {
                                 #if DEBUG
                                 let isCarouselHidden = DebugSettings.shared.hideCarousel || DebugSettings.shared.hideAllHomeRows
                                 #else
@@ -84,43 +70,44 @@ struct HomeView: View {
                                 ForEach(0..<3, id: \.self) { _ in
                                     SectionRow(
                                         title: "Movies & Shows",
-                                        items: defaultHomeItems,
+                                        itemIDs: defaultHomeItemIDs,
                                         namespace: zoomTransition
                                     )
                                     .skeleton()
                                     .transition(.opacity)
                                 }
                             } else {
-                                if preferences.showHomeCarousel && !viewModel.carouselItems.isEmpty {
+                                if preferences.showHomeCarousel && !viewModel.carouselItemIDs.isEmpty {
                                     Carousel(
                                         title: viewModel.carouselTitle,
                                         namespace: zoomTransition,
-                                        initialIndex: viewModel.carouselSnappedIndex ?? viewModel.carouselItems.count
+                                        initialIndex: viewModel.carouselSnappedIndex ?? viewModel.carouselItemIDs.count
                                     ) { item in
                                         guard let client = serverViewModel.client else { return nil }
                                         return item.imageWithTitleURL(client: client, seriesLookup: { libraryViewModel.item(for: $0) })
                                             ?? item.backdropURL(client: client)
-                                    } onSelect: { item in
-                                        zoomSourceID = item.zoomTransitionID(isCarousel: true)
-                                        selectedItem = item
-                                    } onSnap: { index, item in
+                                    } onSelect: { itemID in
+                                        let item = libraryViewModel.item(for: itemID)
+                                        zoomSourceID = item?.zoomTransitionID(isCarousel: true)
+                                        selectedItemID = itemID
+                                    } onSnap: { index, itemID in
                                         withAnimation(.smooth(duration: 0.4)) {
-                                            heroCoordinator.heroItem = item
+                                            heroCoordinator.heroItemID = itemID
                                         }
                                         if let client = serverViewModel.client {
-                                            libraryViewModel.prefetchBackdrops(around: index, items: viewModel.carouselItems, client: client)
+                                            libraryViewModel.prefetchBackdrops(around: index, itemIDs: viewModel.carouselItemIDs, client: client)
                                             libraryViewModel.prefetchPosters(around: index, client: client)
                                         }
                                     }
                                     .transition(.opacity)
                                 }
                                 
-                                if !viewModel.movies.isEmpty {
+                                if !viewModel.movieIDs.isEmpty {
                                     HomeStatsRow(
-                                        moviesCount: viewModel.movies.count,
+                                        moviesCount: viewModel.movieIDs.count,
                                         tvSeriesCount: viewModel.tvSeriesCount,
                                         episodeCount: viewModel.episodeCount,
-                                        inProgressCount: viewModel.inProgressMovies.count,
+                                        inProgressCount: viewModel.inProgressMovieIDs.count,
                                         favoritesCount: viewModel.favoritesCount,
                                         completedCount: viewModel.completedCount,
                                         watchedHours: viewModel.watchedHours,
@@ -134,13 +121,13 @@ struct HomeView: View {
                                 ForEach(sectionRows) { config in
                                     SectionRow(
                                         title: config.title,
-                                        items: config.items,
+                                        itemIDs: config.itemIDs,
                                         namespace: zoomTransition,
                                         rowKey: config.id,
                                         onTitleTap: config.onTitleTap,
-                                        onSelect: { item, zoomID in
+                                        onSelect: { itemID, zoomID in
                                             zoomSourceID = zoomID
-                                            selectedItem = item
+                                            selectedItemID = itemID
                                         }
                                     ) { item in
                                         guard let client = serverViewModel.client else { return nil }
@@ -158,7 +145,7 @@ struct HomeView: View {
                         .background(alignment: .top) {
                             HomeHeroBackdrop(
                                 coordinator: heroCoordinator,
-                                defaultItem: viewModel.carouselItems.first,
+                                defaultItemID: viewModel.carouselItemIDs.first,
                                 client: serverViewModel.client,
                                 seriesLookup: { libraryViewModel.item(for: $0) },
                                 offsetY: -(safeAreaTop + 500)
@@ -170,18 +157,20 @@ struct HomeView: View {
                         await viewModel.refresh(using: client)
                     }
                 }
-                .navigationDestination(item: $selectedItem) { item in
-                    MediaDetailView(item: item)
-                        .navigationTransition(.zoom(sourceID: zoomSourceID ?? item.zoomTransitionID(), in: zoomTransition))
+                .navigationDestination(item: $selectedItemID) { itemID in
+                    if let item = libraryViewModel.item(for: itemID) {
+                        MediaDetailView(item: item)
+                            .navigationTransition(.zoom(sourceID: zoomSourceID ?? item.zoomTransitionID(), in: zoomTransition))
+                    }
                 }
                 .navigationDestination(isPresented: $isShowingCollections) {
-                    MediaResultsView(collections: viewModel.collections)
+                    MediaResultsView(collections: viewModel.collectionIDs)
                 }
                 .navigationDestination(item: $selectedStat) { stat in
                     statResultsView(for: stat)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
-                    selectedItem = nil
+                    selectedItemID = nil
                     isShowingCollections = false
                     selectedStat = nil
                 }
@@ -202,13 +191,14 @@ struct HomeView: View {
                 Color.clear.onAppear { safeAreaTop = geo.safeAreaInsets.top }
             }
         }
-        .task(id: preferences.showHomeCarousel ? viewModel.carouselItems.compactMap(\.id) : []) {
+        .task(id: preferences.showHomeCarousel ? viewModel.carouselItemIDs : []) {
             guard preferences.showHomeCarousel else { return }
-            guard let client = serverViewModel.client, !viewModel.carouselItems.isEmpty else { return }
+            guard let client = serverViewModel.client, !viewModel.carouselItemIDs.isEmpty else { return }
             let transformer = SDImageBlurTransformer(radius: 30)
             let context: [SDWebImageContextOption: Any] = [.imageTransformer: transformer]
             var carouselURLs: [URL] = []
-            for item in viewModel.carouselItems {
+            for itemID in viewModel.carouselItemIDs {
+                guard let item = libraryViewModel.item(for: itemID) else { continue }
                 guard let url = item.imageWithTitleURL(client: client, seriesLookup: { libraryViewModel.item(for: $0) })
                     ?? item.backdropURL(client: client) else { continue }
                 carouselURLs.append(url)
@@ -229,7 +219,7 @@ struct HomeView: View {
         case .movies:
             MediaResultsView(
                 title: "Movies",
-                items: viewModel.movies,
+                itemIDs: viewModel.movieIDs,
                 emptyIcon: "film",
                 emptyTitle: "No Movies",
                 emptyMessage: "No movies found in your library."
@@ -237,7 +227,7 @@ struct HomeView: View {
         case .shows:
             MediaResultsView(
                 title: "Shows",
-                items: viewModel.tvShows,
+                itemIDs: viewModel.tvShowIDs,
                 emptyIcon: "tv",
                 emptyTitle: "No TV Shows",
                 emptyMessage: "No TV shows found in your library."
@@ -245,7 +235,7 @@ struct HomeView: View {
         case .episodes:
             MediaResultsView(
                 title: "Episodes",
-                items: viewModel.episodes,
+                itemIDs: viewModel.episodeIDs,
                 emptyIcon: "film.stack",
                 emptyTitle: "No Episodes",
                 emptyMessage: "No episodes found in your library."
@@ -253,7 +243,7 @@ struct HomeView: View {
         case .watching:
             MediaResultsView(
                 title: "Watching",
-                items: viewModel.inProgressMovies,
+                itemIDs: viewModel.inProgressMovieIDs,
                 emptyIcon: "play.circle",
                 emptyTitle: "Nothing in Progress",
                 emptyMessage: "You don't have any titles currently in progress."
@@ -261,7 +251,7 @@ struct HomeView: View {
         case .favorites:
             MediaResultsView(
                 title: "Favorites",
-                items: viewModel.favorites,
+                itemIDs: viewModel.favoriteIDs,
                 emptyIcon: "heart.fill",
                 emptyTitle: "No Favorites",
                 emptyMessage: "You haven't added any favorites yet."
@@ -269,7 +259,7 @@ struct HomeView: View {
         case .completed:
             MediaResultsView(
                 title: "Completed",
-                items: viewModel.completedMovies,
+                itemIDs: viewModel.completedMovieIDs,
                 emptyIcon: "checkmark.circle.fill",
                 emptyTitle: "No Completed Titles",
                 emptyMessage: "You haven't finished watching any titles yet."
@@ -277,7 +267,7 @@ struct HomeView: View {
         case .watchedHours:
             MediaResultsView(
                 title: "Watched",
-                items: viewModel.watchedMovies,
+                itemIDs: viewModel.watchedMovieIDs,
                 emptyIcon: "clock.fill",
                 emptyTitle: "No Watch History",
                 emptyMessage: "You haven't watched any titles yet."
@@ -290,29 +280,31 @@ struct HomeView: View {
     private struct HomeSectionConfig: Identifiable {
         let id: String
         let title: String
-        let items: [BaseItemDto]
+        let itemIDs: [String]
         let posterStyle: PosterStyle
         var onTitleTap: (() -> Void)? = nil
     }
 
     private var sectionRows: [HomeSectionConfig] {
         [
-            .init(id: "collections",         title: "Collections",           items: viewModel.collections,         posterStyle: .poster, onTitleTap: { isShowingCollections = true }),
-            .init(id: "continueWatching",    title: "Continue Watching",     items: viewModel.inProgressMovies,    posterStyle: .poster),
-            .init(id: "continueShows",       title: "Continue Shows",        items: viewModel.resumeShows,          posterStyle: .seriesPoster),
-            .init(id: "topRated",            title: "Top Rated",             items: viewModel.recommended,          posterStyle: .poster),
-            .init(id: "recentlyAddedMovies", title: "Recently Added Movies", items: viewModel.recentlyAddedMovies, posterStyle: .poster),
-            .init(id: "recentlyAddedShows",  title: "Recently Added Shows",  items: viewModel.recentlyAddedShows,  posterStyle: .poster),
-        ].filter { !$0.items.isEmpty }
+            .init(id: "collections",         title: "Collections",           itemIDs: viewModel.collectionIDs,         posterStyle: .poster, onTitleTap: { isShowingCollections = true }),
+            .init(id: "continueWatching",    title: "Continue Watching",     itemIDs: viewModel.inProgressMovieIDs,    posterStyle: .poster),
+            .init(id: "continueShows",       title: "Continue Shows",        itemIDs: viewModel.resumeShowIDs,          posterStyle: .seriesPoster),
+            .init(id: "topRated",            title: "Top Rated",             itemIDs: viewModel.recommendedIDs,          posterStyle: .poster),
+            .init(id: "recentlyAddedMovies", title: "Recently Added Movies", itemIDs: viewModel.recentlyAddedMovieIDs, posterStyle: .poster),
+            .init(id: "recentlyAddedShows",  title: "Recently Added Shows",  itemIDs: viewModel.recentlyAddedShowIDs,  posterStyle: .poster),
+        ].filter { !$0.itemIDs.isEmpty }
     }
 }
 
 private struct HomeHeroBackdrop: View {
     let coordinator: HomeHeroCoordinator
-    let defaultItem: BaseItemDto?
+    let defaultItemID: String?
     let client: JellyfinClient?
     let seriesLookup: ((String) -> BaseItemDto?)?
     let offsetY: CGFloat
+
+    @Environment(LibraryViewModel.self) private var libraryViewModel
 
     var body: some View {
         #if DEBUG
@@ -323,18 +315,13 @@ private struct HomeHeroBackdrop: View {
 
         if !isCarouselHidden,
            AppPreferences.shared.showHomeBlurredBackdrop,
-           AppPreferences.shared.showHomeCarousel,
-           let item = coordinator.heroItem ?? defaultItem,
-           let client {
-            HeroBackdropView(
-                url: item.imageWithTitleURL(client: client, seriesLookup: seriesLookup)
-                    ?? item.backdropURL(client: client),
-                itemID: item.id,
-                blurRadius: 30
-            )
-            .offset(y: offsetY)
-            .ignoresSafeArea(edges: .top)
-            .allowsHitTesting(false)
+           let activeID = coordinator.heroItemID ?? defaultItemID,
+           let activeItem = libraryViewModel.item(for: activeID),
+           let url = activeItem.imageWithTitleURL(client: client, seriesLookup: seriesLookup)
+            ?? activeItem.backdropURL(client: client) {
+            HeroBackdropView(url: url)
+                .offset(y: offsetY)
+                .transition(.opacity)
         }
     }
 }

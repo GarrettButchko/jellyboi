@@ -65,67 +65,20 @@ struct SectionRow<Content: View, HeaderAccessory: View>: View {
     }
 }
 
-// MARK: - Convenience initializers
-
-extension SectionRow where HeaderAccessory == EmptyView {
-    init(
-        title: String,
-        onTitleTap: (() -> Void)? = nil,
-        @ViewBuilder content: @escaping () -> Content
-    ) {
-        self.init(
-            title: title,
-            onTitleTap: onTitleTap,
-            headerAccessory: { EmptyView() },
-            content: content
-        )
-    }
-}
-
-extension SectionRow where Content == SectionRowMediaList, HeaderAccessory == EmptyView {
-    init(
-        title: String,
-        items: [BaseItemDto],
-        namespace: Namespace.ID? = nil,
-        rowKey: String? = nil,
-        imageAspectRatio: CGFloat? = MediaAspectRatio.poster,
-        cardHeight: CGFloat? = nil,
-        onTitleTap: (() -> Void)? = nil,
-        onSelect: ((BaseItemDto, AnyHashable) -> Void)? = nil,
-        posterURL: ((BaseItemDto) -> URL?)? = nil
-    ) {
-        self.init(
-            title: title,
-            onTitleTap: onTitleTap,
-            headerAccessory: { EmptyView() },
-            content: {
-                SectionRowMediaList(
-                    items: items,
-                    namespace: namespace,
-                    rowKey: rowKey,
-                    imageAspectRatio: imageAspectRatio,
-                    cardHeight: cardHeight,
-                    onSelect: onSelect,
-                    posterURL: posterURL
-                )
-            }
-        )
-    }
-}
-
 // MARK: - SectionRowMediaList
 
 /// Standard horizontal scroll list of `MediaCard` items used by `SectionRow`.
 struct SectionRowMediaList: View {
-    let items: [BaseItemDto]
+    let itemIDs: [String]
     var namespace: Namespace.ID? = nil
     var rowKey: String? = nil
     var imageAspectRatio: CGFloat? = MediaAspectRatio.poster
     var cardHeight: CGFloat? = nil
-    var onSelect: ((BaseItemDto, AnyHashable) -> Void)? = nil
+    var onSelect: ((String, AnyHashable) -> Void)? = nil
     var posterURL: ((BaseItemDto) -> URL?)? = nil
 
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
 
     private var defaultCardWidth: CGFloat { sizeClass == .regular ? 160 : 110 }
 
@@ -143,14 +96,15 @@ struct SectionRowMediaList: View {
     var body: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 16) {
-                ForEach(items, id: \.id) { item in
-                    let zoomID = item.zoomTransitionID(isCarousel: false, rowKey: rowKey)
+                ForEach(itemIDs, id: \.self) { itemID in
+                    let zoomID = rowKey.map { AnyHashable("\($0)-\(itemID)") } ?? AnyHashable(itemID)
+                    let item = libraryViewModel?.item(for: itemID)
                     MediaCard(
-                        item: item,
-                        posterURL: posterURL?(item),
+                        itemID: itemID,
+                        posterURL: item.flatMap { posterURL?($0) },
                         namespace: namespace,
                         onSelect: {
-                            onSelect?(item, zoomID)
+                            onSelect?(itemID, zoomID)
                         },
                         zoomID: zoomID,
                         imageAspectRatio: imageAspectRatio
@@ -168,4 +122,3 @@ struct SectionRowMediaList: View {
         .scrollTargetBehavior(.viewAligned)
     }
 }
-

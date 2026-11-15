@@ -458,9 +458,7 @@ class MediaDetailViewModel {
         self.serverViewModel = serverViewModel
 
         let itemID = item.id ?? ""
-        let resolvedItem = libraryViewModel.movies.first(where: { $0.id == itemID })
-            ?? libraryViewModel.tvShows.first(where: { $0.id == itemID })
-            ?? item
+        let resolvedItem = libraryViewModel.item(for: itemID) ?? item
         self.sourceItem = resolvedItem
         self.hasInitialEpisodeScrolled = false
         self.scrolledEpisodeID = nil

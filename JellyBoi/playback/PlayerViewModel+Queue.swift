@@ -25,8 +25,7 @@ extension PlayerViewModel {
         guard queue.isEmpty, let client else { return }
         if request.item.type == .episode, let seriesID = request.item.seriesID {
             AppLogger.info("Resolving queue for series '\(request.item.seriesName ?? seriesID)'")
-            let cached = (libraryViewModel?.episodes ?? [])
-                .filter { $0.seriesID == seriesID }
+            let cached = (libraryViewModel?.episodes(forSeriesID: seriesID) ?? [])
                 .sortedBySeasonAndEpisode()
 
             if !cached.isEmpty {

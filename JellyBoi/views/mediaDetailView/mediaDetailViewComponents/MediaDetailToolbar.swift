@@ -31,17 +31,10 @@ extension MediaDetailView {
                 .accessibilityLabel("Go to Show")
             }
         }
-
-        if #available(iOS 27.0, *) {
-            ToolbarItem(id: "detail-favorite", placement: .topBarPinnedTrailing) {
-                MediaDetailFavoriteButton(detailVM: detailVM, item: item)
-                MediaDetailDownloadButton(detailVM: detailVM, item: item)
-            }
-        } else {
-            ToolbarItem(id: "detail-favorite", placement: .topBarTrailing) {
-                MediaDetailFavoriteButton(detailVM: detailVM, item: item)
-                MediaDetailDownloadButton(detailVM: detailVM, item: item)
-            }
+        
+        ToolbarItem(id: "detail-favorite", placement: .topBarTrailing) {
+            MediaDetailFavoriteButton(detailVM: detailVM, item: item)
+            MediaDetailDownloadButton(detailVM: detailVM, item: item)
         }
     }
 }

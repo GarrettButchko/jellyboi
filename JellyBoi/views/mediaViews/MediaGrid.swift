@@ -11,20 +11,21 @@ import JellyfinAPI
 
 struct MediaGrid: View {
     @Environment(ServerViewModel.self) private var serverViewModel: ServerViewModel?
+    @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
-    let items: [BaseItemDto]
+    let itemIDs: [String]
     var title: String? = nil
     var namespace: Namespace.ID? = nil
-    var onSelect: ((BaseItemDto) -> Void)? = nil
+    var onSelect: ((String) -> Void)? = nil
 
     init(
-        items: [BaseItemDto],
+        itemIDs: [String],
         title: String? = nil,
         namespace: Namespace.ID? = nil,
-        onSelect: ((BaseItemDto) -> Void)? = nil
+        onSelect: ((String) -> Void)? = nil
     ) {
-        self.items = items
+        self.itemIDs = itemIDs
         self.title = title
         self.namespace = namespace
         self.onSelect = onSelect
@@ -44,15 +45,16 @@ struct MediaGrid: View {
             }
 
             LazyVGrid(columns: columns, spacing: 16) {
-                ForEach(items, id: \.id) { item in
+                ForEach(itemIDs, id: \.self) { itemID in
+                    let item = libraryViewModel?.item(for: itemID)
                     MediaCard(
-                        item: item,
-                        posterURL: posterURL(for: item, client: serverViewModel?.client),
+                        itemID: itemID,
+                        posterURL: item.flatMap { posterURL(for: $0, client: serverViewModel?.client) },
                         namespace: namespace,
                         onSelect: {
-                            onSelect?(item)
+                            onSelect?(itemID)
                         },
-                        imageAspectRatio: item.type == .episode ? MediaAspectRatio.poster : nil
+                        imageAspectRatio: item?.type == .episode ? MediaAspectRatio.poster : nil
                     )
                     .equatable()
                 }

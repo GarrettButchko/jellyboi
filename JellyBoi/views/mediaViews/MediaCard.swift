@@ -12,7 +12,8 @@ import SDWebImageSwiftUI
 import JellyfinAPI
 
 struct MediaCard: View, Equatable {
-    let item: BaseItemDto
+    let itemID: String?
+    let fallbackItem: BaseItemDto?
     let posterURL: URL?
     let namespace: Namespace.ID?
     let onSelect: () -> Void
@@ -22,6 +23,31 @@ struct MediaCard: View, Equatable {
     var onStartFromBeginning: (() -> Void)? = nil
     var onResetProgress: (() -> Void)? = nil
 
+    /// Primary ID-based initializer
+    init(
+        itemID: String,
+        posterURL: URL? = nil,
+        namespace: Namespace.ID? = nil,
+        onSelect: @escaping () -> Void = {},
+        zoomID: AnyHashable? = nil,
+        imageAspectRatio: CGFloat? = nil,
+        onContinueWatching: (() -> Void)? = nil,
+        onStartFromBeginning: (() -> Void)? = nil,
+        onResetProgress: (() -> Void)? = nil
+    ) {
+        self.itemID = itemID
+        self.fallbackItem = nil
+        self.posterURL = posterURL
+        self.namespace = namespace
+        self.onSelect = onSelect
+        self.zoomID = zoomID
+        self.imageAspectRatio = imageAspectRatio
+        self.onContinueWatching = onContinueWatching
+        self.onStartFromBeginning = onStartFromBeginning
+        self.onResetProgress = onResetProgress
+    }
+
+    /// Direct item initializer for offline or ephemeral items
     init(
         item: BaseItemDto,
         posterURL: URL? = nil,
@@ -33,7 +59,8 @@ struct MediaCard: View, Equatable {
         onStartFromBeginning: (() -> Void)? = nil,
         onResetProgress: (() -> Void)? = nil
     ) {
-        self.item = item
+        self.itemID = item.id
+        self.fallbackItem = item
         self.posterURL = posterURL
         self.namespace = namespace
         self.onSelect = onSelect
@@ -52,19 +79,27 @@ struct MediaCard: View, Equatable {
     @State private var isHovered: Bool = false
     @State private var isFavoriteOverride: Bool? = nil
 
+    private var resolvedItem: BaseItemDto? {
+        if let itemID, let found = libraryViewModel?.item(for: itemID) {
+            return found
+        }
+        return fallbackItem
+    }
+
     static func == (lhs: MediaCard, rhs: MediaCard) -> Bool {
-        lhs.item.id == rhs.item.id &&
-        lhs.item.userData?.isPlayed == rhs.item.userData?.isPlayed &&
-        lhs.item.userData?.playbackPositionTicks == rhs.item.userData?.playbackPositionTicks &&
-        lhs.item.userData?.isFavorite == rhs.item.userData?.isFavorite &&
-        lhs.item.userData?.unplayedItemCount == rhs.item.userData?.unplayedItemCount &&
+        lhs.itemID == rhs.itemID &&
+        lhs.fallbackItem?.id == rhs.fallbackItem?.id &&
+        lhs.fallbackItem?.userData?.isPlayed == rhs.fallbackItem?.userData?.isPlayed &&
+        lhs.fallbackItem?.userData?.playbackPositionTicks == rhs.fallbackItem?.userData?.playbackPositionTicks &&
+        lhs.fallbackItem?.userData?.isFavorite == rhs.fallbackItem?.userData?.isFavorite &&
+        lhs.fallbackItem?.userData?.unplayedItemCount == rhs.fallbackItem?.userData?.unplayedItemCount &&
         lhs.posterURL == rhs.posterURL &&
         lhs.zoomID == rhs.zoomID &&
         lhs.imageAspectRatio == rhs.imageAspectRatio
     }
 
     private var isFavorite: Bool {
-        isFavoriteOverride ?? item.isFavorite
+        isFavoriteOverride ?? resolvedItem?.isFavorite ?? false
     }
 
     private var isRedacted: Bool {
@@ -72,11 +107,11 @@ struct MediaCard: View, Equatable {
     }
 
     private var effectiveAspectRatio: CGFloat {
-        imageAspectRatio ?? item.imageAspectRatio
+        imageAspectRatio ?? resolvedItem?.imageAspectRatio ?? MediaAspectRatio.poster
     }
 
     /// Single-pass calculation of watched, watching, and progress to avoid redundant calculations during scrolling.
-    private func computeWatchState() -> (isWatched: Bool, isWatching: Bool, watchProgress: Double?) {
+    private func computeWatchState(for item: BaseItemDto) -> (isWatched: Bool, isWatching: Bool, watchProgress: Double?) {
         let watched: Bool
         if item.type == .series {
             watched = item.isSeriesWatched()
@@ -102,6 +137,10 @@ struct MediaCard: View, Equatable {
     }
 
     private func playAction(fromBeginning: Bool) {
+        guard let item = resolvedItem else {
+            onSelect()
+            return
+        }
         if item.type == .movie || item.type == .episode || item.type == .series || item.type == .boxSet || item.type == .video || item.type == .trailer {
             playbackManager?.play(
                 item: item,
@@ -115,7 +154,7 @@ struct MediaCard: View, Equatable {
     }
 
     private func handleToggleFavorite() {
-        guard let serverViewModel, let itemID = item.id else { return }
+        guard let serverViewModel, let itemID = resolvedItem?.id ?? itemID else { return }
         let currentFavorite = isFavorite
         let newFavorite = !currentFavorite
         isFavoriteOverride = newFavorite
@@ -128,6 +167,7 @@ struct MediaCard: View, Equatable {
     }
 
     private func handleResetProgress() {
+        guard let item = resolvedItem else { return }
         Task {
             _ = await serverViewModel?.resetProgress(for: item)
             onResetProgress?()
@@ -139,16 +179,22 @@ struct MediaCard: View, Equatable {
             posterImage
                 .aspectRatio(effectiveAspectRatio, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else if let item = resolvedItem {
+            let state = computeWatchState(for: item)
+            cardButton(item: item, isWatched: state.isWatched, isWatching: state.isWatching, watchProgress: state.watchProgress)
         } else {
-            let state = computeWatchState()
-            cardButton(isWatched: state.isWatched, isWatching: state.isWatching, watchProgress: state.watchProgress)
+            posterImage
+                .aspectRatio(effectiveAspectRatio, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 
     @ViewBuilder
-    private func cardButton(isWatched: Bool, isWatching: Bool, watchProgress: Double?) -> some View {
+    private func cardButton(item: BaseItemDto, isWatched: Bool, isWatching: Bool, watchProgress: Double?) -> some View {
+        let resolvedPosterURL = posterURL ?? serverViewModel?.client.flatMap { item.posterURL(client: $0) }
+
         let baseButton = Button(action: onSelect) {
-            posterImage
+            posterImageView(url: resolvedPosterURL)
                 .aspectRatio(effectiveAspectRatio, contentMode: .fit)
                 .overlay(alignment: .bottomTrailing) {
                     VStack(alignment: .trailing, spacing: 6) {
@@ -224,6 +270,11 @@ struct MediaCard: View, Equatable {
 
     @ViewBuilder
     private var posterImage: some View {
+        posterImageView(url: posterURL)
+    }
+
+    @ViewBuilder
+    private func posterImageView(url: URL?) -> some View {
         ZStack {
             if isRedacted {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -231,7 +282,7 @@ struct MediaCard: View, Equatable {
             } else {
                 placeholder
 
-                if let url = posterURL {
+                if let url {
                     WebImage(url: url) { phase in
                         if let image = phase.image {
                             image
@@ -248,15 +299,6 @@ struct MediaCard: View, Equatable {
 
     private var placeholder: some View {
         RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(Color.sub)
-            .overlay {
-                Image("Jellyboi")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 50, height: 50)
-                    .foregroundStyle(Color.mainOpp.opacity(0.05))
-                    .rotationEffect(.degrees(45))
-            }
+            .fill(Color.mainOpp.opacity(0.06))
     }
 }

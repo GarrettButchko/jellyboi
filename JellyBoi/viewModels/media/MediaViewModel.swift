@@ -53,7 +53,7 @@ enum MediaScope: CaseIterable, Hashable {
 struct MediaSection: Identifiable {
     var id: String { title }
     let title: String
-    let items: [BaseItemDto]
+    let itemIDs: [String]
 }
 
 @Observable
@@ -66,46 +66,46 @@ class MediaViewModel {
         if let library { self.library = library }
     }
 
-    // MARK: - Regular Library Items
+    // MARK: - Regular Library Items (IDs)
 
-    var regularMovies: [BaseItemDto] {
+    var regularMovieIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaMovies { return [] }
         #endif
-        return library.movies
+        return library.movieIDs
     }
 
-    var regularShows: [BaseItemDto] {
+    var regularShowIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaShows { return [] }
         #endif
-        return library.tvShows
+        return library.tvShowIDs
     }
 
-    // MARK: - Favorite Items
+    // MARK: - Favorite Items (IDs)
 
-    var favoriteMovies: [BaseItemDto] {
+    var favoriteMovieIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaFavorites { return [] }
         #endif
-        return library.movies.filter { $0.userData?.isFavorite == true }
+        return library.movieIDs.filter { library.item(for: $0)?.userData?.isFavorite == true }
     }
 
-    var favoriteShows: [BaseItemDto] {
+    var favoriteShowIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaFavorites { return [] }
         #endif
-        return library.tvShows.filter { $0.userData?.isFavorite == true }
+        return library.tvShowIDs.filter { library.item(for: $0)?.userData?.isFavorite == true }
     }
 
     /// Only show favorite episodes if the whole show isn't starred.
-    var favoriteEpisodes: [BaseItemDto] {
+    var favoriteEpisodeIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaFavorites { return [] }
         #endif
-        let starredShowIDs = Set(favoriteShows.compactMap(\.id))
-        return library.episodes.filter { ep in
-            guard ep.userData?.isFavorite == true else { return false }
+        let starredShowIDs = Set(favoriteShowIDs)
+        return library.episodeIDs.filter { epID in
+            guard let ep = library.item(for: epID), ep.userData?.isFavorite == true else { return false }
             let showID = ep.seriesID ?? ep.parentBackdropItemID
             if let showID, starredShowIDs.contains(showID) {
                 return false
@@ -114,20 +114,18 @@ class MediaViewModel {
         }
     }
 
-    var favoriteCollections: [BaseItemDto] {
+    var favoriteCollectionIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.simulateMediaEmptyLibrary || DebugSettings.shared.hideMediaFavorites { return [] }
         #endif
-        return library.collections.filter { $0.userData?.isFavorite == true }
+        return library.collectionIDs.filter { library.item(for: $0)?.userData?.isFavorite == true }
     }
 
     // MARK: - Download State & Filtering
 
     /// Determines if all episodes of a TV show are downloaded.
     func isShowFullyDownloaded(_ seriesID: String, downloadManager: DownloadManager) -> Bool {
-        let episodesForShow = library.episodes.filter {
-            ($0.seriesID ?? $0.parentBackdropItemID) == seriesID
-        }
+        let episodesForShow = library.episodes(forSeriesID: seriesID)
         if !episodesForShow.isEmpty {
             let completedIDs = Set(downloadManager.completedDownloads.compactMap(\.item.id))
             return episodesForShow.allSatisfy { ep in
@@ -136,7 +134,7 @@ class MediaViewModel {
             }
         }
 
-        let showItem = library.tvShows.first(where: { $0.id == seriesID })
+        let showItem = library.item(for: seriesID)
         let total = showItem?.recursiveItemCount ?? showItem?.childCount
         if let total, total > 0 {
             let downloadedCount = downloadManager.completedDownloads.filter {
@@ -152,45 +150,33 @@ class MediaViewModel {
         return false
     }
 
-    /// Returns shows that are fully downloaded.
-    func downloadedShows(downloadManager: DownloadManager) -> [BaseItemDto] {
+    /// Returns show IDs that are fully downloaded.
+    func downloadedShowIDs(downloadManager: DownloadManager) -> [String] {
         var candidateShowIDs = Set<String>()
-        var showNames: [String: String] = [:]
 
         for download in downloadManager.completedDownloads {
             if download.item.type == .series, let id = download.item.id {
                 candidateShowIDs.insert(id)
-                if let name = download.item.name { showNames[id] = name }
             }
             if download.item.type == .episode || download.item.seriesName != nil {
                 let showID = download.item.seriesID ?? download.item.parentBackdropItemID
                 if let showID {
                     candidateShowIDs.insert(showID)
-                    if let name = download.item.seriesName { showNames[showID] = name }
                 }
             }
         }
 
-        var results: [BaseItemDto] = []
+        var results: [String] = []
         for showID in candidateShowIDs {
             if isShowFullyDownloaded(showID, downloadManager: downloadManager) {
-                if let show = library.tvShows.first(where: { $0.id == showID }) {
-                    results.append(show)
-                } else {
-                    results.append(BaseItemDto(
-                        id: showID,
-                        name: showNames[showID] ?? "Show",
-                        type: .series
-                    ))
-                }
+                results.append(showID)
             }
         }
-        return results.sorted { ($0.name ?? "") < ($1.name ?? "") }
+        return results.sorted { (library.item(for: $0)?.name ?? "") < (library.item(for: $1)?.name ?? "") }
     }
 
     /// Only returns downloaded episodes if their whole show isn't downloaded.
-    /// Prefers the live library copy so artwork and metadata stay current.
-    func downloadedEpisodes(downloadManager: DownloadManager) -> [BaseItemDto] {
+    func downloadedEpisodeIDs(downloadManager: DownloadManager) -> [String] {
         downloadManager.completedDownloads
             .map(\.item)
             .filter { item in
@@ -198,18 +184,12 @@ class MediaViewModel {
                 guard let showID = item.seriesID ?? item.parentBackdropItemID else { return true }
                 return !isShowFullyDownloaded(showID, downloadManager: downloadManager)
             }
-            .map(liveLibraryItem)
+            .compactMap(\.id)
     }
 
-    /// Returns downloaded movies, preferring the live library copy.
-    func downloadedMovies(downloadManager: DownloadManager) -> [BaseItemDto] {
-        downloadManager.downloadedMovies.map(liveLibraryItem)
-    }
-
-    /// The library's copy of a downloaded item, when it still exists.
-    private func liveLibraryItem(_ item: BaseItemDto) -> BaseItemDto {
-        guard let id = item.id, let liveItem = library.item(for: id) else { return item }
-        return liveItem
+    /// Returns downloaded movie IDs.
+    func downloadedMovieIDs(downloadManager: DownloadManager) -> [String] {
+        downloadManager.downloadedMovies.compactMap(\.id)
     }
 
     // MARK: - Sections
@@ -217,22 +197,22 @@ class MediaViewModel {
     /// Favorited collections, shows, episodes, and movies. Empty sections are dropped.
     var favoriteSections: [MediaSection] {
         [
-            MediaSection(title: "Collections", items: favoriteCollections),
-            MediaSection(title: "TV Shows", items: favoriteShows),
-            MediaSection(title: "Episodes", items: favoriteEpisodes),
-            MediaSection(title: "Movies", items: favoriteMovies),
+            MediaSection(title: "Collections", itemIDs: favoriteCollectionIDs),
+            MediaSection(title: "TV Shows", itemIDs: favoriteShowIDs),
+            MediaSection(title: "Episodes", itemIDs: favoriteEpisodeIDs),
+            MediaSection(title: "Movies", itemIDs: favoriteMovieIDs),
         ]
-        .filter { !$0.items.isEmpty }
+        .filter { !$0.itemIDs.isEmpty }
     }
 
     /// Fully downloaded shows plus any individually downloaded episodes and movies.
     func downloadSections(downloadManager: DownloadManager) -> [MediaSection] {
         [
-            MediaSection(title: "TV Shows", items: downloadedShows(downloadManager: downloadManager)),
-            MediaSection(title: "Episodes", items: downloadedEpisodes(downloadManager: downloadManager)),
-            MediaSection(title: "Movies", items: downloadedMovies(downloadManager: downloadManager)),
+            MediaSection(title: "TV Shows", itemIDs: downloadedShowIDs(downloadManager: downloadManager)),
+            MediaSection(title: "Episodes", itemIDs: downloadedEpisodeIDs(downloadManager: downloadManager)),
+            MediaSection(title: "Movies", itemIDs: downloadedMovieIDs(downloadManager: downloadManager)),
         ]
-        .filter { !$0.items.isEmpty }
+        .filter { !$0.itemIDs.isEmpty }
     }
 
     // MARK: - Scope Availability
@@ -254,35 +234,20 @@ class MediaViewModel {
     func scopeCount(_ scope: MediaScope, downloadManager: DownloadManager) -> Int {
         switch scope {
         case .movies:
-            return regularMovies.count
+            return regularMovieIDs.count
         case .tvShows:
-            return regularShows.count
+            return regularShowIDs.count
         case .favorites:
-            return favoriteSections.reduce(0) { $0 + $1.items.count }
+            return favoriteSections.reduce(0) { $0 + $1.itemIDs.count }
         case .downloads:
-            return downloadSections(downloadManager: downloadManager).reduce(0) { $0 + $1.items.count }
+            return downloadSections(downloadManager: downloadManager).reduce(0) { $0 + $1.itemIDs.count }
         }
     }
 
-    // MARK: - Loading & Errors
-
     var isLoading: Bool { library.isLoading }
-    var errorMessage: String? {
-        #if DEBUG
-        if DebugSettings.shared.simulateMediaError { return "Debug: Simulated media library error" }
-        #endif
-        return library.errorMessage
-    }
+    var errorMessage: String? { library.errorMessage }
 
     func refresh(using client: JellyfinClient) async {
         await library.refresh(using: client)
-    }
-
-    func refreshMediaArtwork(using client: JellyfinClient? = nil) async {
-        await library.refreshMediaArtwork(using: client)
-    }
-
-    func refreshArtwork(using client: JellyfinClient? = nil) async {
-        await library.refreshArtwork(using: client)
     }
 }

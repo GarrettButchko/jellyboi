@@ -11,110 +11,31 @@ import Get
 import JellyfinAPI
 import SDWebImage
 
-/// Immutable snapshot containing processed library data and computed aggregates, safe for transfer across actors.
-struct LibraryDataSnapshot: Sendable {
-    let itemsByID: [String: BaseItemDto]
-    let movieIDs: [String]
-    let tvShowIDs: [String]
-    let episodeIDs: [String]
-    let collectionIDs: [String]
-    let recommendedIDs: [String]
-    let recentlyAddedMovieIDs: [String]
-    let recentlyAddedShowIDs: [String]
-    let recentlyAddedIDs: [String]
-    let resumeShowIDs: [String]
-    let favoritesCount: Int
-    let tvSeriesCount: Int
-    let episodeCount: Int
 
-    let movies: [BaseItemDto]
-    let tvShows: [BaseItemDto]
-    let episodes: [BaseItemDto]
-    let collections: [BaseItemDto]
-    let recommended: [BaseItemDto]
-    let recentlyAddedMovies: [BaseItemDto]
-    let recentlyAddedShows: [BaseItemDto]
-    let recentlyAdded: [BaseItemDto]
-    let resumeShows: [BaseItemDto]
-    let episodesBySeriesID: [String: [BaseItemDto]]
-    let inProgressMovies: [BaseItemDto]
-    let topWatchedMovies: [BaseItemDto]
-    let carouselItems: [BaseItemDto]
-    let genres: [GenreCount]
-    let completedCount: Int
-    let watchedHours: Int
-}
-
-/// Derived collections rebuilt from the normalized store. Computed off the main actor.
-private struct LibraryAggregates: Sendable {
-    let movies: [BaseItemDto]
-    let tvShows: [BaseItemDto]
-    let episodes: [BaseItemDto]
-    let collections: [BaseItemDto]
-    let recommended: [BaseItemDto]
-    let recentlyAddedMovies: [BaseItemDto]
-    let recentlyAddedShows: [BaseItemDto]
-    let recentlyAdded: [BaseItemDto]
-    let resumeShows: [BaseItemDto]
-    let episodesBySeriesID: [String: [BaseItemDto]]
-    let inProgressMovies: [BaseItemDto]
-    let topWatchedMovies: [BaseItemDto]
-    let completedCount: Int
-    let watchedHours: Int
-}
-
-/// Owns all of the media fetched from the server. This is fetched **once** when a
-/// client becomes available and is shared across every tab. Individual tab view
-/// models read from this shared source and filter/derive what they need locally.
+/// Owns all of the media fetched from the server. Items are fetched once with card-level
+/// metadata into `itemsByID`. All library categories, rows, and views operate on IDs only.
 @Observable
 @MainActor
 class LibraryViewModel {
 
-    // MARK: - Normalized store
+    // MARK: - Normalized store (Single Source of Truth)
 
-    @ObservationIgnored
-    private var itemsByID: [String: BaseItemDto] = [:]
+    private(set) var itemsByID: [String: BaseItemDto] = [:]
 
     // MARK: - Ordered ID lists
 
-    @ObservationIgnored
     private(set) var movieIDs: [String] = []
-    @ObservationIgnored
     private(set) var tvShowIDs: [String] = []
-    @ObservationIgnored
     private(set) var episodeIDs: [String] = []
-    @ObservationIgnored
     private(set) var collectionIDs: [String] = []
-    @ObservationIgnored
     private(set) var recommendedIDs: [String] = []
-    @ObservationIgnored
     private(set) var recentlyAddedMovieIDs: [String] = []
-    @ObservationIgnored
     private(set) var recentlyAddedShowIDs: [String] = []
-    @ObservationIgnored
     private(set) var recentlyAddedIDs: [String] = []
-    @ObservationIgnored
     private(set) var resumeShowIDs: [String] = []
-
-    // MARK: - Derived library data (Cached for instant O(1) access during scrolling)
-
-    private(set) var movies: [BaseItemDto] = []
-    private(set) var tvShows: [BaseItemDto] = []
-    private(set) var episodes: [BaseItemDto] = []
-    private(set) var collections: [BaseItemDto] = []
-    private(set) var recommended: [BaseItemDto] = []
-    private(set) var recentlyAddedMovies: [BaseItemDto] = []
-    private(set) var recentlyAddedShows: [BaseItemDto] = []
-    private(set) var recentlyAdded: [BaseItemDto] = []
-    private(set) var resumeShows: [BaseItemDto] = []
-    private(set) var carouselItems: [BaseItemDto] = []
+    private(set) var carouselItemIDs: [String] = []
     private(set) var genres: [GenreCount] = []
-    @ObservationIgnored
-    private(set) var episodesBySeriesID: [String: [BaseItemDto]] = [:]
-
-    func episodes(forSeriesID seriesID: String) -> [BaseItemDto] {
-        episodesBySeriesID[seriesID] ?? []
-    }
+    private(set) var episodesBySeriesID: [String: [String]] = [:]
 
     // MARK: - Lookup & Store Helpers
 
@@ -122,130 +43,112 @@ class LibraryViewModel {
         itemsByID[itemID]
     }
 
-    func updateItem(_ item: BaseItemDto) {
-        guard let id = item.id else { return }
-        itemsByID[id] = item
-        updateAggregates()
+    subscript(itemID: String) -> BaseItemDto? {
+        itemsByID[itemID]
     }
 
-    // MARK: - Home aggregates
+    func episodes(forSeriesID seriesID: String) -> [BaseItemDto] {
+        (episodesBySeriesID[seriesID] ?? []).compactMap { itemsByID[$0] }
+    }
 
-    private(set) var inProgressMovies: [BaseItemDto] = []
-    private(set) var topWatchedMovies: [BaseItemDto] = []
-    private(set) var tvSeriesCount: Int = 0
-    private(set) var episodeCount: Int = 0
-    private(set) var favoritesCount: Int = 0
-    private(set) var completedCount: Int = 0
-    private(set) var watchedHours: Int = 0
+    
+    // MARK: - Stats Collections for Results View (IDs)
+    var inProgressMovieIDs: [String] {
+        movieIDs
+            .filter { id in
+                guard let percent = itemsByID[id]?.userData?.playedPercentage else { return false }
+                return percent > 0 && percent < 85
+            }
+            .sorted {
+                let a = itemsByID[$0]?.userData?.lastPlayedDate ?? .distantPast
+                let b = itemsByID[$1]?.userData?.lastPlayedDate ?? .distantPast
+                return a > b
+            }
+    }
 
-    // MARK: - Stats Collections for Results View
-
-    var favorites: [BaseItemDto] {
-        let favMovies = movies.filter { $0.userData?.isFavorite == true }
-        let favShows = tvShows.filter { $0.userData?.isFavorite == true }
-        let starredShowIDs = Set(favShows.compactMap(\.id))
-        let favEpisodes = episodes.filter { ep in
-            guard ep.userData?.isFavorite == true else { return false }
+    var topWatchedMovieIDs: [String] {
+        Array(
+            inProgressMovieIDs.sorted {
+                let aItem = itemsByID[$0]
+                let bItem = itemsByID[$1]
+                let a = ((aItem?.userData?.playedPercentage ?? 0) / 100.0) * Double(aItem?.runTimeTicks ?? 0)
+                let b = ((bItem?.userData?.playedPercentage ?? 0) / 100.0) * Double(bItem?.runTimeTicks ?? 0)
+                return a > b
+            }.prefix(6)
+        )
+    }
+    
+    var favoriteIDs: [String] {
+        let favMovies = movieIDs.filter { itemsByID[$0]?.userData?.isFavorite == true }
+        let favShows = tvShowIDs.filter { itemsByID[$0]?.userData?.isFavorite == true }
+        let starredShowIDs = Set(favShows)
+        let favEpisodes = episodeIDs.filter { id in
+            guard let ep = itemsByID[id], ep.userData?.isFavorite == true else { return false }
             let showID = ep.seriesID ?? ep.parentBackdropItemID
             if let showID, starredShowIDs.contains(showID) {
                 return false
             }
             return true
         }
-        return (favMovies + favShows + favEpisodes)
-            .sorted { ($0.sortName ?? $0.name ?? "") < ($1.sortName ?? $1.name ?? "") }
+        return (favMovies + favShows + favEpisodes).sorted { lhs, rhs in
+            let a = itemsByID[lhs]?.sortName ?? itemsByID[lhs]?.name ?? ""
+            let b = itemsByID[rhs]?.sortName ?? itemsByID[rhs]?.name ?? ""
+            return a < b
+        }
+    }
+    
+    var completedMovieIDs: [String] {
+        movieIDs
+            .filter { itemsByID[$0]?.userData?.isPlayed == true }
+            .sorted {
+                let a = itemsByID[$0]?.userData?.lastPlayedDate ?? .distantPast
+                let b = itemsByID[$1]?.userData?.lastPlayedDate ?? .distantPast
+                return a > b
+            }
     }
 
-    var completedMovies: [BaseItemDto] {
-        movies
-            .filter { $0.userData?.isPlayed == true }
-            .sorted { ($0.userData?.lastPlayedDate ?? .distantPast) > ($1.userData?.lastPlayedDate ?? .distantPast) }
+    var watchedMovieIDs: [String] {
+        movieIDs
+            .filter {
+                guard let item = itemsByID[$0] else { return false }
+                return (item.userData?.playedPercentage ?? 0) > 0 || item.userData?.isPlayed == true
+            }
+            .sorted {
+                let a = itemsByID[$0]?.userData?.lastPlayedDate ?? .distantPast
+                let b = itemsByID[$1]?.userData?.lastPlayedDate ?? .distantPast
+                return a > b
+            }
+    }
+    
+    // MARK: - Home Aggregates & Computed Stats (ID-Based)
+
+    var completedCount: Int {
+        movieIDs.reduce(0) { count, id in
+            itemsByID[id]?.userData?.isPlayed == true ? count + 1 : count
+        }
     }
 
-    var watchedMovies: [BaseItemDto] {
-        movies
-            .filter { ($0.userData?.playedPercentage ?? 0) > 0 || $0.userData?.isPlayed == true }
-            .sorted { ($0.userData?.lastPlayedDate ?? .distantPast) > ($1.userData?.lastPlayedDate ?? .distantPast) }
+    var watchedHours: Int {
+        let total = movieIDs.reduce(0.0) { acc, id in
+            guard let item = itemsByID[id],
+                  let ticks = item.runTimeTicks,
+                  let percent = item.userData?.playedPercentage, percent > 0 else { return acc }
+            return acc + (percent / 100.0) * Double(ticks) / 10_000_000
+        }
+        return Int(total / 3_600)
     }
 
-    // MARK: - Similar items cache
 
-    private var similarItemsCache: [String: [BaseItemDto]] = [:]
+    // MARK: - Lifecycle & State
 
-    func cachedSimilarItems(for itemID: String) -> [BaseItemDto]? {
-        similarItemsCache[itemID]
-    }
-
-    func similarItems(for itemID: String, client: JellyfinClient, userID: String?) async -> [BaseItemDto] {
-        if let cached = similarItemsCache[itemID] { return cached }
-        let result = await client.fetchSimilarItems(itemID: itemID, userID: userID, limit: 12)
-        similarItemsCache[itemID] = result
-        return result
-    }
-
-    // MARK: - Special features cache
-
-    private var specialFeaturesCache: [String: [BaseItemDto]] = [:]
-
-    func cachedSpecialFeatures(for itemID: String) -> [BaseItemDto]? {
-        specialFeaturesCache[itemID]
-    }
-
-    func specialFeatures(for itemID: String, client: JellyfinClient, userID: String?) async -> [BaseItemDto] {
-        if let cached = specialFeaturesCache[itemID] { return cached }
-        let result = await client.fetchSpecialFeatures(itemID: itemID, userID: userID)
-        specialFeaturesCache[itemID] = result
-        return result
-    }
-
-    // MARK: - Lifecycle
-
-    @ObservationIgnored
-    private var userDataTask: Task<Void, Never>?
-    @ObservationIgnored
-    private var progressUpdateTask: Task<Void, Never>?
-    /// Background recompute of the derived collections. A newer pass cancels the previous one.
-    @ObservationIgnored
-    private var aggregateTask: Task<Void, Never>?
-    @ObservationIgnored
-    private var isFetching = false
     @ObservationIgnored
     private var currentUserID: String?
     @ObservationIgnored
     private var currentClient: JellyfinClient?
 
-    init() {
-        userDataTask = Task { @MainActor [weak self] in
-            for await notification in NotificationCenter.default.notifications(named: .mediaUserDataChanged) {
-                guard let self else { break }
-                guard let dtos = notification.userInfo?["userData"] as? [UserItemDataDto] else { continue }
-                self.applyUserData(dtos)
-            }
-        }
-        progressUpdateTask = Task { @MainActor [weak self] in
-            for await notification in NotificationCenter.default.notifications(named: .mediaProgressUpdated) {
-                guard let self else { break }
-                if let itemID = notification.object as? String,
-                   let positionTicks = notification.userInfo?["positionTicks"] as? Int {
-                    let totalTicks = notification.userInfo?["durationTicks"] as? Int
-                    self.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
-                }
-            }
-        }
-    }
-
-    deinit {
-        userDataTask?.cancel()
-        progressUpdateTask?.cancel()
-        aggregateTask?.cancel()
-    }
-
-    // MARK: - State
-
-    var isLoading = true
+    private(set) var isLoading = false
     var errorMessage: String?
 
-    /// True when no media of any kind has been fetched yet (brand-new or fully empty library).
     var isLibraryEmpty: Bool { movieIDs.isEmpty && tvShowIDs.isEmpty && episodeIDs.isEmpty }
 
     func load(using client: JellyfinClient, userID: String? = nil) async {
@@ -253,33 +156,24 @@ class LibraryViewModel {
         if let userID {
             self.currentUserID = userID
         }
-        guard movieIDs.isEmpty && tvShowIDs.isEmpty && episodeIDs.isEmpty else { return }
-        guard !isFetching else { return }
+        guard isLibraryEmpty else { return }
+        guard !isLoading else { return }
         await refresh(using: client, userID: userID ?? currentUserID)
     }
 
     func refresh(using client: JellyfinClient, userID: String? = nil) async {
         self.currentClient = client
-        guard !isFetching else { return }
-        isFetching = true
-        defer { isFetching = false }
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
 
         if let userID {
             self.currentUserID = userID
         }
         let effectiveUserID = userID ?? currentUserID
 
-        let isInitialLoad = movieIDs.isEmpty && tvShowIDs.isEmpty && episodeIDs.isEmpty
-        if isInitialLoad {
-            isLoading = true
-        }
-        defer { isLoading = false }
-
         do {
-            let snapshot = try await Task.detached(priority: .userInitiated) {
-                try await Self.fetchAndProcessData(using: client, userID: effectiveUserID)
-            }.value
-
+            let snapshot = try await Self.fetchLibraryData(using: client, userID: effectiveUserID)
             apply(snapshot)
             errorMessage = nil
         } catch {
@@ -287,46 +181,92 @@ class LibraryViewModel {
         }
     }
 
-    private nonisolated static func fetchAndProcessData(
+    // MARK: - User Data & Playback Updates
+
+    func applyUserData(_ dtos: [UserItemDataDto]) {
+        var changedIDs = Set<String>()
+
+        for dto in dtos {
+            let itemID = dto.itemID ?? dto.key
+            guard var item = itemsByID[itemID] else { continue }
+            item.userData = dto
+            itemsByID[itemID] = item
+            changedIDs.insert(itemID)
+        }
+
+        guard !changedIDs.isEmpty else { return }
+
+        resumeShowIDs.removeAll { id in
+            guard changedIDs.contains(id) else { return false }
+            guard let item = itemsByID[id] else { return true }
+            return !item.hasProgress && !item.isWatched
+        }
+    }
+
+    func updateProgress(for itemID: String, positionTicks: Int, totalTicks: Int?) {
+        if var item = itemsByID[itemID] {
+            item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
+            itemsByID[itemID] = item
+        }
+    }
+
+    // MARK: - Internal Data Fetching & Processing Pipeline
+
+    private struct FetchedLibraryData: Sendable {
+        let movies: [BaseItemDto]
+        let tvShows: [BaseItemDto]
+        let episodes: [BaseItemDto]
+        let collections: [BaseItemDto]
+        let recommendedIDs: [String]
+        let recentMovieIDs: [String]
+        let recentShowIDs: [String]
+        let nextUpIDs: [String]
+    }
+
+    private nonisolated static func fetchLibraryData(
         using client: JellyfinClient,
         userID: String?
-    ) async throws -> LibraryDataSnapshot {
+    ) async throws -> FetchedLibraryData {
         let moviesParams = Paths.GetItemsParameters.movies(userID: userID)
         let showsParams = Paths.GetItemsParameters.tvShows(userID: userID)
         let episodesParams = Paths.GetItemsParameters.episodes(userID: userID)
-        let episodesCountParams = Paths.GetItemsParameters.countOnly(userID: userID, types: [.episode])
         let collectionsParams = Paths.GetItemsParameters.collections(userID: userID)
         let recommendedParams = Paths.GetItemsParameters.recommended(userID: userID)
         let recentMoviesParams = Paths.GetItemsParameters.recentMovies(userID: userID)
         let recentShowsParams = Paths.GetItemsParameters.recentShows(userID: userID)
         let nextUpParams = Paths.GetNextUpParameters.standard(userID: userID, limit: 20)
-        let favoritesCountParams = Paths.GetItemsParameters.countOnly(userID: userID, filters: [.isFavorite])
 
         async let moviesResponse       = client.send(Paths.getItems(parameters: moviesParams))
         async let showsResponse        = client.send(Paths.getItems(parameters: showsParams))
         async let episodesResponse     = try? client.send(Paths.getItems(parameters: episodesParams))
-        async let episodeCountResponse = try? client.send(Paths.getItems(parameters: episodesCountParams))
         async let collectionsResponse  = try? client.send(Paths.getItems(parameters: collectionsParams))
         async let recommendedResponse  = try? client.send(Paths.getItems(parameters: recommendedParams))
         async let recentMoviesResponse = try? client.send(Paths.getItems(parameters: recentMoviesParams))
         async let recentShowsResponse  = try? client.send(Paths.getItems(parameters: recentShowsParams))
         async let nextUpResponse       = try? client.send(Paths.getNextUp(parameters: nextUpParams))
-        async let favoritesResponse    = try? client.send(Paths.getItems(parameters: favoritesCountParams))
 
         let fetchedMovies        = (try await moviesResponse).value.items ?? []
         let fetchedShows         = (try await showsResponse).value.items ?? []
         let fetchedEpisodes      = (await episodesResponse)?.value.items ?? []
-        let fetchedEpisodeCount  = (await episodeCountResponse)?.value.totalRecordCount ?? 0
         let fetchedCollections   = (await collectionsResponse)?.value.items ?? []
-        let fetchedRecommended   = (await recommendedResponse)?.value.items ?? []
-        let fetchedRecentMovies  = (await recentMoviesResponse)?.value.items ?? []
-        let fetchedRecentShows   = (await recentShowsResponse)?.value.items ?? []
-        let fetchedRecent        = (fetchedRecentMovies + fetchedRecentShows).sorted {
-            ($0.dateCreated ?? .distantPast) > ($1.dateCreated ?? .distantPast)
-        }
-        let fetchedNextUp        = (await nextUpResponse)?.value.items ?? []
-        let fetchedFavorites     = (await favoritesResponse)?.value.totalRecordCount ?? 0
+        let fetchedRecommendedIDs = (await recommendedResponse)?.value.items?.compactMap(\.id) ?? []
+        let fetchedRecentMovieIDs = (await recentMoviesResponse)?.value.items?.compactMap(\.id) ?? []
+        let fetchedRecentShowIDs  = (await recentShowsResponse)?.value.items?.compactMap(\.id) ?? []
+        let fetchedNextUpIDs      = (await nextUpResponse)?.value.items?.compactMap(\.id) ?? []
 
+        return FetchedLibraryData(
+            movies: fetchedMovies,
+            tvShows: fetchedShows,
+            episodes: fetchedEpisodes,
+            collections: fetchedCollections,
+            recommendedIDs: fetchedRecommendedIDs,
+            recentMovieIDs: fetchedRecentMovieIDs,
+            recentShowIDs: fetchedRecentShowIDs,
+            nextUpIDs: fetchedNextUpIDs,
+        )
+    }
+    
+    private func apply(_ snapshot: FetchedLibraryData) {
         var newItemsByID: [String: BaseItemDto] = [:]
 
         func record(_ items: [BaseItemDto]) -> [String] {
@@ -342,460 +282,190 @@ class LibraryViewModel {
             return ids
         }
 
-        let recordedMovieIDs         = record(fetchedMovies)
-        let recordedShowIDs          = record(fetchedShows)
-        let recordedEpisodeIDs       = record(fetchedEpisodes)
-        let recordedCollectionIDs    = record(fetchedCollections)
-        let recordedRecommendedIDs   = record(fetchedRecommended)
-        let recordedRecentMovieIDs   = record(fetchedRecentMovies)
-        let recordedRecentShowIDs    = record(fetchedRecentShows)
-        let recordedRecentIDs        = record(fetchedRecent)
-        let recordedNextUpIDs        = record(fetchedNextUp)
+        let recordedMovieIDs      = record(snapshot.movies)
+        let recordedShowIDs       = record(snapshot.tvShows)
+        let recordedEpisodeIDs    = record(snapshot.episodes)
+        let recordedCollectionIDs = record(snapshot.collections)
 
-        let movies = recordedMovieIDs.compactMap { newItemsByID[$0] }
-        let tvShows = recordedShowIDs.compactMap { newItemsByID[$0] }
-        let episodes = recordedEpisodeIDs.compactMap { newItemsByID[$0] }
-        let collections = recordedCollectionIDs.compactMap { newItemsByID[$0] }
-        let recommended = recordedRecommendedIDs.compactMap { newItemsByID[$0] }
-        let recentlyAddedMovies = recordedRecentMovieIDs.compactMap { newItemsByID[$0] }
-        let recentlyAddedShows = recordedRecentShowIDs.compactMap { newItemsByID[$0] }
-        let recentlyAdded = recordedRecentIDs.compactMap { newItemsByID[$0] }
-        let resumeShows = recordedNextUpIDs
-            .compactMap { newItemsByID[$0] }
-            .filter { !$0.isUnplayedFirstEpisode }
+        var groupedEpisodes: [String: [String]] = [:]
+        for episode in snapshot.episodes {
+            guard let epID = episode.id, let seriesID = episode.seriesID else { continue }
+            groupedEpisodes[seriesID, default: []].append(epID)
+        }
 
-        var grouped: [String: [BaseItemDto]] = [:]
-        for ep in episodes {
-            if let seriesID = ep.seriesID {
-                grouped[seriesID, default: []].append(ep)
+        var seenRecentIDs = Set<String>()
+        var uniqueRecentIDs: [String] = []
+        for id in snapshot.recentMovieIDs + snapshot.recentShowIDs {
+            if seenRecentIDs.insert(id).inserted {
+                uniqueRecentIDs.append(id)
             }
         }
-        let episodesBySeriesID = grouped
+        let sortedRecentIDs = uniqueRecentIDs.sorted { id1, id2 in
+            let date1 = newItemsByID[id1]?.dateCreated ?? .distantPast
+            let date2 = newItemsByID[id2]?.dateCreated ?? .distantPast
+            return date1 > date2
+        }
 
-        let inProgressMovies = movies
-            .filter {
-                guard let percent = $0.userData?.playedPercentage else { return false }
-                return percent > 0 && percent < 85
-            }
-            .sorted {
-                ($0.userData?.lastPlayedDate ?? .distantPast) > ($1.userData?.lastPlayedDate ?? .distantPast)
-            }
-        let topWatchedMovies = Array(
-            inProgressMovies.sorted {
-                let a = (($0.userData?.playedPercentage ?? 0) / 100.0) * Double($0.runTimeTicks ?? 0)
-                let b = (($1.userData?.playedPercentage ?? 0) / 100.0) * Double($1.runTimeTicks ?? 0)
-                return a > b
-            }.prefix(6)
+        let filteredResumeIDs = snapshot.nextUpIDs.filter { id in
+            guard let item = newItemsByID[id] else { return true }
+            return !item.isUnplayedFirstEpisode
+        }
+
+        itemsByID             = newItemsByID
+        movieIDs              = recordedMovieIDs
+        tvShowIDs             = recordedShowIDs
+        episodeIDs            = recordedEpisodeIDs
+        collectionIDs         = recordedCollectionIDs
+        recommendedIDs        = snapshot.recommendedIDs
+        recentlyAddedMovieIDs = snapshot.recentMovieIDs
+        recentlyAddedShowIDs  = snapshot.recentShowIDs
+        recentlyAddedIDs      = sortedRecentIDs
+        resumeShowIDs         = filteredResumeIDs
+        episodesBySeriesID    = groupedEpisodes
+        genres                = Self.computeGenres(
+            movieIDs: recordedMovieIDs,
+            tvShowIDs: recordedShowIDs,
+            itemsByID: newItemsByID
         )
+        carouselItemIDs       = Self.computeCarouselItemIDs(
+            movieIDs: recordedMovieIDs,
+            tvShowIDs: recordedShowIDs,
+            resumeShowIDs: filteredResumeIDs,
+            episodesBySeriesID: groupedEpisodes,
+            topWatchedMovieIDs: topWatchedMovieIDs,
+            itemsByID: newItemsByID
+        )
+    }
 
-        // Precompute carousel items in background thread
-        let showLookup = Dictionary(tvShows.compactMap { show in show.id.map { ($0, show) } }, uniquingKeysWith: { first, _ in first })
-        let lookup: (String) -> BaseItemDto? = { showLookup[$0] }
+    private static func computeCarouselItemIDs(
+        movieIDs: [String],
+        tvShowIDs: [String],
+        resumeShowIDs: [String],
+        episodesBySeriesID: [String: [String]],
+        topWatchedMovieIDs: [String],
+        itemsByID: [String: BaseItemDto]
+    ) -> [String] {
+        let lookup: (String) -> BaseItemDto? = { itemsByID[$0] }
 
-        var pool: [BaseItemDto] = []
+        var poolIDs: [String] = []
         var poolSeenIDs = Set<String>()
-        for movie in movies {
-            guard movie.type != .series else { continue }
-            if movie.hasImageWithTitle(seriesLookup: lookup), let id = movie.id, !poolSeenIDs.contains(id) {
-                poolSeenIDs.insert(id)
-                pool.append(movie)
+
+        for movieID in movieIDs {
+            guard let movie = itemsByID[movieID], movie.type != .series else { continue }
+            if movie.hasImageWithTitle(seriesLookup: lookup), !poolSeenIDs.contains(movieID) {
+                poolSeenIDs.insert(movieID)
+                poolIDs.append(movieID)
             }
         }
-        var resumeBySeriesID: [String: BaseItemDto] = [:]
-        for ep in resumeShows {
-            if let sID = ep.seriesID, resumeBySeriesID[sID] == nil {
-                resumeBySeriesID[sID] = ep
+
+        var resumeBySeriesID: [String: String] = [:]
+        for epID in resumeShowIDs {
+            if let ep = itemsByID[epID], let sID = ep.seriesID, resumeBySeriesID[sID] == nil {
+                resumeBySeriesID[sID] = epID
             }
         }
-        for show in tvShows {
-            guard let showID = show.id else { continue }
-            if let episode = resumeBySeriesID[showID] ?? episodesBySeriesID[showID]?.first {
-                guard episode.type != .series else { continue }
-                if episode.hasImageWithTitle(seriesLookup: lookup), let id = episode.id, !poolSeenIDs.contains(id) {
-                    poolSeenIDs.insert(id)
-                    pool.append(episode)
+
+        for showID in tvShowIDs {
+            if let epID = resumeBySeriesID[showID] ?? episodesBySeriesID[showID]?.first,
+               let episode = itemsByID[epID], episode.type != .series {
+                if episode.hasImageWithTitle(seriesLookup: lookup), !poolSeenIDs.contains(epID) {
+                    poolSeenIDs.insert(epID)
+                    poolIDs.append(epID)
                 }
             }
         }
 
-        var distinctIDsWithTitle = Set(pool.compactMap(\.id))
-        for item in topWatchedMovies + resumeShows {
-            guard item.type != .series else { continue }
+        var distinctIDsWithTitle = Set(poolIDs)
+        for itemID in topWatchedMovieIDs + resumeShowIDs {
+            guard let item = itemsByID[itemID], item.type != .series else { continue }
             if item.hasImageWithTitle(seriesLookup: lookup) {
-                if let id = item.id { distinctIDsWithTitle.insert(id) }
+                distinctIDsWithTitle.insert(itemID)
             }
         }
 
-        var carouselItems: [BaseItemDto] = []
+        var carouselItemIDs: [String] = []
         if distinctIDsWithTitle.count >= 6 {
             var seenIDs = Set<String>()
-            for movie in topWatchedMovies {
-                guard carouselItems.count < 6 else { break }
-                guard movie.type != .series, movie.hasImageWithTitle(seriesLookup: lookup) else { continue }
-                if let id = movie.id, !seenIDs.contains(id) {
-                    seenIDs.insert(id)
-                    carouselItems.append(movie)
+            for movieID in topWatchedMovieIDs {
+                guard carouselItemIDs.count < 6 else { break }
+                guard let movie = itemsByID[movieID], movie.type != .series, movie.hasImageWithTitle(seriesLookup: lookup) else { continue }
+                if !seenIDs.contains(movieID) {
+                    seenIDs.insert(movieID)
+                    carouselItemIDs.append(movieID)
                 }
             }
-            for show in resumeShows {
-                guard carouselItems.count < 6 else { break }
-                guard show.type != .series, show.hasImageWithTitle(seriesLookup: lookup) else { continue }
-                if let id = show.id, !seenIDs.contains(id) {
-                    seenIDs.insert(id)
-                    carouselItems.append(show)
+            for showID in resumeShowIDs {
+                guard carouselItemIDs.count < 6 else { break }
+                guard let show = itemsByID[showID], show.type != .series, show.hasImageWithTitle(seriesLookup: lookup) else { continue }
+                if !seenIDs.contains(showID) {
+                    seenIDs.insert(showID)
+                    carouselItemIDs.append(showID)
                 }
             }
-            if carouselItems.count < 6 {
-                for item in pool.shuffled() {
-                    guard carouselItems.count < 6 else { break }
-                    guard item.type != .series, item.hasImageWithTitle(seriesLookup: lookup) else { continue }
-                    if let id = item.id, !seenIDs.contains(id) {
-                        seenIDs.insert(id)
-                        carouselItems.append(item)
+            if carouselItemIDs.count < 6 {
+                for poolID in poolIDs.shuffled() {
+                    guard carouselItemIDs.count < 6 else { break }
+                    guard let item = itemsByID[poolID], item.type != .series, item.hasImageWithTitle(seriesLookup: lookup) else { continue }
+                    if !seenIDs.contains(poolID) {
+                        seenIDs.insert(poolID)
+                        carouselItemIDs.append(poolID)
                     }
                 }
             }
         }
+        return carouselItemIDs
+    }
 
-        // Precompute genres in background thread
+    private static func computeGenres(
+        movieIDs: [String],
+        tvShowIDs: [String],
+        itemsByID: [String: BaseItemDto]
+    ) -> [GenreCount] {
         var genreCounts: [String: Int] = [:]
-        for item in (movies + tvShows) {
+        for id in (movieIDs + tvShowIDs) {
+            guard let item = itemsByID[id] else { continue }
             for genre in item.genres ?? [] {
                 genreCounts[genre, default: 0] += 1
             }
         }
-        let genres = genreCounts
+        return genreCounts
             .map { GenreCount(name: $0.key, count: $0.value) }
             .sorted { lhs, rhs in
                 lhs.count != rhs.count ? lhs.count > rhs.count : lhs.name < rhs.name
             }
-
-        let completedCount = movies.filter { $0.userData?.isPlayed == true }.count
-        let watchedHours = Int(
-            movies.reduce(0.0) { acc, item in
-                guard let ticks = item.runTimeTicks,
-                      let percent = item.userData?.playedPercentage, percent > 0 else { return acc }
-                return acc + (percent / 100.0) * Double(ticks) / 10_000_000
-            } / 3_600
-        )
-
-        return LibraryDataSnapshot(
-            itemsByID: newItemsByID,
-            movieIDs: recordedMovieIDs,
-            tvShowIDs: recordedShowIDs,
-            episodeIDs: recordedEpisodeIDs,
-            collectionIDs: recordedCollectionIDs,
-            recommendedIDs: recordedRecommendedIDs,
-            recentlyAddedMovieIDs: recordedRecentMovieIDs,
-            recentlyAddedShowIDs: recordedRecentShowIDs,
-            recentlyAddedIDs: recordedRecentIDs,
-            resumeShowIDs: recordedNextUpIDs,
-            favoritesCount: fetchedFavorites,
-            tvSeriesCount: fetchedShows.count,
-            episodeCount: fetchedEpisodes.count > 0 ? fetchedEpisodes.count : fetchedEpisodeCount,
-            movies: movies,
-            tvShows: tvShows,
-            episodes: episodes,
-            collections: collections,
-            recommended: recommended,
-            recentlyAddedMovies: recentlyAddedMovies,
-            recentlyAddedShows: recentlyAddedShows,
-            recentlyAdded: recentlyAdded,
-            resumeShows: resumeShows,
-            episodesBySeriesID: episodesBySeriesID,
-            inProgressMovies: inProgressMovies,
-            topWatchedMovies: topWatchedMovies,
-            carouselItems: carouselItems,
-            genres: genres,
-            completedCount: completedCount,
-            watchedHours: watchedHours
-        )
-    }
-
-    private func apply(_ snapshot: LibraryDataSnapshot) {
-        itemsByID             = snapshot.itemsByID
-        movieIDs              = snapshot.movieIDs
-        tvShowIDs             = snapshot.tvShowIDs
-        episodeIDs            = snapshot.episodeIDs
-        collectionIDs         = snapshot.collectionIDs
-        recommendedIDs        = snapshot.recommendedIDs
-        recentlyAddedMovieIDs = snapshot.recentlyAddedMovieIDs
-        recentlyAddedShowIDs  = snapshot.recentlyAddedShowIDs
-        recentlyAddedIDs      = snapshot.recentlyAddedIDs
-        resumeShowIDs         = snapshot.resumeShowIDs
-        favoritesCount        = snapshot.favoritesCount
-        tvSeriesCount         = snapshot.tvSeriesCount
-        episodeCount          = snapshot.episodeCount
-
-        movies                = snapshot.movies
-        tvShows               = snapshot.tvShows
-        episodes              = snapshot.episodes
-        collections           = snapshot.collections
-        recommended           = snapshot.recommended
-        recentlyAddedMovies   = snapshot.recentlyAddedMovies
-        recentlyAddedShows    = snapshot.recentlyAddedShows
-        recentlyAdded         = snapshot.recentlyAdded
-        resumeShows           = snapshot.resumeShows
-        episodesBySeriesID    = snapshot.episodesBySeriesID
-        inProgressMovies      = snapshot.inProgressMovies
-        topWatchedMovies      = snapshot.topWatchedMovies
-        carouselItems         = snapshot.carouselItems
-        genres                = snapshot.genres
-        completedCount        = snapshot.completedCount
-        watchedHours          = snapshot.watchedHours
-    }
-
-    // MARK: - Progress Management
-
-    /// Applies server-reported user data to the single local store.
-    ///
-    /// This is the only place user data is written. Reset, favorite, and progress changes all arrive
-    /// from the server through `.mediaUserDataChanged`, so the library cannot drift from Jellyfin.
-    func applyUserData(_ dtos: [UserItemDataDto]) {
-        var changed = false
-        var changedIDs = Set<String>()
-
-        for dto in dtos {
-            let itemID = dto.itemID ?? dto.key
-            guard var item = itemsByID[itemID] else { continue }
-
-            if (item.userData?.isFavorite ?? false) != (dto.isFavorite ?? false) {
-                favoritesCount = max(0, favoritesCount + (dto.isFavorite == true ? 1 : -1))
-            }
-
-            item.userData = dto
-            itemsByID[itemID] = item
-            changedIDs.insert(itemID)
-            changed = true
-        }
-
-        guard changed else { return }
-
-        // Only the items the server just reported on can leave the Continue Watching row — pruning
-        // everything would empty it on any unrelated change, since next-up episodes carry no progress.
-        resumeShowIDs.removeAll { id in
-            guard changedIDs.contains(id) else { return false }
-            guard let item = itemsByID[id] else { return true }
-            return !item.hasProgress && !item.isWatched
-        }
-
-        updateAggregates()
-    }
-
-    func updateProgress(for itemID: String, positionTicks: Int, totalTicks: Int?) {
-        if var item = itemsByID[itemID] {
-            item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
-            itemsByID[itemID] = item
-        }
-
-        updateAggregates()
-    }
-
-    // MARK: - Aggregates
-
-    /// Rebuilds the derived collections after the normalized store changes.
-    ///
-    /// The pass resolves every ID list and walks all items (grouping every episode by series,
-    /// sorting Continue Watching, summing watch time). That is too much work for the main actor
-    /// when it is triggered by a websocket burst or a playback progress tick, so it runs on a
-    /// background task and only the finished result is written back. Calls coalesce: a newer
-    /// update cancels the pass that is still running.
-    private func updateAggregates() {
-        aggregateTask?.cancel()
-
-        let itemsByID = self.itemsByID
-        let movieIDs = self.movieIDs
-        let tvShowIDs = self.tvShowIDs
-        let episodeIDs = self.episodeIDs
-        let collectionIDs = self.collectionIDs
-        let recommendedIDs = self.recommendedIDs
-        let recentlyAddedMovieIDs = self.recentlyAddedMovieIDs
-        let recentlyAddedShowIDs = self.recentlyAddedShowIDs
-        let recentlyAddedIDs = self.recentlyAddedIDs
-        let resumeShowIDs = self.resumeShowIDs
-
-        // Cheap (≤ 20 items) and uses a main-actor presentation helper, so resolve it here
-        // instead of inside the background pass.
-        let resumeShows = resumeShowIDs.compactMap { itemsByID[$0] }.filter { !$0.isUnplayedFirstEpisode }
-
-        aggregateTask = Task { [weak self] in
-            let aggregates = await Task.detached(priority: .userInitiated) {
-                Self.deriveAggregates(
-                    itemsByID: itemsByID,
-                    movieIDs: movieIDs,
-                    tvShowIDs: tvShowIDs,
-                    episodeIDs: episodeIDs,
-                    collectionIDs: collectionIDs,
-                    recommendedIDs: recommendedIDs,
-                    recentlyAddedMovieIDs: recentlyAddedMovieIDs,
-                    recentlyAddedShowIDs: recentlyAddedShowIDs,
-                    recentlyAddedIDs: recentlyAddedIDs,
-                    resumeShows: resumeShows
-                )
-            }.value
-
-            guard !Task.isCancelled, let self else { return }
-            self.apply(aggregates)
-        }
-    }
-
-    /// Pure, main-actor-free derivation of everything the UI reads from the library.
-    private nonisolated static func deriveAggregates(
-        itemsByID: [String: BaseItemDto],
-        movieIDs: [String],
-        tvShowIDs: [String],
-        episodeIDs: [String],
-        collectionIDs: [String],
-        recommendedIDs: [String],
-        recentlyAddedMovieIDs: [String],
-        recentlyAddedShowIDs: [String],
-        recentlyAddedIDs: [String],
-        resumeShows: [BaseItemDto]
-    ) -> LibraryAggregates {
-        let movies = movieIDs.compactMap { itemsByID[$0] }
-        let tvShows = tvShowIDs.compactMap { itemsByID[$0] }
-        let episodes = episodeIDs.compactMap { itemsByID[$0] }
-        let collections = collectionIDs.compactMap { itemsByID[$0] }
-        let recommended = recommendedIDs.compactMap { itemsByID[$0] }
-        let recentlyAddedMovies = recentlyAddedMovieIDs.compactMap { itemsByID[$0] }
-        let recentlyAddedShows = recentlyAddedShowIDs.compactMap { itemsByID[$0] }
-        let recentlyAdded = recentlyAddedIDs.compactMap { itemsByID[$0] }
-
-        var grouped: [String: [BaseItemDto]] = [:]
-        for ep in episodes {
-            if let seriesID = ep.seriesID {
-                grouped[seriesID, default: []].append(ep)
-            }
-        }
-
-        let inProgressMovies = movies
-            .filter {
-                guard let percent = $0.userData?.playedPercentage else { return false }
-                return percent > 0 && percent < 85
-            }
-            .sorted {
-                ($0.userData?.lastPlayedDate ?? .distantPast) > ($1.userData?.lastPlayedDate ?? .distantPast)
-            }
-        let topWatchedMovies = Array(
-            inProgressMovies.sorted {
-                let a = (($0.userData?.playedPercentage ?? 0) / 100.0) * Double($0.runTimeTicks ?? 0)
-                let b = (($1.userData?.playedPercentage ?? 0) / 100.0) * Double($1.runTimeTicks ?? 0)
-                return a > b
-            }.prefix(6)
-        )
-        let completedCount = movies.filter { $0.userData?.isPlayed == true }.count
-        let watchedHours = Int(
-            movies.reduce(0.0) { acc, item in
-                guard let ticks = item.runTimeTicks,
-                      let percent = item.userData?.playedPercentage, percent > 0 else { return acc }
-                return acc + (percent / 100.0) * Double(ticks) / 10_000_000
-            } / 3_600
-        )
-
-        return LibraryAggregates(
-            movies: movies,
-            tvShows: tvShows,
-            episodes: episodes,
-            collections: collections,
-            recommended: recommended,
-            recentlyAddedMovies: recentlyAddedMovies,
-            recentlyAddedShows: recentlyAddedShows,
-            recentlyAdded: recentlyAdded,
-            resumeShows: resumeShows,
-            episodesBySeriesID: grouped,
-            inProgressMovies: inProgressMovies,
-            topWatchedMovies: topWatchedMovies,
-            completedCount: completedCount,
-            watchedHours: watchedHours
-        )
-    }
-
-    private func apply(_ aggregates: LibraryAggregates) {
-        movies = aggregates.movies
-        tvShows = aggregates.tvShows
-        episodes = aggregates.episodes
-        collections = aggregates.collections
-        recommended = aggregates.recommended
-        recentlyAddedMovies = aggregates.recentlyAddedMovies
-        recentlyAddedShows = aggregates.recentlyAddedShows
-        recentlyAdded = aggregates.recentlyAdded
-        resumeShows = aggregates.resumeShows
-        episodesBySeriesID = aggregates.episodesBySeriesID
-        inProgressMovies = aggregates.inProgressMovies
-        topWatchedMovies = aggregates.topWatchedMovies
-        completedCount = aggregates.completedCount
-        watchedHours = aggregates.watchedHours
     }
 
     // MARK: - Prefetching & Artwork
 
-    func prefetchBackdrops(around index: Int, items: [BaseItemDto]? = nil, client: JellyfinClient) {
-        let targetItems = items ?? movies
+    func prefetchBackdrops(around index: Int, itemIDs: [String]? = nil, client: JellyfinClient) {
+        let targetIDs = itemIDs ?? carouselItemIDs
         let neighbors = [index - 1, index, index + 1]
-            .filter { $0 >= 0 && $0 < targetItems.count }
-        let urls = neighbors.compactMap { targetItems[$0].backdropURL(client: client) }
+            .filter { $0 >= 0 && $0 < targetIDs.count }
+        let urls = neighbors.compactMap { itemsByID[targetIDs[$0]]?.backdropURL(client: client) }
         SDWebImagePrefetcher.shared.prefetchURLs(urls)
     }
 
-    func prefetchPosters(around index: Int, client: JellyfinClient) {
+    func prefetchPosters(around index: Int, itemIDs: [String]? = nil, client: JellyfinClient) {
+        let targetIDs = itemIDs ?? movieIDs
         let neighbors = [index - 1, index, index + 1]
-            .filter { $0 >= 0 && $0 < movies.count }
-        let urls = neighbors.compactMap { movies[$0].posterURL(client: client) }
+            .filter { $0 >= 0 && $0 < targetIDs.count }
+        let urls = neighbors.compactMap { itemsByID[targetIDs[$0]]?.posterURL(client: client) }
         SDWebImagePrefetcher.shared.prefetchURLs(urls)
     }
 
-    /// Prefetches poster and backdrop artwork for the primary items across the library.
     func prefetchArtwork(client: JellyfinClient, maxCount: Int = 50) {
         var urls: [URL] = []
-        for item in carouselItems.prefix(10) {
-            if let url = item.backdropURL(client: client) {
+        for id in carouselItemIDs.prefix(10) {
+            if let url = itemsByID[id]?.backdropURL(client: client) {
                 urls.append(url)
             }
         }
-        let cardItems = movies.prefix(maxCount) + tvShows.prefix(maxCount) + collections.prefix(20)
-        for item in cardItems {
-            if let url = item.posterURL(client: client) {
+        let cardIDs = movieIDs.prefix(maxCount) + tvShowIDs.prefix(maxCount) + collectionIDs.prefix(20)
+        for id in cardIDs {
+            if let url = itemsByID[id]?.posterURL(client: client) {
                 urls.append(url)
             }
         }
-        if !urls.isEmpty {
-            SDWebImagePrefetcher.shared.prefetchURLs(urls)
-        }
-    }
-
-    /// Refreshes media artwork across the library by clearing memory and disk image caches,
-    /// re-fetching library metadata to pick up new image tags from the server,
-    /// and prefetching the latest artwork.
-    func refreshMediaArtwork(using client: JellyfinClient? = nil, userID: String? = nil) async {
-        if let client {
-            self.currentClient = client
-        }
-        if let userID {
-            self.currentUserID = userID
-        }
-        let effectiveClient = client ?? currentClient
-
-        // 1. Cancel ongoing prefetching
-        SDWebImagePrefetcher.shared.cancelPrefetching()
-
-        // 2. Clear image cache in memory and on disk
-        await withCheckedContinuation { continuation in
-            SDImageCache.shared.clearMemory()
-            SDImageCache.shared.clearDisk {
-                continuation.resume()
-            }
-        }
-
-        // 3. If a client is available, re-fetch library items to obtain updated image tags
-        if let effectiveClient {
-            await refresh(using: effectiveClient, userID: userID ?? currentUserID)
-            // 4. Prefetch fresh artwork for primary views
-            prefetchArtwork(client: effectiveClient)
-        }
-    }
-
-    /// Alias for `refreshMediaArtwork(using:userID:)`.
-    func refreshArtwork(using client: JellyfinClient? = nil, userID: String? = nil) async {
-        await refreshMediaArtwork(using: client, userID: userID)
+        SDWebImagePrefetcher.shared.prefetchURLs(urls)
     }
 }

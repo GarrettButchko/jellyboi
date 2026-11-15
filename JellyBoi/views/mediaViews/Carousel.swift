@@ -2,24 +2,40 @@
 //  Carousel.swift
 //  JellyBoi
 //
-//  Created by Garrett Butchko on 8/24/26.
+//  Created by Garrett Butchko on 8/29/26.
 //
 
 import SwiftUI
 import BaseColors
-import SDWebImage
 import SDWebImageSwiftUI
 import JellyfinAPI
+import SDWebImage
 
+// MARK: - Layout Constants
+
+private let carouselRestingGap: CGFloat = 16
+private let carouselNeighborScale: CGFloat = 0.95
 private let carouselCardWidthRatio: CGFloat = 0.8
-private let carouselRestingGap: CGFloat = 0
-private let carouselNeighborScale: CGFloat = 0.90
-private let carouselAutoScrollInterval: TimeInterval = 9
-private let carouselMaxItems: Int = 6
+private let carouselAutoScrollInterval: TimeInterval = 6.0
+
+// MARK: - Carousel Memory Cache
+
+@MainActor
+final class CarouselImageMemoryCache {
+    static let shared = CarouselImageMemoryCache()
+    private init() {}
+
+    func preloadImages(for urls: [URL]) {
+        SDWebImagePrefetcher.shared.prefetchURLs(urls)
+    }
+}
+
+// MARK: - Carousel
 
 private struct CarouselLoopedItem: Identifiable {
     let id: Int
-    let item: BaseItemDto
+    let itemID: String
+    let item: BaseItemDto?
     let url: URL?
     let isRealSection: Bool
 }
@@ -34,10 +50,11 @@ struct Carousel: View {
     let title: String
     let namespace: Namespace.ID
     let backdropURL: (BaseItemDto) -> URL?
-    let onSelect: (BaseItemDto) -> Void
-    var onSnap: ((Int, BaseItemDto) -> Void)? = nil
+    let onSelect: (String) -> Void
+    var onSnap: ((Int, String) -> Void)? = nil
 
     @Environment(HomeViewModel.self) private var viewModel
+    @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
     @Environment(ViewManager.self) private var viewManager: ViewManager?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -64,8 +81,6 @@ struct Carousel: View {
         scenePhase == .active
     }
 
-    /// The carousel is only active when visible in the scroll container, on screen in the active tab,
-    /// and the application is in the foreground. This eliminates background timers across other tabs.
     private var isEffectivelyActive: Bool {
         isScrollVisible && isViewVisible && isTabActive && isSceneActive
     }
@@ -75,8 +90,8 @@ struct Carousel: View {
         namespace: Namespace.ID,
         initialIndex: Int? = nil,
         backdropURL: @escaping (BaseItemDto) -> URL?,
-        onSelect: @escaping (BaseItemDto) -> Void,
-        onSnap: ((Int, BaseItemDto) -> Void)? = nil
+        onSelect: @escaping (String) -> Void,
+        onSnap: ((Int, String) -> Void)? = nil
     ) {
         self.title = title
         self.namespace = namespace
@@ -88,31 +103,31 @@ struct Carousel: View {
         _snappedIndex = State(initialValue: start)
     }
 
-    // In-progress movies by most absolute time watched, falling back to Recently Added
-    // when the user hasn't started anything yet.
-    private var items: [BaseItemDto] {
-        viewModel.carouselItems
+    private var itemIDs: [String] {
+        viewModel.carouselItemIDs
     }
 
-    private func makeLoopedItems(from items: [BaseItemDto]) -> [CarouselLoopedItem] {
-        guard !items.isEmpty else { return [] }
-        let count = items.count
+    private func makeLoopedItems(from ids: [String]) -> [CarouselLoopedItem] {
+        guard !ids.isEmpty else { return [] }
+        let count = ids.count
         let loopStart = count
         var result: [CarouselLoopedItem] = []
         result.reserveCapacity(count * 3)
 
-        // Precompute URLs once per distinct item to avoid repeated URL computation & linear searches
-        let itemURLs = items.map { backdropURL($0) }
+        let itemURLs = ids.map { id in
+            libraryViewModel?.item(for: id).flatMap { backdropURL($0) }
+        }
 
-        // 3 sets: 0..<count (prefix buffer), count..<2*count (main set), 2*count..<3*count (suffix buffer)
         for set in 0..<3 {
             for i in 0..<count {
                 let loopedID = set * count + i
                 let isReal = loopedID >= loopStart && loopedID < loopStart + count
+                let itemID = ids[i]
                 result.append(
                     CarouselLoopedItem(
                         id: loopedID,
-                        item: items[i],
+                        itemID: itemID,
+                        item: libraryViewModel?.item(for: itemID),
                         url: itemURLs[i],
                         isRealSection: isReal
                     )
@@ -128,9 +143,9 @@ struct Carousel: View {
     }
 
     var body: some View {
-        let currentItems = items
-        let count = currentItems.count
-        let loopedItems = makeLoopedItems(from: currentItems)
+        let currentItemIDs = itemIDs
+        let count = currentItemIDs.count
+        let loopedItems = makeLoopedItems(from: currentItemIDs)
         let loopStart = count
         let displayedItemIndex = count == 0 ? 0 : itemIndex(for: snappedIndex, count: count)
 
@@ -160,7 +175,7 @@ struct Carousel: View {
                             ForEach(loopedItems) { looped in
                                 Button {
                                     if currentIndex == looped.id {
-                                        onSelect(looped.item)
+                                        onSelect(looped.itemID)
                                     } else {
                                         isAutoScrolling = false
                                         timerResetTrigger = UUID()
@@ -244,7 +259,7 @@ struct Carousel: View {
                             let snappedItemIdx = itemIndex(for: snappedIndex, count: count)
                             if lastReportedSnappedIndex != snappedItemIdx {
                                 lastReportedSnappedIndex = snappedItemIdx
-                                onSnap?(snappedItemIdx, currentItems[snappedItemIdx])
+                                onSnap?(snappedItemIdx, currentItemIDs[snappedItemIdx])
                             }
                             if oldPhase.isScrolling {
                                 timerResetTrigger = UUID()
@@ -269,7 +284,7 @@ struct Carousel: View {
                     }
                     .task(id: autoScrollTrigger) {
                         guard autoScrollTrigger.isActive, !autoScrollTrigger.animationDisabled else { return }
-                        guard currentItems.count > 1 else { return }
+                        guard currentItemIDs.count > 1 else { return }
 
                         while !Task.isCancelled {
                             try? await Task.sleep(for: .seconds(carouselAutoScrollInterval))
@@ -281,14 +296,13 @@ struct Carousel: View {
                             withAnimation(.smooth(duration: 0.45)) {
                                 proxy.scrollTo(nextIndex, anchor: .center)
                             }
-                            // Allow scroll animation to finish before snapping backdrop
                             try? await Task.sleep(for: .milliseconds(460))
                             guard !Task.isCancelled else { break }
                             isAutoScrolling = false
                             let snappedItemIdx = itemIndex(for: nextIndex, count: count)
-                            if snappedItemIdx < currentItems.count {
+                            if snappedItemIdx < currentItemIDs.count {
                                 lastReportedSnappedIndex = snappedItemIdx
-                                onSnap?(snappedItemIdx, currentItems[snappedItemIdx])
+                                onSnap?(snappedItemIdx, currentItemIDs[snappedItemIdx])
                             }
                         }
                     }
@@ -303,7 +317,7 @@ struct Carousel: View {
             let hideIndicator = false
             #endif
 
-            if !hideIndicator && !currentItems.isEmpty {
+            if !hideIndicator && !currentItemIDs.isEmpty {
                 CarouselPageIndicator(
                     count: count,
                     currentIndex: displayedItemIndex,
@@ -315,14 +329,18 @@ struct Carousel: View {
         .sensoryFeedback(.selection, trigger: displayedItemIndex)
         .onAppear {
             isViewVisible = true
-            let urls = currentItems.compactMap { backdropURL($0) }
+            let urls = currentItemIDs.compactMap { id in
+                libraryViewModel?.item(for: id).flatMap { backdropURL($0) }
+            }
             CarouselImageMemoryCache.shared.preloadImages(for: urls)
         }
         .onDisappear {
             isViewVisible = false
         }
-        .onChange(of: currentItems.compactMap(\.id)) { _, newIDs in
-            let urls = currentItems.compactMap { backdropURL($0) }
+        .onChange(of: currentItemIDs) { _, newIDs in
+            let urls = newIDs.compactMap { id in
+                libraryViewModel?.item(for: id).flatMap { backdropURL($0) }
+            }
             CarouselImageMemoryCache.shared.preloadImages(for: urls)
             if !newIDs.isEmpty {
                 let validTarget = (0..<loopedItems.count).contains(snappedIndex) ? snappedIndex : loopStart
@@ -344,32 +362,36 @@ struct Carousel: View {
     ) -> some View {
         let isHovered = hoveredID == looped.id
         let activeIndex = currentIndex ?? snappedIndex
-        // Only load images and heavy badge layers within a window of active items
-        // so all 18 images aren't loaded and rendered at once
         let shouldLoadContent = abs(looped.id - activeIndex) <= 2
         let cardURL = shouldLoadContent ? looped.url : nil
 
         Group {
-            if looped.id == snappedIndex {
-                CarouselCard(
-                    item: looped.item,
-                    url: cardURL,
-                    width: cardWidth,
-                    height: cardHeight,
-                    shouldLoadContent: shouldLoadContent
-                )
-                .matchedTransitionSource(
-                    id: looped.item.zoomTransitionID(isCarousel: true),
-                    in: namespace
-                )
+            if let item = looped.item {
+                if looped.id == snappedIndex {
+                    CarouselCard(
+                        item: item,
+                        url: cardURL,
+                        width: cardWidth,
+                        height: cardHeight,
+                        shouldLoadContent: shouldLoadContent
+                    )
+                    .matchedTransitionSource(
+                        id: item.zoomTransitionID(isCarousel: true),
+                        in: namespace
+                    )
+                } else {
+                    CarouselCard(
+                        item: item,
+                        url: cardURL,
+                        width: cardWidth,
+                        height: cardHeight,
+                        shouldLoadContent: shouldLoadContent
+                    )
+                }
             } else {
-                CarouselCard(
-                    item: looped.item,
-                    url: cardURL,
-                    width: cardWidth,
-                    height: cardHeight,
-                    shouldLoadContent: shouldLoadContent
-                )
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.mainOpp.opacity(0.06))
+                    .frame(width: cardWidth, height: cardHeight)
             }
         }
         .scaleEffect(isHovered ? 1.05 : 1.0)
@@ -406,72 +428,50 @@ private struct ActiveIndicatorPill: View {
 private struct CarouselPageIndicator: View {
     let count: Int
     let currentIndex: Int
-    var isPaused: Bool = false
+    let isPaused: Bool
 
-    private let dotSize: CGFloat = 6
-    private let activePillWidth: CGFloat = 20
-
+    @State private var pillStartDate: Date = Date()
     @State private var previousIndex: Int = 0
-    @State private var startDate: Date = .now
 
-    private var isWrapTransition: Bool {
-        guard count > 1 else { return false }
-        return (previousIndex == count - 1 && currentIndex == 0) ||
-               (previousIndex == 0 && currentIndex == count - 1)
-    }
-
-    private var indicatorAnimation: Animation {
-        if isWrapTransition {
-            return .spring(response: 0.44, dampingFraction: 0.78)
-        } else {
-            return .spring(response: 0.36, dampingFraction: 0.74)
-        }
-    }
+    private let pillWidth: CGFloat = 20
+    private let dotSize: CGFloat = 6
+    private let height: CGFloat = 6
 
     var body: some View {
-        #if DEBUG
-        let showTimerAnimation = !DebugSettings.shared.disableCarouselTimerAnimation
-        #else
-        let showTimerAnimation = true
-        #endif
-
         HStack(spacing: 5) {
-            ForEach(0..<count, id: \.self) { i in
-                let isActive = i == currentIndex
-                let width = isActive ? activePillWidth : dotSize
+            ForEach(0..<count, id: \.self) { index in
+                if index == currentIndex {
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.mainOpp.opacity(0.2))
+                            .frame(width: pillWidth, height: height)
 
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.mainOpp.opacity(0.3))
-                        .frame(width: width, height: dotSize)
-
-                    if isActive {
-                        if showTimerAnimation {
-                            ActiveIndicatorPill(
-                                startDate: startDate,
-                                isPaused: isPaused,
-                                width: width,
-                                height: dotSize
-                            )
-                            .transition(.opacity)
-                        } else {
-                            Capsule()
-                                .fill(Color.mainOpp)
-                                .frame(width: width, height: dotSize)
-                        }
+                        ActiveIndicatorPill(
+                            startDate: pillStartDate,
+                            isPaused: isPaused,
+                            width: pillWidth,
+                            height: height
+                        )
                     }
+                    .clipShape(Capsule())
+                    .transition(.identity)
+                } else {
+                    Circle()
+                        .fill(Color.mainOpp.opacity(0.3))
+                        .frame(width: dotSize, height: dotSize)
+                        .transition(.identity)
                 }
-                .frame(width: width, height: dotSize)
             }
         }
-        .animation(indicatorAnimation, value: currentIndex)
-        .onAppear {
-            previousIndex = currentIndex
-            startDate = .now
+        .padding(.vertical, 4)
+        .animation(.easeInOut(duration: 0.3), value: currentIndex)
+        .onChange(of: currentIndex) { oldVal, newVal in
+            if oldVal != newVal {
+                pillStartDate = Date()
+            }
         }
-        .onChange(of: currentIndex) { oldVal, _ in
-            previousIndex = oldVal
-            startDate = .now
+        .onAppear {
+            pillStartDate = Date()
         }
     }
 }
@@ -483,26 +483,14 @@ private struct CarouselCard: View {
     let url: URL?
     let width: CGFloat
     let height: CGFloat
-    var shouldLoadContent: Bool = true
-
-    @State private var displayImage: UIImage? = nil
-    private let outerCornerRadius: CGFloat = 20
-
-    private var watchProgress: Double? {
-        item.watchProgress
-    }
+    let shouldLoadContent: Bool
 
     var body: some View {
-        let currentImage: UIImage? = displayImage ?? (shouldLoadContent ? url.flatMap { CarouselImageMemoryCache.shared.image(for: $0) } : nil)
+        ZStack {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.mainOpp.opacity(0.06))
 
-        ZStack(alignment: .bottomTrailing) {
-            placeholder
-
-            if let currentImage {
-                Image(uiImage: currentImage)
-                    .resizable()
-                    .scaledToFill()
-            } else if shouldLoadContent, let url {
+            if shouldLoadContent, let url {
                 WebImage(url: url) { phase in
                     if let image = phase.image {
                         image
@@ -511,178 +499,9 @@ private struct CarouselCard: View {
                     }
                 }
                 .cancelOnDisappear(true)
-                .onSuccess { image, _, _ in
-                    displayImage = image
-                    CarouselImageMemoryCache.shared.store(image, for: url)
-                }
-            }
-
-            if shouldLoadContent {
-                VStack(alignment: .trailing, spacing: 6) {
-                    if AppPreferences.shared.showProgressBar, let progress = watchProgress {
-                        ProgressBar(progress: progress, label: item.timeRemainingFormatted)
-                    }
-                    if let episodeNumber = item.formattedEpisodeNumber {
-                        EpisodeBadge(text: episodeNumber)
-                    }
-                }
-                .padding(10)
             }
         }
         .frame(width: width, height: height)
-        .clipShape(RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous))
-        .onChange(of: shouldLoadContent) { _, shouldLoad in
-            if !shouldLoad {
-                displayImage = nil
-            }
-        }
-    }
-
-    private var placeholder: some View {
-        RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
-            .fill(Color.sub)
-            .overlay {
-                Image("Jellyboi")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 75, height: 75)
-                    .foregroundStyle(Color.mainOpp.opacity(0.05))
-                    .rotationEffect(.degrees(45))
-            }
-    }
-}
-
-// MARK: - Carousel Image Memory Cache
-
-final class CarouselImageMemoryCache {
-    static let shared = CarouselImageMemoryCache()
-
-    private var memoryCache: [URL: UIImage] = [:]
-
-    private init() {}
-
-    func image(for url: URL) -> UIImage? {
-        if let img = memoryCache[url] {
-            return img
-        }
-        let key = SDWebImageManager.shared.cacheKey(for: url)
-        if let img = SDImageCache.shared.imageFromMemoryCache(forKey: key) {
-            memoryCache[url] = img
-            return img
-        }
-        return nil
-    }
-
-    func store(_ image: UIImage, for url: URL) {
-        memoryCache[url] = image
-    }
-
-    func preloadImages(for urls: [URL]) {
-        for url in urls {
-            if memoryCache[url] != nil { continue }
-            let key = SDWebImageManager.shared.cacheKey(for: url)
-            if let img = SDImageCache.shared.imageFromMemoryCache(forKey: key) {
-                memoryCache[url] = img
-                continue
-            }
-            // Asynchronously check disk cache and network without blocking main thread
-            SDImageCache.shared.queryImage(
-                forKey: key,
-                options: [],
-                context: nil
-            ) { [weak self] image, _, _ in
-                if let image {
-                    Task { @MainActor [weak self] in
-                        self?.store(image, for: url)
-                    }
-                } else {
-                    SDWebImageManager.shared.loadImage(
-                        with: url,
-                        options: [.highPriority],
-                        progress: nil
-                    ) { image, _, _, _, finished, _ in
-                        guard let image, finished else { return }
-                        Task { @MainActor [weak self] in
-                            self?.store(image, for: url)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    func loadImage(for url: URL, completion: ((UIImage?) -> Void)? = nil) {
-        if let cached = image(for: url) {
-            completion?(cached)
-            return
-        }
-
-        let key = SDWebImageManager.shared.cacheKey(for: url)
-        SDImageCache.shared.queryImage(
-            forKey: key,
-            options: [],
-            context: nil
-        ) { [weak self] image, _, _ in
-            if let image {
-                Task { @MainActor [weak self] in
-                    self?.store(image, for: url)
-                    completion?(image)
-                }
-            } else {
-                SDWebImageManager.shared.loadImage(
-                    with: url,
-                    options: [.avoidAutoSetImage, .highPriority],
-                    progress: nil
-                ) { image, _, _, _, finished, _ in
-                    guard let image, finished else { return }
-                    Task { @MainActor [weak self] in
-                        self?.store(image, for: url)
-                        completion?(image)
-                    }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Carousel Skeleton Placeholder
-
-extension Carousel {
-    /// Placeholder skeleton view matching the exact dimensions and layout of the hero carousel.
-    struct Placeholder: View {
-        var body: some View {
-            VStack(spacing: 12) {
-                GeometryReader { geometry in
-                    let w = geometry.size.width
-                    let cardWidth = w > 0 ? w * carouselCardWidthRatio : 300
-                    let cardHeight = cardWidth / MediaAspectRatio.thumbnail
-                    SkeletonBlock(cornerRadius: 20)
-                        .frame(width: cardWidth, height: cardHeight)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                .aspectRatio(MediaAspectRatio.thumbnail / carouselCardWidthRatio, contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .transaction { $0.animation = nil }
-
-                #if DEBUG
-                let hideIndicator = DebugSettings.shared.hideCarouselIndicator
-                #else
-                let hideIndicator = false
-                #endif
-
-                if !hideIndicator {
-                    HStack(spacing: 5) {
-                        SkeletonBlock(cornerRadius: 3).frame(width: 20, height: 6)
-                        SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
-                        SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
-                        SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
-                        SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
-                        SkeletonBlock(cornerRadius: 3).frame(width: 6, height: 6)
-                    }
-                }
-            }
-            .skeleton()
-        }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }

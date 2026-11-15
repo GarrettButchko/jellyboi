@@ -3,27 +3,16 @@ import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
 
-// MARK: - Skeleton Default Items
+// MARK: - Skeleton Default Item IDs
 
-private let defaultMediaItem = BaseItemDto(
-    id: "default-media-item",
-    name: "Media Title",
-    type: .movie
-)
-
-private let defaultMediaGridItems: [BaseItemDto] = (0..<12).map { index in
-    BaseItemDto(
-        id: "default-media-\(index)",
-        name: defaultMediaItem.name,
-        type: defaultMediaItem.type
-    )
-}
+private let defaultMediaGridItemIDs: [String] = (0..<12).map { "default-media-\($0)" }
 
 struct MediaView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
+    @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(MediaViewModel.self) private var viewModel
-    @State private var selectedItem: BaseItemDto?
+    @State private var selectedItemID: String?
     @State private var scrollPosition = ScrollPosition()
     @Namespace private var zoomTransition
 
@@ -79,13 +68,13 @@ struct MediaView: View {
                         switch viewModel.scope {
                         case .movies:
                             libraryContent(
-                                items: viewModel.regularMovies,
+                                itemIDs: viewModel.regularMovieIDs,
                                 emptyIcon: "film",
                                 emptyTitle: "No Movies"
                             )
                         case .tvShows:
                             libraryContent(
-                                items: viewModel.regularShows,
+                                itemIDs: viewModel.regularShowIDs,
                                 emptyIcon: "tv",
                                 emptyTitle: "No TV Shows"
                             )
@@ -114,12 +103,14 @@ struct MediaView: View {
                     }
                 }
             }
-            .navigationDestination(item: $selectedItem) { item in
-                MediaDetailView(item: item)
-                    .navigationTransition(.zoom(sourceID: item.zoomTransitionID(), in: zoomTransition))
+            .navigationDestination(item: $selectedItemID) { itemID in
+                if let item = libraryViewModel.item(for: itemID) {
+                    MediaDetailView(item: item)
+                        .navigationTransition(.zoom(sourceID: item.zoomTransitionID(), in: zoomTransition))
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
-                selectedItem = nil
+                selectedItemID = nil
             }
             .navigationTitle(viewModel.scope.title)
             .toolbarTitleDisplayMode(.large)
@@ -140,14 +131,14 @@ struct MediaView: View {
 
     @ViewBuilder
     private func libraryContent(
-        items: [BaseItemDto],
+        itemIDs: [String],
         emptyIcon: String,
         emptyTitle: String
     ) -> some View {
         Group {
-            if items.isEmpty {
+            if itemIDs.isEmpty {
                 if viewModel.isLoading {
-                    MediaGrid(items: defaultMediaGridItems, namespace: zoomTransition)
+                    MediaGrid(itemIDs: defaultMediaGridItemIDs, namespace: zoomTransition)
                         .skeleton()
                         .transition(.opacity)
                 } else if let error = viewModel.errorMessage {
@@ -170,7 +161,7 @@ struct MediaView: View {
                     }
                 }
             } else {
-                mediaGrid(for: items)
+                mediaGrid(for: itemIDs)
                     .id(viewModel.scope)
                     .transition(.opacity)
             }
@@ -185,7 +176,7 @@ struct MediaView: View {
         let favoriteSections = viewModel.favoriteSections
         Group {
             if viewModel.isLoading && favoriteSections.isEmpty {
-                MediaGrid(items: defaultMediaGridItems, namespace: zoomTransition)
+                MediaGrid(itemIDs: defaultMediaGridItemIDs, namespace: zoomTransition)
                     .skeleton()
                     .transition(.opacity)
             } else if favoriteSections.isEmpty {
@@ -223,16 +214,16 @@ struct MediaView: View {
     private func sectionsView(_ sections: [MediaSection]) -> some View {
         VStack(alignment: .leading, spacing: 28) {
             ForEach(sections) { section in
-                mediaGrid(for: section.items, title: section.title)
+                mediaGrid(for: section.itemIDs, title: section.title)
             }
         }
         .id(viewModel.scope)
         .transition(.opacity)
     }
 
-    private func mediaGrid(for items: [BaseItemDto], title: String? = nil) -> some View {
-        MediaGrid(items: items, title: title, namespace: zoomTransition) { item in
-            selectedItem = item
+    private func mediaGrid(for itemIDs: [String], title: String? = nil) -> some View {
+        MediaGrid(itemIDs: itemIDs, title: title, namespace: zoomTransition) { itemID in
+            selectedItemID = itemID
         }
     }
 

@@ -126,9 +126,12 @@ nonisolated extension Paths.GetItemsParameters {
             limit: limit,
             isRecursive: true,
             sortOrder: [.descending],
-            fields: standardFields,
+            fields: [],
             includeItemTypes: [.movie, .series],
-            sortBy: [.communityRating]
+            sortBy: [.communityRating],
+            enableUserData: false,
+            enableTotalRecordCount: false,
+            enableImages: false
         )
     }
 
@@ -137,12 +140,17 @@ nonisolated extension Paths.GetItemsParameters {
         userID: String?,
         limit: Int = 20
     ) -> Paths.GetItemsParameters {
-        standard(
+        Paths.GetItemsParameters(
             userID: userID,
+            limit: limit,
+            isRecursive: true,
+            sortOrder: [.descending],
+            fields: [],
             includeItemTypes: [.movie],
             sortBy: [.dateCreated],
-            sortOrder: [.descending],
-            limit: limit
+            enableUserData: false,
+            enableTotalRecordCount: false,
+            enableImages: false
         )
     }
 
@@ -151,12 +159,17 @@ nonisolated extension Paths.GetItemsParameters {
         userID: String?,
         limit: Int = 20
     ) -> Paths.GetItemsParameters {
-        standard(
+        Paths.GetItemsParameters(
             userID: userID,
+            limit: limit,
+            isRecursive: true,
+            sortOrder: [.descending],
+            fields: [],
             includeItemTypes: [.series],
             sortBy: [.dateCreated],
-            sortOrder: [.descending],
-            limit: limit
+            enableUserData: false,
+            enableTotalRecordCount: false,
+            enableImages: false
         )
     }
 

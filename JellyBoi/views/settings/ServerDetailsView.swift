@@ -2,86 +2,94 @@
 //  ServerDetailsView.swift
 //  JellyBoi
 //
-//  Created by Garrett Butchko on 11/04/26.
+//  Created by Garrett Butchko on 8/29/26.
 //
 
 import SwiftUI
 import BaseColors
-import StatusOverlayKit
 import JellyfinAPI
 
 struct ServerDetailsView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
-    @Environment(NetworkMonitor.self) private var networkMonitor
+    @Environment(DownloadsViewModel.self) private var downloadsViewModel
 
     @State private var isSyncing = false
-    @State private var isRefreshingArtwork = false
+    @State private var syncError: String?
 
     var body: some View {
         List {
             // MARK: - Server Info
             Section {
                 LabeledContent {
-                    Text(serverViewModel.serverName ?? "Unknown")
-                        .foregroundStyle(Color.mainOpp)
+                    Text(serverViewModel.serverName ?? "Jellyfin Server")
+                        .foregroundStyle(Color.mainOpp.opacity(0.8))
                 } label: {
                     Text("Server Name")
                 }
 
-                if let urlString = serverViewModel.serverURL?.absoluteString {
+                if let url = serverViewModel.serverURL {
                     LabeledContent {
-                        Text(urlString)
+                        Text(url.absoluteString)
+                            .foregroundStyle(Color.mainOpp.opacity(0.8))
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .foregroundStyle(Color.mainOpp.opacity(0.8))
                     } label: {
                         Text("Address")
+                    }
+                }
+
+                if let version = serverViewModel.serverVersion {
+                    LabeledContent {
+                        Text(version)
+                            .foregroundStyle(Color.mainOpp.opacity(0.8))
+                    } label: {
+                        Text("Version")
                     }
                 }
 
                 LabeledContent {
                     HStack(spacing: 6) {
                         Circle()
-                            .fill(networkStatusColor)
+                            .fill(serverViewModel.isConnected ? Color.green : Color.red)
                             .frame(width: 8, height: 8)
-                        Text(networkStatusText)
-                            .foregroundStyle(Color.mainOpp)
+                        Text(serverViewModel.isConnected ? "Connected" : "Disconnected")
+                            .foregroundStyle(Color.mainOpp.opacity(0.8))
                     }
                 } label: {
-                    Text("Connection Status")
+                    Text("Status")
                 }
             } header: {
-                Text("Server Details")
+                Text("Server")
             }
 
-            // MARK: - User Account
+            // MARK: - User Profile
             Section {
-                LabeledContent {
-                    Text(serverViewModel.currentUser?.name ?? "Unknown")
-                        .foregroundStyle(Color.mainOpp)
-                } label: {
-                    Text("Username")
-                }
-
-                if let id = serverViewModel.currentUser?.id {
+                if let user = serverViewModel.currentUser {
                     LabeledContent {
-                        Text(id)
-                            .font(.system(.caption, design: .monospaced))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .foregroundStyle(Color.mainOpp.opacity(0.6))
+                        Text(user.name ?? "User")
+                            .foregroundStyle(Color.mainOpp.opacity(0.8))
                     } label: {
-                        Text("User ID")
+                        Text("Username")
                     }
-                }
 
-                if let hasPassword = serverViewModel.currentUser?.hasPassword {
+                    if let id = user.id {
+                        LabeledContent {
+                            Text(id)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(Color.mainOpp.opacity(0.6))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        } label: {
+                            Text("User ID")
+                        }
+                    }
+
                     LabeledContent {
-                        Text(hasPassword ? "Protected" : "None")
-                            .foregroundStyle(Color.mainOpp.opacity(0.7))
+                        Text(user.hasPassword == true ? "Yes" : "No")
+                            .foregroundStyle(Color.mainOpp.opacity(0.8))
                     } label: {
-                        Text("Password")
+                        Text("Has Password")
                     }
                 }
             } header: {
@@ -91,28 +99,28 @@ struct ServerDetailsView: View {
             // MARK: - Library Sync
             Section {
                 LabeledContent {
-                    Text("\(libraryViewModel.movies.count)")
+                    Text("\(libraryViewModel.movieIDs.count)")
                         .foregroundStyle(Color.mainOpp.opacity(0.8))
                 } label: {
                     Text("Movies Cached")
                 }
 
                 LabeledContent {
-                    Text("\(libraryViewModel.tvShows.count)")
+                    Text("\(libraryViewModel.tvShowIDs.count)")
                         .foregroundStyle(Color.mainOpp.opacity(0.8))
                 } label: {
                     Text("TV Shows Cached")
                 }
 
                 LabeledContent {
-                    Text("\(libraryViewModel.episodes.count)")
+                    Text("\(libraryViewModel.episodeIDs.count)")
                         .foregroundStyle(Color.mainOpp.opacity(0.8))
                 } label: {
                     Text("Episodes Cached")
                 }
 
                 LabeledContent {
-                    Text("\(libraryViewModel.collections.count)")
+                    Text("\(libraryViewModel.collectionIDs.count)")
                         .foregroundStyle(Color.mainOpp.opacity(0.8))
                 } label: {
                     Text("Collections Cached")
@@ -123,96 +131,52 @@ struct ServerDetailsView: View {
                 } label: {
                     HStack {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                        Text("Sync Media Library Now")
-                        Spacer()
-                        if isSyncing {
-                            ProgressView()
-                        }
+                            .rotationEffect(.degrees(isSyncing ? 360 : 0))
+                            .animation(
+                                isSyncing
+                                    ? .linear(duration: 1).repeatForever(autoreverses: false)
+                                    : .default,
+                                value: isSyncing
+                            )
+                        Text(isSyncing ? "Syncing..." : "Sync Library Now")
                     }
                 }
-                .disabled(isSyncing || isRefreshingArtwork || serverViewModel.client == nil)
+                .disabled(isSyncing || !serverViewModel.isConnected)
 
-                Button {
-                    refreshArtwork()
+                if let syncError {
+                    Text(syncError)
+                        .font(.caption)
+                        .foregroundStyle(Color.red)
+                }
+            } header: {
+                Text("Library Cache")
+            }
+
+            // MARK: - Sign Out
+            Section {
+                Button(role: .destructive) {
+                    serverViewModel.signOut()
                 } label: {
                     HStack {
-                        Image(systemName: "arrow.clockwise")
-                        Text("Refresh Media Artwork")
                         Spacer()
-                        if isRefreshingArtwork {
-                            ProgressView()
-                        }
+                        Text("Sign Out")
+                            .foregroundStyle(Color.red)
+                        Spacer()
                     }
                 }
-                .disabled(isRefreshingArtwork || isSyncing || serverViewModel.client == nil)
-            } header: {
-                Text("Library Sync")
-            } footer: {
-                Text("Fetches fresh library items, resume positions, and media artwork directly from your Jellyfin server.")
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.bg.ignoresSafeArea())
-        .navigationTitle("Server & Network")
+        .navigationTitle("Server Details")
         .navigationBarTitleDisplayMode(.inline)
     }
-
-    // MARK: - Network Status Helpers
-
-    private var networkStatusColor: Color {
-        if !networkMonitor.isConnected {
-            return .red
-        }
-        if networkMonitor.isConstrained {
-            return .orange
-        }
-        return .green
-    }
-
-    private var networkStatusText: String {
-        if !networkMonitor.isConnected {
-            return "Offline"
-        }
-        if networkMonitor.isConstrained {
-            return "Low Data Mode"
-        }
-        if networkMonitor.isExpensive {
-            return "Cellular Data"
-        }
-        return "Connected (Wi-Fi)"
-    }
-
-    // MARK: - Actions
 
     private func syncLibrary() {
         guard let client = serverViewModel.client else { return }
         isSyncing = true
-
+        syncError = nil
         Task {
-            await libraryViewModel.refresh(using: client, userID: serverViewModel.currentUser?.id)
+            await libraryViewModel.refresh(using: client)
             isSyncing = false
-            TransientStatusSignal.shared.pending = StatusMessage(
-                title: "Library Synced",
-                subtitle: "Latest items updated",
-                icon: "arrow.triangle.2.circlepath",
-                tint: .green
-            )
-        }
-    }
-
-    private func refreshArtwork() {
-        guard let client = serverViewModel.client, !isRefreshingArtwork else { return }
-        isRefreshingArtwork = true
-
-        Task {
-            await libraryViewModel.refreshMediaArtwork(using: client, userID: serverViewModel.currentUser?.id)
-            isRefreshingArtwork = false
-            TransientStatusSignal.shared.pending = StatusMessage(
-                title: "Artwork Refreshed",
-                subtitle: "Updated media artwork",
-                icon: "arrow.clockwise",
-                tint: .green
-            )
         }
     }
 }

@@ -18,32 +18,32 @@ struct MediaResultsView: View {
     }
 
     let category: Category
-    let items: [BaseItemDto]
+    let itemIDs: [String]
 
-    init(category: Category, items: [BaseItemDto]) {
+    init(category: Category, itemIDs: [String]) {
         self.category = category
-        self.items = items
+        self.itemIDs = itemIDs
     }
 
-    init(genre: String, items: [BaseItemDto]) {
+    init(genre: String, itemIDs: [String]) {
         self.category = .genre(genre)
-        self.items = items
+        self.itemIDs = itemIDs
     }
 
-    init(collections items: [BaseItemDto]) {
+    init(collections itemIDs: [String]) {
         self.category = .collections
-        self.items = items
+        self.itemIDs = itemIDs
     }
 
     init(
         title: String,
-        items: [BaseItemDto],
+        itemIDs: [String],
         emptyIcon: String = "film",
         emptyTitle: String = "No Items",
         emptyMessage: String = "No items found."
     ) {
         self.category = .custom(title: title, emptyIcon: emptyIcon, emptyTitle: emptyTitle, emptyMessage: emptyMessage)
-        self.items = items
+        self.itemIDs = itemIDs
     }
 
     var title: String {
@@ -78,30 +78,33 @@ struct MediaResultsView: View {
         }
     }
 
+    @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
     @Namespace private var zoomTransition
-    @State private var selectedItem: BaseItemDto?
+    @State private var selectedItemID: String?
 
     var body: some View {
         ScrollToTopScrollView {
-            if items.isEmpty {
+            if itemIDs.isEmpty {
                 EmptyStateView(
                     icon: emptyIcon,
                     title: emptyTitle,
                     message: emptyMessage
                 )
             } else {
-                MediaGrid(items: items, namespace: zoomTransition) { item in
-                    selectedItem = item
+                MediaGrid(itemIDs: itemIDs, namespace: zoomTransition) { itemID in
+                    selectedItemID = itemID
                 }
                 .transition(.opacity)
             }
         }
-        .navigationDestination(item: $selectedItem) { item in
-            MediaDetailView(item: item)
-                .navigationTransition(.zoom(sourceID: item.zoomTransitionID(), in: zoomTransition))
+        .navigationDestination(item: $selectedItemID) { itemID in
+            if let item = libraryViewModel?.item(for: itemID) {
+                MediaDetailView(item: item)
+                    .navigationTransition(.zoom(sourceID: item.zoomTransitionID(), in: zoomTransition))
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .dismissMediaDetailToRoot)) { _ in
-            selectedItem = nil
+            selectedItemID = nil
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.large)

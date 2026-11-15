@@ -19,84 +19,85 @@ class HomeViewModel {
         if let library { self.library = library }
     }
 
-    var movies: [BaseItemDto] {
+    var movieIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows { return [] }
         #endif
-        return library.movies
+        return library.movieIDs
     }
-    var tvShows: [BaseItemDto] {
+    var tvShowIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows { return [] }
         #endif
-        return library.tvShows
+        return library.tvShowIDs
     }
-    var episodes: [BaseItemDto] {
+    var episodeIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows { return [] }
         #endif
-        return library.episodes
+        return library.episodeIDs
     }
-    var collections: [BaseItemDto] {
+    var collectionIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideCollections { return [] }
         #endif
-        return library.collections
+        return library.collectionIDs
     }
-    var recommended: [BaseItemDto] {
+    var recommendedIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideTopRated { return [] }
         #endif
-        return library.recommended
+        return library.recommendedIDs
     }
-    var recentlyAddedMovies: [BaseItemDto] {
+    var recentlyAddedMovieIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideRecentlyAddedMovies { return [] }
         #endif
-        return library.recentlyAddedMovies
+        return library.recentlyAddedMovieIDs
     }
-    var recentlyAddedShows: [BaseItemDto] {
+    var recentlyAddedShowIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideRecentlyAddedShows { return [] }
         #endif
-        return library.recentlyAddedShows
+        return library.recentlyAddedShowIDs
     }
-    var inProgressMovies: [BaseItemDto] {
+    var inProgressMovieIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideContinueWatching { return [] }
         #endif
-        return library.inProgressMovies
+        return library.inProgressMovieIDs
     }
-    var topWatchedMovies: [BaseItemDto] {
+    var topWatchedMovieIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideContinueWatching { return [] }
         #endif
-        return library.topWatchedMovies
+        return library.topWatchedMovieIDs
     }
-    var resumeShows: [BaseItemDto] {
+    var resumeShowIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideContinueShows { return [] }
         #endif
-        return library.resumeShows
+        return library.resumeShowIDs
     }
-    var favorites: [BaseItemDto] {
+    var favoriteIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows { return [] }
         #endif
-        return library.favorites
+        return library.favoriteIDs
     }
-    var completedMovies: [BaseItemDto] {
+    var completedMovieIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows { return [] }
         #endif
-        return library.completedMovies
+        return library.completedMovieIDs
     }
-    var watchedMovies: [BaseItemDto] {
+    var watchedMovieIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows { return [] }
         #endif
-        return library.watchedMovies
+        return library.watchedMovieIDs
     }
+
     var tvSeriesCount: Int { library.tvSeriesCount }
     var episodeCount: Int { library.episodeCount }
     var favoritesCount: Int { library.favoritesCount }
@@ -120,15 +121,15 @@ class HomeViewModel {
     // MARK: - Carousel Composition & State
 
     var carouselTitle: String {
-        (!topWatchedMovies.isEmpty || !resumeShows.isEmpty) ? "Continue Watching" : "Featured"
+        (!topWatchedMovieIDs.isEmpty || !resumeShowIDs.isEmpty) ? "Continue Watching" : "Featured"
     }
 
-    /// Items shown in the hero carousel. Precomputed in background by LibraryViewModel.
-    var carouselItems: [BaseItemDto] {
+    /// Item IDs shown in the hero carousel. Precomputed in background by LibraryViewModel.
+    var carouselItemIDs: [String] {
         #if DEBUG
         if DebugSettings.shared.hideAllHomeRows || DebugSettings.shared.hideCarousel { return [] }
         #endif
-        return library.carouselItems
+        return library.carouselItemIDs
     }
 
     /// Preserved carousel looped index so that navigating to another view and back
@@ -137,17 +138,21 @@ class HomeViewModel {
     var carouselSnappedIndex: Int? = nil
 
     /// The item currently selected/focused in the hero carousel based on carouselSnappedIndex.
-    var currentCarouselItem: BaseItemDto? {
-        guard !carouselItems.isEmpty else { return nil }
+    var currentCarouselItemID: String? {
+        guard !carouselItemIDs.isEmpty else { return nil }
         if let snapped = carouselSnappedIndex {
-            let count = carouselItems.count
-            guard count > 0 else { return carouselItems.first }
+            let count = carouselItemIDs.count
+            guard count > 0 else { return carouselItemIDs.first }
             let idx = ((snapped % count) + count) % count
-            if carouselItems.indices.contains(idx) {
-                return carouselItems[idx]
+            if carouselItemIDs.indices.contains(idx) {
+                return carouselItemIDs[idx]
             }
         }
-        return carouselItems.first
+        return carouselItemIDs.first
+    }
+
+    func item(for id: String) -> BaseItemDto? {
+        library.item(for: id)
     }
 
     func load(using client: JellyfinClient) async {

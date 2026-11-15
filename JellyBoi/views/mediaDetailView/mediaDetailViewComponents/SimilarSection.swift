@@ -45,12 +45,12 @@ extension MediaDetailView {
 
     private var similarItemsContent: some View {
         SectionRowMediaList(
-            items: detailVM.similarItems,
+            itemIDs: detailVM.similarItems.map{ $0.id! },
             namespace: relatedTransition,
             rowKey: "related",
             onSelect: { relatedItem, zoomID in
                 relatedZoomID = zoomID
-                selectedRelatedItem = relatedItem
+                selectedRelatedItem = libraryViewModel.item(for: relatedItem)
             },
             posterURL: { relatedItem in
                 guard let client = serverViewModel.client else { return nil }

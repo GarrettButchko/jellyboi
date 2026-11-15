@@ -105,13 +105,14 @@ struct TabsView: View {
     /// Keeps the floating download / scroll-to-top bar above the tab bar on every tab.
     private func tabContent<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .overlay(alignment: .bottom) {
+            .overlay(alignment: .bottomTrailing) {
                 if viewManager.selectedTab != .search {
                     ScrollTabBarOverlay(
                         isVisible: scrollOverlayCoordinator.isScrollToTopVisible,
                         action: scrollOverlayCoordinator.scrollToTop
                     )
                     .safeAreaPadding(.bottom, 8)
+                    .padding(.trailing, 16)
                 }
             }
     }
