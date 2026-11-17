@@ -1,80 +1,157 @@
-# 🪼 JellyBoi
-
 <div align="center">
 
-![Platform](https://img.shields.io/badge/Platform-iOS%20%7C%20iPadOS%20%7C%20macOS%20%7C%20tvOS%20%7C%20visionOS-blue?style=for-the-badge&logo=apple)
-![Swift](https://img.shields.io/badge/Swift-5.0%20%2F%206-F05138?style=for-the-badge&logo=swift&logoColor=white)
-![SwiftUI](https://img.shields.io/badge/SwiftUI-4.0+-007AFF?style=for-the-badge&logo=swift&logoColor=white)
-![Jellyfin](https://img.shields.io/badge/Jellyfin-Client-00A4DC?style=for-the-badge&logo=jellyfin&logoColor=white)
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3%20with%20App%20Store%20Exception-blue.svg?style=for-the-badge&logo=gnu)
+# JellyBoi
 
-**A sleek, modern, native Jellyfin client crafted in SwiftUI for Apple devices.**
+**A sleek, high-performance, native Jellyfin client crafted in SwiftUI for Apple devices.**
 
-[Features](#-features) • [Screenshots & UI](#-architecture--design) • [Tech Stack](#-tech-stack--dependencies) • [Getting Started](#-getting-started) • [Tags & Topics](#-repository-tags--topics)
+[![Platform](https://img.shields.io/badge/Platform-iOS%20%7C%20iPadOS%20%7C%20macOS%20%7C%20tvOS%20%7C%20visionOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://developer.apple.com/)
+[![Swift](https://img.shields.io/badge/Swift-5.10%20%2F%206.0-F05138?style=for-the-badge&logo=swift&logoColor=white)](https://swift.org)
+[![SwiftUI](https://img.shields.io/badge/SwiftUI-Liquid%20Glass-007AFF?style=for-the-badge&logo=swift&logoColor=white)](https://developer.apple.com/swiftui/)
+[![Jellyfin](https://img.shields.io/badge/Jellyfin-Client-00A4DC?style=for-the-badge&logo=jellyfin&logoColor=white)](https://jellyfin.org)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary%20%2F%20All%20Rights%20Reserved-red.svg?style=for-the-badge)](#license--copyright)
 
 </div>
 
 ---
 
-## 📖 Overview
+## Visual Showcase & Media Pipeline
 
-**JellyBoi** is an open-source, high-performance media client designed specifically for [Jellyfin](https://jellyfin.org) media servers. Built from the ground up using modern **SwiftUI** and Swift Concurrency, JellyBoi brings a fluid, responsive, and native streaming and offline playback experience to iOS, iPadOS, macOS, tvOS, and visionOS.
-
-Whether browsing your 4K movie library, catching up on Next Up episodes, or preparing offline downloads with on-device remuxing, JellyBoi delivers a refined Apple-first aesthetic.
-
----
-
-## ✨ Features
-
-- 🏠 **Dynamic Home Experience**
-  - **Hero Backdrops & Carousels**: Immersive, fluid previews for featured and trending titles.
-  - **Continue Watching & Next Up**: Instant resumption of interrupted movies and episodic television.
-  - **Recently Added**: Real-time carousels of newly synced movies, shows, and music.
-
-- 🎬 **Native Media Playback**
-  - **AVKit Player Engine**: Hardware-accelerated playback supporting AVPlayer.
-  - **Orientation Management**: Seamless orientation locking and rotation handling.
-  - **Playback Progress Sync**: Live status and watch percentage reporting back to your Jellyfin server.
-  - **In-Player Controls**: Fast seeking, audio & subtitle track switching, and debug diagnostics overlay.
-
-- 📥 **Offline Downloads & On-Device Remuxing**
-  - **Background Downloads**: Resilient background downloading using native `URLSession` background sessions with automatic retry logic.
-  - **Local Remuxing with FFmpeg**: On-device remuxing via `FFmpegKit` for formats requiring local container adjustments for Apple native playback.
-  - **Download Management**: Dedicated downloads sheet with live progress tracking, storage management, and offline playback support.
-
-- 🔍 **Ranked Media Search**
-  - **Instant Search**: Lightning-fast search across titles, series, artists, and people.
-  - **MediaSearchRanker**: Weighted ranking algorithm prioritizing exact matches, recent media, and popularity.
-  - **Dynamic Filters**: Filter results by media type, genre, and collections.
-
-- 🏷️ **Comprehensive Media Details**
-  - **Full Metadata**: Cast & crew credits, episode guides, collection sets, similar recommendations, and metadata tags with flow layout.
-  - **Quick Actions**: Mark favorite, toggle played/unplayed, download for offline, and quick stream.
-
-- 🔐 **Secure Authentication & Multi-Server**
-  - **Quick Connect**: Pair effortlessly with your Jellyfin server via Quick Connect code.
-  - **Credential Security**: Secure credential and token management stored inside the Apple Keychain (`KeychainStore`).
-  - **Automatic Session Restoration**: Instant re-authentication on launch.
+### Browse & Experience
+| Home & Discovery | Media Library | Detailed Media View |
+| :---: | :---: | :---: |
+| <img src="docs/assets/screenshots/home-view.png" width="240" alt="Home & Discovery"/> | <img src="docs/assets/screenshots/library-view.png" width="240" alt="Media Library"/> | <img src="docs/assets/screenshots/media-detail-view.png" width="240" alt="Media Detail View"/> |
 
 ---
 
-## 🛠 Tech Stack & Dependencies
-
-JellyBoi leverages modern Apple frameworks and select open-source libraries:
-
-| Layer | Technologies |
-|---|---|
-| **UI & Presentation** | SwiftUI, Liquid Glass/Materials, BaseColors, ScalingHeaderScrollView, MarqueeText, SkeletonUI |
-| **State & Architecture** | Swift Concurrency (`async`/`await`, `Task`), Swift Observation (`@Observable`, `@Bindable`, `@Environment`) |
-| **Media & Audio** | AVFoundation, AVKit, FFmpegKit (on-device remuxing) |
-| **Networking & API** | JellyfinAPI, Get, URLSession background tasks |
-| **Image Caching** | SDWebImageSwiftUI, SDWebImage |
-| **Persistence & Security** | KeychainStore (Security framework), Local File Storage |
-| **Diagnostics & Logging** | LoggingKit (`AppLogger`), StatusOverlayKit |
+### Player, Search & Deep Metadata
+| Native Video Player | Ranked Search | Cast & Crew Credits |
+| :---: | :---: | :---: |
+| <img src="docs/assets/screenshots/player-view.png" width="240" alt="Native Video Player"/> | <img src="docs/assets/screenshots/search-view.png" width="240" alt="Ranked Search"/> | <img src="docs/assets/screenshots/cast-crew-view.png" width="240" alt="Cast & Crew Credits"/> |
 
 ---
 
-## 📱 Requirements
+## Overview
+
+**JellyBoi** is a premium, native Apple client engineered specifically for [Jellyfin](https://jellyfin.org) personal media servers. Designed from the ground up utilizing modern **SwiftUI**, Swift Concurrency, and Apple's AVFoundation media pipelines, JellyBoi delivers a deeply integrated streaming and offline experience across iOS, iPadOS, macOS, tvOS, and visionOS.
+
+Equipped with an on-device FFmpeg remuxing engine, background URLSession download pipeline, ActivityKit Live Activities, and a weighted multi-attribute search ranker, JellyBoi provides a blazing fast and visually stunning media experience.
+
+---
+
+## Key Features
+
+### Native Playback Engine
+- **Hardware-Accelerated Streaming**: Built on AVFoundation and AVKit with direct streaming and server-driven adaptive HLS fallback.
+- **Smart Orientation Management**: Smooth orientation handling and aspect-ratio preservation across all device sizes.
+- **Real-Time Playback Synchronization**: Live watch-percentage, resume timestamps, and playback state reporting synced back to the Jellyfin server.
+- **On-Screen Audio & Subtitle Control**: Switch audio streams and embedded/external subtitle tracks dynamically with zero playback stall.
+- **Diagnostics Overlay**: Real-time bitrates, audio channels, dropped frames, and stream container specs for power users.
+
+### Offline Media Pipeline & On-Device Remuxing
+- **Resilient Background Transfers**: Native `URLSessionDownloadTask` background management with auto-resume, battery-conscious queuing, and network handoff.
+- **On-Device FFmpeg Remuxing (`LocalMediaRemuxer`)**: Fast, lossless container remuxing (MKV/WebM to MP4) using low-level `Libavformat` and `Libavcodec` on background utility threads to ensure native Apple hardware decoder compatibility.
+- **Live Activities & Dynamic Island**: Real-time download progress tracking, percentage meters, and thumbnail previews via ActivityKit.
+- **Offline Storage Management**: Dedicated downloads vault with offline playback, storage cleanup, and grouped media browsing.
+
+### Ranked Media Search
+- **MediaSearchRanker**: Custom multi-factor scoring engine evaluating title match precision, release recency, popularity, and media kind weighting.
+- **Instant Diacritic-Insensitive Search**: Normalized Unicode search across movies, TV series, episodes, collections, and people.
+- **Dynamic Filter Pills**: Instant narrowing by media type, genre, played status, and favorite flags.
+
+### Refined Apple-First UI
+- **Immersive Hero Carousels**: Dynamic backdrop scaling, blur transitions, and responsive parallax headers.
+- **Rich Cast & Crew Views**: Detailed cast profiles, character roles, person bios, and filmography cross-linking.
+- **Continuous Watching & Next Up**: Instant single-tap resumption for interrupted cinema and television queues.
+- **Liquid Glass Aesthetic**: Glassmorphism styling, native Apple materials, and dynamic theme palette support.
+
+### Security & Multi-Server Management
+- **Quick Connect**: Seamless pairing with home servers using one-time verification codes.
+- **Keychain Token Security**: Session credentials and auth tokens securely sealed inside the Apple Keychain via `KeychainStore`.
+- **Automatic Reconnection**: Resilient websocket and REST session restoration after network switches.
+
+---
+
+## System Architecture
+
+```mermaid
+graph TD
+    subgraph Presentation ["Presentation Layer (SwiftUI + Liquid Glass)"]
+        HOME["HomeView & Hero Carousels"]
+        LIB["Library & Collection Views"]
+        DETAIL["MediaDetailView & Cast Crew"]
+        PLAYER["PlayerView & AVKit Controls"]
+        SEARCH["Search & Ranked Results"]
+    end
+
+    subgraph State ["State & Observation Layer"]
+        HVM["HomeViewModel"]
+        MDVM["MediaDetailViewModel"]
+        SVM["SearchViewModel"]
+        PVM["PlayerViewModel"]
+        DM["DownloadsManager"]
+    end
+
+    subgraph Processing ["Core Media & Background Pipelines"]
+        PSR["PlaybackStreamResolver"]
+        MSR["MediaSearchRanker"]
+        LMR["LocalMediaRemuxer (Libavformat / FFmpeg)"]
+        AC["DownloadActivityCoordinator (ActivityKit)"]
+    end
+
+    subgraph Hardware ["Apple Media & System Frameworks"]
+        AVP["AVFoundation / AVPlayer Engine"]
+        BG["URLSession Background Transfers"]
+        KC["KeychainStore (Security Framework)"]
+    end
+
+    subgraph Remote ["Backend & Networking"]
+        JF["Jellyfin REST API & Realtime WebSockets"]
+    end
+
+    HOME --> HVM
+    LIB --> HVM
+    DETAIL --> MDVM
+    SEARCH --> SVM
+    PLAYER --> PVM
+
+    HVM --> JF
+    MDVM --> JF
+    SVM --> MSR
+    MSR --> JF
+
+    PVM --> PSR
+    PSR --> AVP
+    PSR --> JF
+
+    DM --> BG
+    DM --> LMR
+    DM --> AC
+    BG --> JF
+
+    PVM --> KC
+    HVM --> KC
+```
+
+---
+
+## Tech Stack & Dependencies
+
+| Component | Framework / Library | Role |
+| :--- | :--- | :--- |
+| **Presentation** | `SwiftUI`, `BaseColors`, `Liquid Glass` | Modern declarative UI, materials, and themes |
+| **Animation & Headers** | `ScalingHeaderScrollView`, `MarqueeText`, `SkeletonUI` | Fluid parallax scrolling and animated placeholders |
+| **State & Concurrency** | Swift Observation (`@Observable`, `@State`), Swift Concurrency | Modern, Combine-free reactive state and async tasks |
+| **Media Playback** | `AVKit`, `AVFoundation` | Native hardware-accelerated video decoding |
+| **Remuxing Pipeline** | `FFmpegKit`, `Libavformat`, `Libavcodec`, `Libavutil` | On-device container remuxing for Apple compatibility |
+| **Networking & API** | `JellyfinAPI`, `Get`, `URLSession` Background Tasks | Type-safe REST communication and background downloads |
+| **Live Activities** | `ActivityKit` | Dynamic Island and Lock Screen download progress |
+| **Image Pipeline** | `SDWebImageSwiftUI`, `SDWebImage` | Asynchronous image decoding, memory caching, and disk caching |
+| **Security** | `KeychainStore` (`Security.framework`) | Encrypted credential and token persistence |
+| **Logging & Overlay** | `LoggingKit` (`AppLogger`), `StatusOverlayKit` | Unified structured diagnostics and HUD indicators |
+
+---
+
+## Requirements
 
 - **iOS / iPadOS**: 18.0 or later
 - **macOS**: 15.0 or later *(Designed for iPad / Mac Catalyst)*
@@ -85,7 +162,7 @@ JellyBoi leverages modern Apple frameworks and select open-source libraries:
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Clone the Repository
 
@@ -100,52 +177,37 @@ cd jellyboi
 open JellyBoi.xcodeproj
 ```
 
-Xcode will automatically fetch the required Swift Package dependencies defined in the project.
+Xcode will automatically resolve all Swift Package dependencies.
 
 ### 3. Build & Run
 
-1. Select your target device (e.g., iPhone 16 Pro Simulator or a physical device).
+1. Select your target device (e.g., iPhone 16 Pro Simulator or physical iOS device).
 2. Choose the **JellyBoi** scheme.
-3. Press `Cmd + R` to build and run the app.
-4. Enter your Jellyfin server URL and log in to begin streaming.
+3. Press `Cmd + R` to compile and launch.
+4. Input your Jellyfin server address and sign in or use Quick Connect.
 
 ---
 
-## 🏷 Repository Tags & Topics
+## GitHub Repository Metadata
 
-To optimize project discoverability on GitHub, the following topics/tags are assigned to this project:
+Use these values when configuring your GitHub repository settings:
 
+### Description
+> Sleek, high-performance native Jellyfin client crafted in SwiftUI for iOS, iPadOS, macOS, tvOS, and visionOS with on-device remuxing, offline downloads, and Live Activities.
+
+### Topics / Tags
 ```text
-jellyfin, jellyfin-client, swift, swiftui, ios, ipados, macos, tvos, visionos,
-media-player, video-streaming, ffmpeg, ffmpegkit, avplayer, offline-downloads
-```
-
-### Git Release Tagging
-
-To create and push a git release tag:
-
-```bash
-# Tag the current release version
-git tag -a v1.0.0 -m "Release v1.0.0 - Initial release with offline playback and modern SwiftUI UI"
-
-# Push tag to remote
-git push origin v1.0.0
+jellyfin, jellyfin-client, swift, swiftui, ios, ipados, macos, tvos, visionos, avplayer, avfoundation, ffmpeg, ffmpegkit, remuxing, offline-downloads, live-activities, dynamic-island, media-player, video-streaming, entertainment
 ```
 
 ---
 
-## 🤝 Contributing
+## License & Copyright
 
-Contributions are welcome! If you encounter a bug, have a feature suggestion, or want to contribute code:
+**Copyright (c) 2024-present Garrett Butchko. All rights reserved.**
 
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feature/amazing-feature`.
-3. Commit your changes: `git commit -m "Add amazing feature"`.
-4. Push to the branch: `git push origin feature/amazing-feature`.
-5. Open a Pull Request.
+The source code, design assets, and documentation contained in this repository are proprietary and confidential. This repository is source-available solely for portfolio viewing, learning, and architectural evaluation purposes.
 
----
+No permission is granted to copy, modify, distribute, sublicense, or sell copies of the software, or to launch commercial services derived from this codebase, without explicit prior written authorization from the copyright holder.
 
-## 📄 License
-
-This project is licensed under the [GNU General Public License v3.0](LICENSE) with an **Apple App Store Exception** (granting permission to convey and distribute through Apple's App Store under Apple's standard terms) - see the [LICENSE](LICENSE) file for details.
+For licensing inquiries or commercial use permissions, please contact Garrett Butchko.
