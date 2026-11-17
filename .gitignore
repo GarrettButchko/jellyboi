@@ -1,0 +1,46 @@
+# Xcode
+## User settings & local workspaces
+xcuserdata/
+*.xcuserdatad/
+*.xcbkptlist
+*.xcuserstate
+
+## Build products & artifacts
+DerivedData/
+build/
+*.build/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## Swift Package Manager caches
+.build/
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+
+## Shared workspace whitelist
+!default.mode1v3
+!default.mode2v3
+!default.pbxuser
+!default.perspectivev3
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata/swiftpm/Package.resolved
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Secrets & Certificates
+*.env
+*.env.*
+*.p12
+*.mobileprovision
+*.cer
+*.key
+*.pem

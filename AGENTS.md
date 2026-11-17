@@ -33,7 +33,7 @@ These instructions guide AI agents working in this codebase. Always adhere stric
 
 ## 4. Pre-Coding Checklist
 Before writing or generating new code:
-1. **Search Existing Helpers**: Check [`JellyBoi/views/helper/`](file:///Users/garrettbutchko/Documents/Projects/Apps/iOS/Jellyboi%20All/JellyBoi/JellyBoi/views/helper/) before creating any new reusable UI component (buttons, progress bars, shadows, headers, etc.).
+1. **Search Existing Helpers**: Check `JellyBoi/views/helper/` before creating any new reusable UI component (buttons, progress bars, shadows, headers, etc.).
 2. **Inspect Existing ViewModels**: Understand the data models and available properties before inventing new ones.
 3. **Check Dependencies**: Look at existing Swift packages (`JellyfinAPI`, `SDWebImageSwiftUI`, etc.) before writing custom utilities.
 
