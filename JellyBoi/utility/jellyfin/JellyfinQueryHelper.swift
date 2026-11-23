@@ -487,6 +487,15 @@ extension JellyfinClient {
         try await send(Paths.getPlaybackInfo(itemID: itemID, userID: userID)).value
     }
 
+    /// Fetches posted playback info for an item with a device profile and playback options.
+    public func fetchPostedPlaybackInfo(
+        itemID: String,
+        playbackDto: PlaybackInfoDto,
+        parameters: Paths.GetPostedPlaybackInfoParameters? = nil
+    ) async throws -> PlaybackInfoResponse {
+        try await send(Paths.getPostedPlaybackInfo(itemID: itemID, parameters: parameters, playbackDto)).value
+    }
+
     /// Reports playback start to server.
     public func reportPlaybackStart(_ state: PlaybackStateInfo) async throws {
         _ = try await send(Paths.reportPlaybackStart(state))

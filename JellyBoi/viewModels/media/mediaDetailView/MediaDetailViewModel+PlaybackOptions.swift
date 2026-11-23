@@ -1,5 +1,5 @@
 //
-//  PlaybackOptions.swift
+//  MediaDetailViewModel+PlaybackOptions.swift
 //  JellyBoi
 //
 //  Created by Garrett Butchko on 9/2/26.
@@ -9,14 +9,13 @@ import Foundation
 import JellyfinAPI
 import LoggingKit
 
-// MARK: - Playback Configuration (Video Quality / Bitrate, Audio, Subtitles)
+// MARK: - Playback Configuration (Video Quality / Bitrate, Audio, Subtitles, Movie Versions)
 
 extension MediaDetailViewModel {
 
     struct QualityOption: Identifiable, Hashable {
         let id: String
         let label: String
-        let mediaSourceID: String?
         let maxBitrate: Int?
     }
 
@@ -53,12 +52,42 @@ extension MediaDetailViewModel {
         420_000
     ]
 
+    // MARK: - Movie Files / Media Sources
+
+    var hasMultipleMediaSources: Bool {
+        mediaSources.count > 1
+    }
+
     var selectedMediaSource: MediaSourceInfo? {
         if let id = selectedMediaSourceID {
             return mediaSources.first(where: { $0.id == id }) ?? mediaSources.first
         }
         return mediaSources.first
     }
+
+    var selectedMediaSourceName: String {
+        guard let source = selectedMediaSource else { return "Default" }
+        return mediaSourceName(for: source)
+    }
+
+    func mediaSourceName(for source: MediaSourceInfo) -> String {
+        let bitText = sourceBitrateText(for: source)
+        if let sName = source.name, !sName.isEmpty {
+            return "\(sName)\(bitText)"
+        }
+        if let container = source.container, !container.isEmpty {
+            return "\(container.uppercased())\(bitText)"
+        }
+        return "Version\(bitText)"
+    }
+
+    private func sourceBitrateText(for source: MediaSourceInfo) -> String {
+        let sBitrate = (source.bitrate.flatMap { $0 > 0 ? $0 : nil })
+            ?? (source.mediaStreams ?? []).first(where: { $0.type == .video })?.bitRate.flatMap { $0 > 0 ? $0 : nil }
+        return sBitrate.map { " (\(formatBitrate($0)))" } ?? ""
+    }
+
+    // MARK: - Streams for Active Source
 
     var availableAudioStreams: [MediaStream] {
         guard let source = selectedMediaSource else { return [] }
@@ -72,7 +101,7 @@ extension MediaDetailViewModel {
 
     var currentVideoStream: MediaStream? {
         guard let source = selectedMediaSource else { return nil }
-        return (source.mediaStreams ?? []).first(where: { $0.type == .video })
+        return (source.mediaStreams ?? []).first(where: { $0.type == .video } )
     }
 
     func formatBitrate(_ bps: Int) -> String {
@@ -98,43 +127,22 @@ extension MediaDetailViewModel {
         return nil
     }
 
+    // MARK: - Quality Options (Strictly Bitrate/Resolution for Active File)
+
     var availableQualities: [QualityOption] {
         var options: [QualityOption] = []
 
-        if mediaSources.count > 1 {
-            for source in mediaSources {
-                let sBitrate = (source.bitrate.flatMap { $0 > 0 ? $0 : nil })
-                    ?? (source.mediaStreams ?? []).first(where: { $0.type == .video })?.bitRate.flatMap { $0 > 0 ? $0 : nil }
-                let bitText = sBitrate.map { " (\(formatBitrate($0)))" } ?? ""
-                let name: String
-                if let sName = source.name, !sName.isEmpty {
-                    name = "\(sName)\(bitText)"
-                } else if sBitrate != nil {
-                    name = "Original\(bitText)"
-                } else {
-                    name = "Version"
-                }
-                options.append(QualityOption(
-                    id: source.id ?? UUID().uuidString,
-                    label: name,
-                    mediaSourceID: source.id,
-                    maxBitrate: nil
-                ))
-            }
+        let origLabel: String
+        if let origBitrate = currentBitrate {
+            origLabel = "Original (\(formatBitrate(origBitrate)))"
         } else {
-            let origLabel: String
-            if let origBitrate = currentBitrate {
-                origLabel = "Original (\(formatBitrate(origBitrate)))"
-            } else {
-                origLabel = "Auto (Original)"
-            }
-            options.append(QualityOption(
-                id: "orig",
-                label: origLabel,
-                mediaSourceID: selectedMediaSourceID,
-                maxBitrate: nil
-            ))
+            origLabel = "Auto (Original)"
         }
+        options.append(QualityOption(
+            id: "orig",
+            label: origLabel,
+            maxBitrate: nil
+        ))
 
         let presetsToShow: [Int]
         if let origBitrate = currentBitrate {
@@ -149,7 +157,6 @@ extension MediaDetailViewModel {
             options.append(QualityOption(
                 id: "bitrate-\(preset)",
                 label: label,
-                mediaSourceID: selectedMediaSourceID,
                 maxBitrate: preset
             ))
         }
@@ -161,15 +168,6 @@ extension MediaDetailViewModel {
         if let maxBitrate = selectedMaxBitrate {
             return formatBitrate(maxBitrate)
         }
-        if mediaSources.count > 1, let source = selectedMediaSource {
-            let sBitrate = (source.bitrate.flatMap { $0 > 0 ? $0 : nil })
-                ?? currentVideoStream?.bitRate.flatMap { $0 > 0 ? $0 : nil }
-            let bitText = sBitrate.map { " (\(formatBitrate($0)))" } ?? ""
-            if let sName = source.name, !sName.isEmpty {
-                return "\(sName)\(bitText)"
-            }
-            return sBitrate.map { "Original (\(formatBitrate($0)))" } ?? "Original"
-        }
         if let origBitrate = currentBitrate {
             return "Original (\(formatBitrate(origBitrate)))"
         }
@@ -180,21 +178,15 @@ extension MediaDetailViewModel {
         if let maxBitrate = option.maxBitrate {
             return selectedMaxBitrate == maxBitrate
         }
-        if selectedMaxBitrate != nil {
-            return false
-        }
-        if let sourceID = option.mediaSourceID {
-            return selectedMediaSourceID == sourceID
-        }
-        return true
+        return selectedMaxBitrate == nil
     }
 
     func selectQuality(_ option: QualityOption) {
-        if let sourceID = option.mediaSourceID {
-            selectMediaSource(sourceID)
-        }
         selectedMaxBitrate = option.maxBitrate
+        hasCustomPlaybackOptions = true
     }
+
+    // MARK: - Audio Stream Formatting
 
     func audioStreamLabel(for stream: MediaStream) -> String {
         let language = stream.localizedLanguage ?? stream.language ?? stream.displayTitle ?? "Audio"
@@ -219,6 +211,8 @@ extension MediaDetailViewModel {
         }
         return audioStreamLabel(for: stream)
     }
+
+    // MARK: - Subtitle Stream Formatting
 
     func subtitleStreamLabel(for stream: MediaStream) -> String {
         let language = stream.localizedLanguage ?? stream.language ?? stream.displayTitle ?? "Subtitle"
@@ -258,16 +252,35 @@ extension MediaDetailViewModel {
         return subtitleStreamLabel(for: stream)
     }
 
-    func loadPlaybackOptions(for item: BaseItemDto, client: JellyfinClient?, userID: String?) async {
-        if let itemSources = item.mediaSources, !itemSources.isEmpty {
-            self.mediaSources = itemSources
-            configureInitialStreamSelection()
+    // MARK: - Native Playback DTO Bundle
+
+    var defaultPlaybackInfo: PlaybackInfoDto {
+        PlaybackInfoDto(userID: serverViewModel?.currentUser?.id)
+    }
+
+    var currentPlaybackInfo: PlaybackInfoDto {
+        guard hasCustomPlaybackOptions else {
+            return defaultPlaybackInfo
         }
+        return PlaybackInfoDto(
+            audioStreamIndex: selectedAudioStreamIndex,
+            maxStreamingBitrate: selectedMaxBitrate,
+            mediaSourceID: selectedMediaSourceID,
+            subtitleStreamIndex: (selectedSubtitleStreamIndex == nil || selectedSubtitleStreamIndex == -1) ? nil : selectedSubtitleStreamIndex,
+            userID: serverViewModel?.currentUser?.id
+        )
+    }
 
-        guard let client, let itemID = item.id else { return }
+    // MARK: - Playback Options Loading (ID-Only)
 
+    func loadPlaybackOptions(itemID: String, client: JellyfinClient?, userID: String?) async {
         if mediaSources.isEmpty {
             isLoadingPlaybackOptions = true
+        }
+
+        guard let client else {
+            isLoadingPlaybackOptions = false
+            return
         }
 
         do {
@@ -277,11 +290,23 @@ extension MediaDetailViewModel {
                 configureInitialStreamSelection()
             }
         } catch {
-            AppLogger.warning("Failed to fetch playback info: \(error.localizedDescription)")
+            AppLogger.warning("Failed to fetch playback info for \(itemID): \(error.localizedDescription)")
         }
 
         isLoadingPlaybackOptions = false
     }
+
+    func loadPlaybackOptions(for item: BaseItemDto, client: JellyfinClient?, userID: String?) async {
+        if let itemSources = item.mediaSources, !itemSources.isEmpty {
+            self.mediaSources = itemSources
+            configureInitialStreamSelection()
+        }
+
+        guard let itemID = item.id else { return }
+        await loadPlaybackOptions(itemID: itemID, client: client, userID: userID)
+    }
+
+    // MARK: - Selection Actions
 
     func configureInitialStreamSelection() {
         if selectedMediaSourceID == nil || !mediaSources.contains(where: { $0.id == selectedMediaSourceID }) {
@@ -296,19 +321,23 @@ extension MediaDetailViewModel {
         guard selectedMediaSourceID != sourceID else { return }
         selectedMediaSourceID = sourceID
         selectedMaxBitrate = nil
+        hasCustomPlaybackOptions = true
         guard let source = selectedMediaSource else { return }
         applyDefaultStreamSelection(from: source, preserveExisting: false)
     }
 
     func selectAudioStream(index: Int?) {
         selectedAudioStreamIndex = index
+        hasCustomPlaybackOptions = true
     }
 
     func selectSubtitleStream(index: Int?) {
         selectedSubtitleStreamIndex = index
+        hasCustomPlaybackOptions = true
     }
 
     func resetToDefaults() {
+        hasCustomPlaybackOptions = false
         selectedMaxBitrate = nil
         selectedMediaSourceID = mediaSources.first?.id
         guard let source = selectedMediaSource else {

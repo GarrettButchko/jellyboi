@@ -40,32 +40,33 @@ class MediaCardViewModel {
 
     // MARK: - Playback State Resolution
 
-    func watchProgress(in libraryViewModel: LibraryViewModel?, isWatched: Bool? = nil) -> Double? {
+    func watchProgress(isWatched: Bool? = nil) -> Double? {
         if isProgressReset { return nil }
-        let watched = isWatched ?? self.isWatched(in: libraryViewModel)
+        let watched = isWatched ?? self.isWatched()
         if watched { return 1.0 }
         if item.type == .series, let seriesID = item.id {
-            return item.seriesWatchProgress(allEpisodes: libraryViewModel?.episodes(forSeriesID: seriesID) ?? [])
+            return item.seriesWatchProgress(allEpisodes: LibraryViewModel.shared.episodes(forSeriesID: seriesID))
         }
         return item.watchProgress
     }
 
-    func isWatched(in libraryViewModel: LibraryViewModel?) -> Bool {
+    func isWatched() -> Bool {
         if isProgressReset { return false }
         if item.type == .series, let seriesID = item.id {
-            return item.isSeriesWatched(allEpisodes: libraryViewModel?.episodes(forSeriesID: seriesID) ?? [])
+            return item.isSeriesWatched(allEpisodes: LibraryViewModel.shared.episodes(forSeriesID: seriesID))
         }
         return item.isWatched
     }
 
-    func isWatching(in libraryViewModel: LibraryViewModel?, isWatched: Bool? = nil) -> Bool {
+    func isWatching(isWatched: Bool? = nil) -> Bool {
         if isProgressReset { return false }
-        let watched = isWatched ?? self.isWatched(in: libraryViewModel)
+        let watched = isWatched ?? self.isWatched()
         if watched { return false }
         if item.type == .series, let seriesID = item.id {
+            let lib = LibraryViewModel.shared
             return item.isSeriesInProgress(
-                allEpisodes: libraryViewModel?.episodes(forSeriesID: seriesID) ?? [],
-                resumeShows: libraryViewModel?.resumeShows ?? []
+                allEpisodes: lib.episodes(forSeriesID: seriesID),
+                resumeShows: lib.resumeShowIDs.compactMap { lib[$0] }
             )
         }
         return item.isInProgress

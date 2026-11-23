@@ -2,10 +2,14 @@
 //  JellyfinDeviceProfile.swift
 //  JellyBoi
 //
+//  Step 2: Stream Resolution (Device Capabilities)
+//  Advertises Apple-native player playback capabilities to Jellyfin
+//  so the server can decide between Direct Play, Direct Stream, and HLS Transcoding.
+//
 
 import JellyfinAPI
 
-/// Device profiles advertised to Jellyfin when negotiating playback.
+/// Device profiles advertised to Jellyfin when negotiating playback (Step 2: Stream Resolution).
 ///
 /// This is pure data: it describes what AVPlayer can open natively, which is what lets the server
 /// decide between direct play, HLS remuxing, and transcoding.

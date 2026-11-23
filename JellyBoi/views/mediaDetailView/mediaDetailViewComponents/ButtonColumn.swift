@@ -42,14 +42,14 @@ extension MediaDetailView {
                     Button {
                         detailVM.handlePlayTap(
                             playbackManager: playbackManager,
-                            serverViewModel: serverViewModel,
-                            libraryViewModel: libraryViewModel
+                            serverViewModel: serverViewModel
                         )
                     } label: {
                         Image(systemName: "play.fill")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Color.main.opacity(isPlayDisabled ? 0.35 : 1.0))
                             .frame(width: 50, height: 50)
+                            .contentTransition(.symbolEffect(.replace))
                     }
                     .buttonStyle(.plain)
                     .disabled(isPlayDisabled)
@@ -86,6 +86,7 @@ extension MediaDetailView {
                     Image(systemName: "checkmark")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.main)
+                        .contentTransition(.symbolEffect(.replace))
                 } else {
                     Circle()
                         .trim(from: 0, to: detailVM.progressValue)
@@ -117,8 +118,7 @@ extension MediaDetailView {
                 detailVM.playMedia(
                     fromBeginning: false,
                     playbackManager: playbackManager,
-                    serverViewModel: serverViewModel,
-                    libraryViewModel: libraryViewModel
+                    serverViewModel: serverViewModel
                 )
             },
             onStartFromBeginning: {
@@ -128,8 +128,7 @@ extension MediaDetailView {
                     detailVM.playMedia(
                         fromBeginning: true,
                         playbackManager: playbackManager,
-                        serverViewModel: serverViewModel,
-                        libraryViewModel: libraryViewModel
+                        serverViewModel: serverViewModel
                     )
                 }
             },
@@ -137,8 +136,7 @@ extension MediaDetailView {
                 detailVM.playMedia(
                     fromBeginning: false,
                     playbackManager: playbackManager,
-                    serverViewModel: serverViewModel,
-                    libraryViewModel: libraryViewModel
+                    serverViewModel: serverViewModel
                 )
             },
             onResetProgress: {

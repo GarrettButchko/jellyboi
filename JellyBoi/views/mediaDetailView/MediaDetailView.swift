@@ -13,14 +13,11 @@ import JellyfinAPI
 // MARK: - MediaDetailView
 
 struct MediaDetailView: View {
-    let item: BaseItemDto
-    var cameFromShow: Bool = false
 
-    @Environment(ServerViewModel.self) var serverViewModel
-    @Environment(LibraryViewModel.self) var libraryViewModel
-    @Environment(PlaybackManager.self) var playbackManager
-    @Environment(DownloadManager.self) var downloadManager
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
+    @Environment(ServerViewModel.self) var serverViewModel
+    @Environment(DownloadManager.self) var downloadManager
+    @Environment(PlaybackManager.self) var playbackManager
 
     @State var detailVM: MediaDetailViewModel
     
@@ -33,6 +30,7 @@ struct MediaDetailView: View {
     
     @State var showOptionsSheet: Bool = false
     @State var optionsSheetHeight: CGFloat = 0
+    
     @State var heroArtworkHeight: CGFloat = 0
 
     // Zoom transitions
@@ -45,14 +43,16 @@ struct MediaDetailView: View {
     @State var specialFeatureZoomID: AnyHashable?
     @State var relatedZoomID: AnyHashable?
 
-    init(item: BaseItemDto, cameFromShow: Bool = false) {
-        self.item = item
-        self.cameFromShow = cameFromShow
-        _detailVM = State(initialValue: MediaDetailViewModel(item: item))
+    init(item: BaseItemDto, itemType: ItemType? = nil) {
+        _detailVM = State(initialValue: MediaDetailViewModel(item: item.id ?? "", itemType: itemType))
+    }
+
+    init(itemID: String, itemType: ItemType? = nil) {
+        _detailVM = State(initialValue: MediaDetailViewModel(item: itemID, itemType: itemType))
     }
 
     var displayItem: BaseItemDto {
-        detailVM.displayItem ?? item
+        detailVM.displayItem ?? detailVM.sourceItem ?? BaseItemDto()
     }
 
     var body: some View {
@@ -111,7 +111,7 @@ struct MediaDetailView: View {
                 Button("Cancel", role: .cancel) { }
             }
         } message: {
-            let itemName = detailVM.downloadAlertItemName(libraryViewModel: libraryViewModel)
+            let itemName = detailVM.downloadAlertItemName()
             if detailVM.downloadAlertAction == .cancel {
                 Text("Are you sure you want to cancel the download for \"\(itemName)\"? Any progress will be lost.")
             } else {
@@ -125,7 +125,7 @@ struct MediaDetailView: View {
             MediaDetailView(item: series)
         }
         .navigationDestination(item: $selectedEpisode) { ep in
-            MediaDetailView(item: ep, cameFromShow: true)
+            MediaDetailView(item: ep, itemType: .episodeWithShow)
                 .navigationTransition(.zoom(sourceID: episodeZoomID ?? AnyHashable(ep), in: episodeTransition))
         }
         .navigationDestination(item: $selectedSpecialFeature) { feat in
@@ -140,14 +140,11 @@ struct MediaDetailView: View {
             MediaDetailView(item: col)
                 .navigationTransition(.zoom(sourceID: AnyHashable(col), in: collectionTransition))
         }
-        .task(id: item.id) {
+        .task(id: displayItem.id) {
             if let client = serverViewModel.client {
                 await detailVM.load(
-                    item: item,
                     client: client,
                     userID: serverViewModel.currentUser?.id,
-                    libraryViewModel: libraryViewModel,
-                    playbackManager: playbackManager,
                     serverViewModel: serverViewModel
                 )
             }

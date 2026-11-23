@@ -89,7 +89,6 @@ struct DownloadsSheet: View {
 
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(ServerViewModel.self) private var serverViewModel
-    @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(\.dismiss) private var dismiss
 
     // MARK: - State
@@ -601,8 +600,7 @@ struct DownloadsSheet: View {
                     DownloadThumbnailView(
                         group: group,
                         client: serverViewModel.client,
-                        libraryViewModel: libraryViewModel,
-                        size: .regular
+                                size: .regular
                     )
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -689,7 +687,6 @@ struct DownloadsSheet: View {
             DownloadThumbnailView(
                 item: downloadItem,
                 client: serverViewModel.client,
-                libraryViewModel: libraryViewModel,
                 size: .regular
             )
 
@@ -781,7 +778,6 @@ struct DownloadsSheet: View {
             DownloadThumbnailView(
                 item: downloadItem,
                 client: serverViewModel.client,
-                libraryViewModel: libraryViewModel,
                 size: .regular
             )
 

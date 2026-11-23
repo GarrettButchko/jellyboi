@@ -19,10 +19,10 @@ extension MediaDetailView {
     /// applies `glassEffect` of its own.
     @ToolbarContentBuilder
     var mediaDetailToolbar: some ToolbarContent {
-        if detailVM.shouldShowSeriesButton(cameFromShow: cameFromShow) {
+        if detailVM.shouldShowSeriesButton {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    if let series = detailVM.parentSeries(libraryViewModel: libraryViewModel) {
+                    if let series = detailVM.parentSeries {
                         selectedSeries = series
                     }
                 } label: {
@@ -33,8 +33,8 @@ extension MediaDetailView {
         }
         
         ToolbarItem(id: "detail-favorite", placement: .topBarTrailing) {
-            MediaDetailFavoriteButton(detailVM: detailVM, item: item)
-            MediaDetailDownloadButton(detailVM: detailVM, item: item)
+            MediaDetailFavoriteButton(detailVM: detailVM)
+            MediaDetailDownloadButton(detailVM: detailVM)
         }
     }
 }
@@ -43,17 +43,14 @@ extension MediaDetailView {
 
 struct MediaDetailFavoriteButton: View {
     let detailVM: MediaDetailViewModel
-    let item: BaseItemDto
 
     @Environment(ServerViewModel.self) private var serverViewModel
 
     var body: some View {
-        let isFavorited = detailVM.isFavorite(fallback: item)
+        let isFavorited = detailVM.isFavorite
 
         Button {
-            Task {
-                await detailVM.toggleFavorite(serverViewModel: serverViewModel, fallbackItem: item)
-            }
+            detailVM.toggleFavorite(serverViewModel: serverViewModel)
         } label: {
             Image(systemName: isFavorited ? "star.fill" : "star")
                 .foregroundStyle(isFavorited ? Color.yellow : Color.primary)
@@ -70,23 +67,20 @@ struct MediaDetailFavoriteButton: View {
 /// preventing download progress updates from invalidating the entire `MediaDetailView` hierarchy.
 struct MediaDetailDownloadButton: View {
     let detailVM: MediaDetailViewModel
-    let item: BaseItemDto
 
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(ServerViewModel.self) private var serverViewModel
-    @Environment(LibraryViewModel.self) private var libraryViewModel
 
     var body: some View {
         let isDownloading = detailVM.isDetailDownloading(downloadManager: downloadManager)
-        let isDownloaded = detailVM.isDetailDownloaded(downloadManager: downloadManager, libraryViewModel: libraryViewModel)
-        let downloadProgress = detailVM.detailDownloadProgress(downloadManager: downloadManager, libraryViewModel: libraryViewModel)
+        let isDownloaded = detailVM.isDetailDownloaded(downloadManager: downloadManager)
+        let downloadProgress = detailVM.detailDownloadProgress(downloadManager: downloadManager)
         let accent = Color.appAccent
 
         Button {
             detailVM.handleDownloadTap(
                 downloadManager: downloadManager,
-                client: serverViewModel.client,
-                libraryViewModel: libraryViewModel
+                client: serverViewModel.client
             )
         } label: {
             if isDownloading {

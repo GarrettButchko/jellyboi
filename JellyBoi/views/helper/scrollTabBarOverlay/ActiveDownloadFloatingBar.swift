@@ -17,7 +17,6 @@ struct ActiveDownloadFloatingBar: View {
     let onTap: () -> Void
 
     @Environment(ServerViewModel.self) private var serverViewModel
-    @Environment(LibraryViewModel.self) private var libraryViewModel
     @Environment(AppPreferences.self) private var preferences: AppPreferences?
 
     private var singleDownloadItem: DownloadItem? {
@@ -112,7 +111,6 @@ struct ActiveDownloadFloatingBar: View {
                 DownloadThumbnailView(
                     group: group,
                     client: serverViewModel.client,
-                    libraryViewModel: libraryViewModel,
                     size: .compact
                 )
                 .id("thumb-group-\(group.id)")
@@ -135,7 +133,6 @@ struct ActiveDownloadFloatingBar: View {
                 DownloadThumbnailView(
                     item: singleItem,
                     client: serverViewModel.client,
-                    libraryViewModel: libraryViewModel,
                     size: .compact
                 )
                 .id("thumb-single-\(singleItem.id)")
@@ -158,7 +155,6 @@ struct ActiveDownloadFloatingBar: View {
                 DownloadThumbnailView(
                     item: singleItem,
                     client: serverViewModel.client,
-                    libraryViewModel: libraryViewModel,
                     size: .compact
                 )
                 .id("thumb-single-\(singleItem.id)")

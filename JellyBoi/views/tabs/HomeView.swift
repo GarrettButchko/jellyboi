@@ -209,7 +209,7 @@ struct HomeView: View {
                     progress: nil
                 ) { _, _, _, _, _, _ in }
             }
-            CarouselImageMemoryCache.shared.preloadImages(for: carouselURLs)
+            CarouselImageMemoryCache.shared.prefetchImages(for: carouselURLs)
         }
     }
 

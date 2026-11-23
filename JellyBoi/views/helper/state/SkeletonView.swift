@@ -9,46 +9,77 @@ import SwiftUI
 import BaseColors
 import JellyfinAPI
 
+// MARK: - Skeleton Animation
+
+extension Animation {
+    /// The global animation used for skeleton transitions throughout the app.
+    static let skeleton: Animation = .easeInOut(duration: 0.35)
+}
+
+extension AnyTransition {
+    /// The global transition used for skeleton content fading in or out.
+    static var skeleton: AnyTransition {
+        .opacity.animation(.skeleton)
+    }
+}
+
 // MARK: - Skeleton Shimmer Modifier
 
 struct SkeletonModifier: ViewModifier {
+    var isActive: Bool = true
     @State private var phase: CGFloat = -1
 
     func body(content: Content) -> some View {
-        content
-            .redacted(reason: .placeholder)
-            .overlay {
-                GeometryReader { geometry in
-                    let width = geometry.size.width
-                    LinearGradient(
-                        colors: [
-                            Color.clear,
-                            Color.white.opacity(0.12),
-                            Color.clear
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(width: width * 1.5)
-                    .offset(x: phase * width * 2)
+        if isActive {
+            content
+                .redacted(reason: .placeholder)
+                .overlay {
+                    GeometryReader { geometry in
+                        let width = geometry.size.width
+                        LinearGradient(
+                            colors: [
+                                Color.clear,
+                                Color.white.opacity(0.12),
+                                Color.clear
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: width * 1.5)
+                        .offset(x: phase * width * 2)
+                    }
+                    .mask(content)
                 }
-                .mask(content)
-            }
-            .onAppear {
-                withAnimation(
-                    .linear(duration: 1.6)
-                    .repeatForever(autoreverses: false)
-                ) {
-                    phase = 1
+                .onAppear {
+                    withAnimation(
+                        .linear(duration: 1.6)
+                        .repeatForever(autoreverses: false)
+                    ) {
+                        phase = 1
+                    }
                 }
-            }
+        } else {
+            content
+        }
     }
 }
 
 extension View {
     /// Applies a shimmering placeholder skeleton effect to the view.
-    func skeleton() -> some View {
-        modifier(SkeletonModifier())
+    func skeleton(isActive: Bool = true) -> some View {
+        modifier(SkeletonModifier(isActive: isActive))
+    }
+
+    func skeleton(when isLoading: Bool) -> some View {
+        modifier(SkeletonModifier(isActive: isLoading))
+    }
+
+    func skeleton<V: Equatable>(
+        when isLoading: Bool,
+        value: V
+    ) -> some View {
+        modifier(SkeletonModifier(isActive: isLoading))
+            .animation(.skeleton, value: value)
     }
 }
 
@@ -166,10 +197,9 @@ private let previewSkeletonItems: [BaseItemDto] = (0..<6).map { index in
                 .frame(height: 180)
                 .padding(.horizontal, 16)
 
-            SectionRow(
-                title: "Popular Movies",
-                itemIDs: previewSkeletonItems.compactMap(\.id)
-            )
+            SectionRow(title: "Popular Movies", headerAccessory: { EmptyView() }) {
+                SectionRowMediaList(itemIDs: previewSkeletonItems.compactMap(\.id))
+            }
             .skeleton()
         }
     }

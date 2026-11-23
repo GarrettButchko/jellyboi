@@ -18,6 +18,8 @@ import SDWebImage
 @MainActor
 class LibraryViewModel {
 
+    static let shared = LibraryViewModel()
+
     // MARK: - Normalized store (Single Source of Truth)
 
     private(set) var itemsByID: [String: BaseItemDto] = [:]
@@ -35,33 +37,75 @@ class LibraryViewModel {
     private(set) var resumeShowIDs: [String] = []
     private(set) var carouselItemIDs: [String] = []
     private(set) var genres: [GenreCount] = []
+    
+    // stores episode ids with their series id as key
     private(set) var episodesBySeriesID: [String: [String]] = [:]
 
     // MARK: - Lookup & Store Helpers
 
-    func item(for itemID: String) -> BaseItemDto? {
-        itemsByID[itemID]
+    subscript(itemID: String) -> BaseItemDto? {
+        get {
+            itemsByID[itemID]
+        }
+        set {
+            itemsByID[itemID] = newValue
+        }
     }
 
-    subscript(itemID: String) -> BaseItemDto? {
-        itemsByID[itemID]
+    func item(for itemID: String) -> BaseItemDto? {
+        self[itemID]
+    }
+
+    func episodeItems(forSeriesID seriesID: String) -> [BaseItemDto] {
+        return (episodesBySeriesID[seriesID] ?? []).compactMap { self[$0] }
     }
 
     func episodes(forSeriesID seriesID: String) -> [BaseItemDto] {
-        (episodesBySeriesID[seriesID] ?? []).compactMap { itemsByID[$0] }
+        episodeItems(forSeriesID: seriesID)
     }
 
+    func parentSeriesId(childId id: String?) -> String? {
+        guard let id, let item = self[id] else { return nil }
+        return parentSeriesId(for: item)
+    }
+
+    func parentSeriesId(for item: BaseItemDto?) -> String? {
+        guard let seriesID = item?.seriesID, let found = self[seriesID] else { return nil }
+        return found.id
+    }
     
+    func parentSeriesItem(childId id: String?) -> BaseItemDto? {
+        guard let id, let item = self[id] else { return nil }
+        return parentSeriesItem(for: item)
+    }
+
+    func parentSeriesItem(for item: BaseItemDto?) -> BaseItemDto? {
+        guard let seriesID = item?.seriesID else { return nil }
+        return self[seriesID]
+    }
+
+    func parentSeries(childId id: String?) -> BaseItemDto? {
+        parentSeriesItem(childId: id)
+    }
+
+    func parentSeries(for item: BaseItemDto?) -> BaseItemDto? {
+        parentSeriesItem(for: item)
+    }
+
+    var tvSeriesCount: Int { tvShowIDs.count }
+    var episodeCount: Int { episodeIDs.count }
+    var favoritesCount: Int { favoriteIDs.count }
+
     // MARK: - Stats Collections for Results View (IDs)
     var inProgressMovieIDs: [String] {
         movieIDs
             .filter { id in
-                guard let percent = itemsByID[id]?.userData?.playedPercentage else { return false }
+                guard let percent = self[id]?.userData?.playedPercentage else { return false }
                 return percent > 0 && percent < 85
             }
             .sorted {
-                let a = itemsByID[$0]?.userData?.lastPlayedDate ?? .distantPast
-                let b = itemsByID[$1]?.userData?.lastPlayedDate ?? .distantPast
+                let a = self[$0]?.userData?.lastPlayedDate ?? .distantPast
+                let b = self[$1]?.userData?.lastPlayedDate ?? .distantPast
                 return a > b
             }
     }
@@ -69,8 +113,8 @@ class LibraryViewModel {
     var topWatchedMovieIDs: [String] {
         Array(
             inProgressMovieIDs.sorted {
-                let aItem = itemsByID[$0]
-                let bItem = itemsByID[$1]
+                let aItem = self[$0]
+                let bItem = self[$1]
                 let a = ((aItem?.userData?.playedPercentage ?? 0) / 100.0) * Double(aItem?.runTimeTicks ?? 0)
                 let b = ((bItem?.userData?.playedPercentage ?? 0) / 100.0) * Double(bItem?.runTimeTicks ?? 0)
                 return a > b
@@ -79,30 +123,30 @@ class LibraryViewModel {
     }
     
     var favoriteIDs: [String] {
-        let favMovies = movieIDs.filter { itemsByID[$0]?.userData?.isFavorite == true }
-        let favShows = tvShowIDs.filter { itemsByID[$0]?.userData?.isFavorite == true }
+        let favMovies = movieIDs.filter { self[$0]?.userData?.isFavorite == true }
+        let favShows = tvShowIDs.filter { self[$0]?.userData?.isFavorite == true }
         let starredShowIDs = Set(favShows)
         let favEpisodes = episodeIDs.filter { id in
-            guard let ep = itemsByID[id], ep.userData?.isFavorite == true else { return false }
-            let showID = ep.seriesID ?? ep.parentBackdropItemID
+            guard let ep = self[id], ep.userData?.isFavorite == true else { return false }
+            let showID = parentSeriesId(for: ep) ?? ep.parentBackdropItemID
             if let showID, starredShowIDs.contains(showID) {
                 return false
             }
             return true
         }
         return (favMovies + favShows + favEpisodes).sorted { lhs, rhs in
-            let a = itemsByID[lhs]?.sortName ?? itemsByID[lhs]?.name ?? ""
-            let b = itemsByID[rhs]?.sortName ?? itemsByID[rhs]?.name ?? ""
+            let a = self[lhs]?.sortName ?? self[lhs]?.name ?? ""
+            let b = self[rhs]?.sortName ?? self[rhs]?.name ?? ""
             return a < b
         }
     }
     
     var completedMovieIDs: [String] {
         movieIDs
-            .filter { itemsByID[$0]?.userData?.isPlayed == true }
+            .filter { self[$0]?.userData?.isPlayed == true }
             .sorted {
-                let a = itemsByID[$0]?.userData?.lastPlayedDate ?? .distantPast
-                let b = itemsByID[$1]?.userData?.lastPlayedDate ?? .distantPast
+                let a = self[$0]?.userData?.lastPlayedDate ?? .distantPast
+                let b = self[$1]?.userData?.lastPlayedDate ?? .distantPast
                 return a > b
             }
     }
@@ -110,12 +154,12 @@ class LibraryViewModel {
     var watchedMovieIDs: [String] {
         movieIDs
             .filter {
-                guard let item = itemsByID[$0] else { return false }
+                guard let item = self[$0] else { return false }
                 return (item.userData?.playedPercentage ?? 0) > 0 || item.userData?.isPlayed == true
             }
             .sorted {
-                let a = itemsByID[$0]?.userData?.lastPlayedDate ?? .distantPast
-                let b = itemsByID[$1]?.userData?.lastPlayedDate ?? .distantPast
+                let a = self[$0]?.userData?.lastPlayedDate ?? .distantPast
+                let b = self[$1]?.userData?.lastPlayedDate ?? .distantPast
                 return a > b
             }
     }
@@ -124,13 +168,13 @@ class LibraryViewModel {
 
     var completedCount: Int {
         movieIDs.reduce(0) { count, id in
-            itemsByID[id]?.userData?.isPlayed == true ? count + 1 : count
+            self[id]?.userData?.isPlayed == true ? count + 1 : count
         }
     }
 
     var watchedHours: Int {
         let total = movieIDs.reduce(0.0) { acc, id in
-            guard let item = itemsByID[id],
+            guard let item = self[id],
                   let ticks = item.runTimeTicks,
                   let percent = item.userData?.playedPercentage, percent > 0 else { return acc }
             return acc + (percent / 100.0) * Double(ticks) / 10_000_000
@@ -188,9 +232,9 @@ class LibraryViewModel {
 
         for dto in dtos {
             let itemID = dto.itemID ?? dto.key
-            guard var item = itemsByID[itemID] else { continue }
+            guard var item = self[itemID] else { continue }
             item.userData = dto
-            itemsByID[itemID] = item
+            self[itemID] = item
             changedIDs.insert(itemID)
         }
 
@@ -198,15 +242,15 @@ class LibraryViewModel {
 
         resumeShowIDs.removeAll { id in
             guard changedIDs.contains(id) else { return false }
-            guard let item = itemsByID[id] else { return true }
+            guard let item = self[id] else { return true }
             return !item.hasProgress && !item.isWatched
         }
     }
 
     func updateProgress(for itemID: String, positionTicks: Int, totalTicks: Int?) {
-        if var item = itemsByID[itemID] {
+        if var item = self[itemID] {
             item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
-            itemsByID[itemID] = item
+            self[itemID] = item
         }
     }
 
@@ -441,28 +485,33 @@ class LibraryViewModel {
         let targetIDs = itemIDs ?? carouselItemIDs
         let neighbors = [index - 1, index, index + 1]
             .filter { $0 >= 0 && $0 < targetIDs.count }
-        let urls = neighbors.compactMap { itemsByID[targetIDs[$0]]?.backdropURL(client: client) }
+        let urls = neighbors.compactMap { self[targetIDs[$0]]?.backdropURL(client: client) }
         SDWebImagePrefetcher.shared.prefetchURLs(urls)
+    }
+
+    func refreshMediaArtwork(using client: JellyfinClient? = nil, userID: String? = nil) async {
+        guard let client = client ?? currentClient else { return }
+        prefetchArtwork(client: client)
     }
 
     func prefetchPosters(around index: Int, itemIDs: [String]? = nil, client: JellyfinClient) {
         let targetIDs = itemIDs ?? movieIDs
         let neighbors = [index - 1, index, index + 1]
             .filter { $0 >= 0 && $0 < targetIDs.count }
-        let urls = neighbors.compactMap { itemsByID[targetIDs[$0]]?.posterURL(client: client) }
+        let urls = neighbors.compactMap { self[targetIDs[$0]]?.posterURL(client: client) }
         SDWebImagePrefetcher.shared.prefetchURLs(urls)
     }
 
     func prefetchArtwork(client: JellyfinClient, maxCount: Int = 50) {
         var urls: [URL] = []
         for id in carouselItemIDs.prefix(10) {
-            if let url = itemsByID[id]?.backdropURL(client: client) {
+            if let url = self[id]?.backdropURL(client: client) {
                 urls.append(url)
             }
         }
         let cardIDs = movieIDs.prefix(maxCount) + tvShowIDs.prefix(maxCount) + collectionIDs.prefix(20)
         for id in cardIDs {
-            if let url = itemsByID[id]?.posterURL(client: client) {
+            if let url = self[id]?.posterURL(client: client) {
                 urls.append(url)
             }
         }

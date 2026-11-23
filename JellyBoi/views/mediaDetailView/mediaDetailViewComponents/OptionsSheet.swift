@@ -1,5 +1,5 @@
 //
-//  MediaDetailOptionsSheet.swift
+//  OptionsSheet.swift
 //  JellyBoi
 //
 //  Created by Garrett Butchko on 8/23/26.
@@ -17,15 +17,21 @@ extension MediaDetailView {
             if detailVM.isLoadingPlaybackOptions {
                 optionsSkeleton
             } else {
-                // Dropdown 1: Video Quality / Bitrate
+                // Dropdown 1: Movie Version (shown when multiple movie files exist)
+                if detailVM.hasMultipleMediaSources {
+                    versionDropdown
+                        .transition(.opacity)
+                }
+
+                // Dropdown 2: Video Quality / Bitrate
                 qualityDropdown
                     .transition(.opacity)
 
-                // Dropdown 2: Audio Track
+                // Dropdown 3: Audio Track
                 audioDropdown
                     .transition(.opacity)
 
-                // Dropdown 3: Subtitles
+                // Dropdown 4: Subtitles
                 subtitlesDropdown
                     .transition(.opacity)
 
@@ -44,10 +50,11 @@ extension MediaDetailView {
                 optionsSheetHeight = newHeight
             }
         }
-        .task(id: detailVM.playableItem(libraryViewModel: libraryViewModel).id) {
-            let target = detailVM.playableItem(libraryViewModel: libraryViewModel)
+        .task(id: detailVM.playableItemID) {
+            let itemID = detailVM.playableItemID
+            guard !itemID.isEmpty else { return }
             await detailVM.loadPlaybackOptions(
-                for: target,
+                itemID: itemID,
                 client: serverViewModel.client,
                 userID: serverViewModel.currentUser?.id
             )
@@ -58,6 +65,9 @@ extension MediaDetailView {
 
     private var optionsSkeleton: some View {
         VStack(alignment: .leading, spacing: 18) {
+            if detailVM.hasMultipleMediaSources {
+                dropdownSkeletonRow(label: "Version", icon: "film.stack", value: "Default Version")
+            }
             dropdownSkeletonRow(label: "Quality", icon: "film", value: "Auto (1080p)")
             dropdownSkeletonRow(label: "Audio", icon: "speaker.wave.2", value: "English (Default)")
             dropdownSkeletonRow(label: "Subtitles", icon: "captions.bubble", value: "None")
@@ -77,6 +87,39 @@ extension MediaDetailView {
         }
     }
 
+    // MARK: - Version Dropdown
+
+    private var versionDropdown: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Version")
+                .font(.system(.footnote, design: .rounded, weight: .semibold))
+                .foregroundStyle(Color.mainOpp.opacity(0.55))
+                .padding(.horizontal, 4)
+
+            Menu {
+                ForEach(detailVM.mediaSources) { source in
+                    let isSelected = (source.id == detailVM.selectedMediaSourceID)
+                    let label = detailVM.mediaSourceName(for: source)
+                    Button {
+                        detailVM.selectMediaSource(source.id)
+                    } label: {
+                        if isSelected {
+                            checkedMenuLabel(label)
+                        } else {
+                            Text(label)
+                        }
+                    }
+                }
+            } label: {
+                dropdownLabel(
+                    icon: "film.stack",
+                    value: detailVM.selectedMediaSourceName
+                )
+            }
+            .menuStyle(.button)
+        }
+    }
+
     // MARK: - Quality Dropdown
 
     private var qualityDropdown: some View {
@@ -90,11 +133,6 @@ extension MediaDetailView {
                 ForEach(detailVM.availableQualities) { option in
                     Button {
                         detailVM.selectQuality(option)
-                        detailVM.startPreload(
-                            playbackManager: playbackManager,
-                            serverViewModel: serverViewModel,
-                            libraryViewModel: libraryViewModel
-                        )
                     } label: {
                         if isQualitySelected(option) {
                             checkedMenuLabel(option.label)
@@ -139,11 +177,6 @@ extension MediaDetailView {
                         let label = detailVM.audioStreamLabel(for: stream)
                         Button {
                             detailVM.selectAudioStream(index: stream.index)
-                            detailVM.startPreload(
-                                playbackManager: playbackManager,
-                                serverViewModel: serverViewModel,
-                                libraryViewModel: libraryViewModel
-                            )
                         } label: {
                             if isSelected {
                                 checkedMenuLabel(label)
@@ -176,11 +209,6 @@ extension MediaDetailView {
                 let isOff = (detailVM.selectedSubtitleStreamIndex == nil || detailVM.selectedSubtitleStreamIndex == -1)
                 Button {
                     detailVM.selectSubtitleStream(index: -1)
-                    detailVM.startPreload(
-                        playbackManager: playbackManager,
-                        serverViewModel: serverViewModel,
-                        libraryViewModel: libraryViewModel
-                    )
                 } label: {
                     if isOff {
                         checkedMenuLabel("Off")
@@ -194,11 +222,6 @@ extension MediaDetailView {
                     let label = detailVM.subtitleStreamLabel(for: stream)
                     Button {
                         detailVM.selectSubtitleStream(index: stream.index)
-                        detailVM.startPreload(
-                            playbackManager: playbackManager,
-                            serverViewModel: serverViewModel,
-                            libraryViewModel: libraryViewModel
-                        )
                     } label: {
                         if isSelected {
                             checkedMenuLabel(label)
@@ -217,36 +240,21 @@ extension MediaDetailView {
         }
     }
 
-    // MARK: - Menu Checkmark Label
+    // MARK: - Helper Views
 
-    /// `Menu` items are rendered by UIKit, which templates symbol images and drops
-    /// SwiftUI `foregroundStyle` from labels, leaving the checkmark accent colored.
-    /// Baking the color into a non-template image keeps it `Color.mainOpp` instead.
     private func checkedMenuLabel(_ title: String) -> some View {
-        Label {
-            Text(title)
-        } icon: {
-            Image(uiImage: checkmarkImage)
-        }
-        .tint(Color.mainOpp)
+        Label(title, systemImage: "checkmark")
     }
-
-    private var checkmarkImage: UIImage {
-        let symbol = UIImage(systemName: "checkmark") ?? UIImage()
-        return symbol.withTintColor(UIColor(Color.mainOpp), renderingMode: .alwaysOriginal)
-    }
-
-    // MARK: - Dropdown Label Component
 
     private func dropdownLabel(icon: String, value: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.mainOpp.opacity(0.75))
-                .frame(width: 22)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color.appAccent)
+                .frame(width: 20)
 
             Text(value)
-                .font(.system(.body, design: .rounded, weight: .medium))
+                .font(.system(size: 15, weight: .regular, design: .rounded))
                 .foregroundStyle(Color.mainOpp)
                 .lineLimit(1)
 
@@ -269,11 +277,6 @@ extension MediaDetailView {
         Button {
             withAnimation {
                 detailVM.resetToDefaults()
-                detailVM.startPreload(
-                    playbackManager: playbackManager,
-                    serverViewModel: serverViewModel,
-                    libraryViewModel: libraryViewModel
-                )
             }
         } label: {
             HStack(spacing: 8) {

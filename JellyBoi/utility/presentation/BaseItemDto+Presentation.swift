@@ -551,15 +551,15 @@ extension Array where Element == BaseItemDto {
         }
     }
 
-    /// Determines the next playable item in an ordered sequence of media items (e.g. episodes or collection items).
-    /// - If `fromBeginning` is true, returns the first item.
-    /// - If any items were completed, returns the first in-progress or unplayed item after the latest completed item.
-    /// - If no item was completed yet, returns the first in-progress item, or the first item if none started.
-    /// - If all items are completed, restarts from the first item.
-    func nextPlayableItem(fromBeginning: Bool = false) -> BaseItemDto? {
+    /// Determines the next playable item ID in an ordered sequence of media items (e.g. episodes or collection items).
+    /// - If `fromBeginning` is true, returns the first item ID.
+    /// - If any items were completed, returns the first in-progress or unplayed item ID after the latest completed item.
+    /// - If no item was completed yet, returns the first in-progress item ID, or the first item ID if none started.
+    /// - If all items are completed, restarts from the first item ID.
+    func nextPlayableID(fromBeginning: Bool = false) -> String? {
         guard !isEmpty else { return nil }
         if fromBeginning {
-            return first
+            return first?.id
         }
 
         func isCompleted(_ item: BaseItemDto) -> Bool {
@@ -582,20 +582,20 @@ extension Array where Element == BaseItemDto {
             let remaining = self[(lastCompletedIndex + 1)...]
             if !remaining.isEmpty {
                 if let inProgressItem = remaining.first(where: { isInProgress($0) }) {
-                    return inProgressItem
+                    return inProgressItem.id
                 }
-                return remaining.first
+                return remaining.first?.id
             } else {
                 // All items completed
-                return first
+                return first?.id
             }
         }
 
         if let inProgressItem = first(where: { isInProgress($0) }) {
-            return inProgressItem
+            return inProgressItem.id
         }
 
-        return first
+        return first?.id
     }
 }
 

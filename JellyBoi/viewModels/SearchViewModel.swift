@@ -27,13 +27,13 @@ public struct GenreCount: Identifiable, Hashable, Sendable {
 @Observable
 @MainActor
 class SearchViewModel {
-    var library = LibraryViewModel()
+    var library = LibraryViewModel.shared
     var searchText = ""
 
     private let ranker = MediaSearchRanker()
 
-    init(library: LibraryViewModel? = nil) {
-        if let library { self.library = library }
+    init() {
+        self.library = .shared
     }
 
     // MARK: Derived state

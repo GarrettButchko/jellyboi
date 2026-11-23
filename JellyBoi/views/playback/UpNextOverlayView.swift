@@ -76,9 +76,7 @@ struct UpNextOverlayView: View {
                                     }
                             }
                         }
-                        .glassEffect(.regular.interactive(), in: Capsule())
-                        .clipShape(Capsule())
-                        .shadow(color: Color.black.opacity(0.35), radius: 8, x: 0, y: 3)
+                        .playerGlass(in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .animation(.linear(duration: 0.25), value: effectiveProgressFraction)
@@ -96,6 +94,7 @@ struct UpNextOverlayView: View {
         HStack(spacing: 7) {
             Image(systemName: "forward.fill")
                 .font(.system(size: 11, weight: .bold))
+                .contentTransition(.symbolEffect(.replace))
             Text("Play Next")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .fixedSize()

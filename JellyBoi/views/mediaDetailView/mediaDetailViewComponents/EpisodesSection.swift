@@ -85,11 +85,10 @@ extension MediaDetailView {
                 .animation(.skeleton, value: detailVM.seasons.count)
                 .task(id: detailVM.episodes.count) {
                     guard !detailVM.hasInitialEpisodeScrolled, !detailVM.episodes.isEmpty else { return }
-                    let nextEp = detailVM.nextPlayableEpisode(libraryViewModel: libraryViewModel)
-                    if let targetID = nextEp?.id {
+                    if let targetID = detailVM.nextPlayableItem {
                         detailVM.hasInitialEpisodeScrolled = true
                         detailVM.scrolledEpisodeID = targetID
-                        if let nextEp, let sIdx = detailVM.seasonIndex(for: nextEp) {
+                        if let sIdx = detailVM.seasonIndex(for: targetID) {
                             detailVM.selectedSeasonIndex = sIdx
                         }
                         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -99,8 +98,7 @@ extension MediaDetailView {
                 .onChange(of: detailVM.scrolledEpisodeID) { _, newEpisodeID in
                     guard detailVM.hasInitialEpisodeScrolled,
                           let newEpisodeID,
-                          let ep = detailVM.episodes.first(where: { $0.id == newEpisodeID }),
-                          let sIdx = detailVM.seasonIndex(for: ep) else { return }
+                          let sIdx = detailVM.seasonIndex(for: newEpisodeID) else { return }
                     if detailVM.selectedSeasonIndex != sIdx {
                         withAnimation(.skeleton) {
                             detailVM.selectedSeasonIndex = sIdx
@@ -131,16 +129,16 @@ extension MediaDetailView {
         .scrollIndicators(.hidden)
     }
     
-    private func episodesContent(_ episodes: [BaseItemDto]) -> some View {
+    private func episodesContent(_ episodeIDs: [String]) -> some View {
         ScrollView(.horizontal) {
             LazyHStack(alignment: .top, spacing: 12) {
-                ForEach(episodes, id: \.id) { episode in
-                    if let episodeID = episode.id {
+                ForEach(episodeIDs, id: \.self) { episodeID in
+                    if let episode = LibraryViewModel.shared[episodeID] {
                         let cardWidth = episodeCardHeight * episode.imageAspectRatio
                         let zoomID = episode.zoomTransitionID(rowKey: "episode")
 
                         MediaCard(
-                            item: episode,
+                            itemID: episodeID,
                             posterURL: episode.thumbnailURL(client: serverViewModel.client),
                             namespace: episodeTransition,
                             onSelect: {
@@ -150,10 +148,10 @@ extension MediaDetailView {
                             zoomID: zoomID,
                             imageAspectRatio: episode.imageAspectRatio,
                             onContinueWatching: {
-                                playbackManager.play(item: episode, fromBeginning: false, queue: episodes)
+                                playbackManager.play(itemID: episodeID, fromBeginning: false, queue: episodeIDs)
                             },
                             onStartFromBeginning: {
-                                playbackManager.play(item: episode, fromBeginning: true, queue: episodes)
+                                playbackManager.play(itemID: episodeID, fromBeginning: true, queue: episodeIDs)
                             }
                         )
                         .equatable()
@@ -170,7 +168,6 @@ extension MediaDetailView {
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.viewAligned)
         .scrollPosition(id: $detailVM.scrolledEpisodeID, anchor: .leading)
-        
     }
 
     private func seasonMenu(proxy: ScrollViewProxy) -> some View {

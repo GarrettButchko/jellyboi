@@ -33,7 +33,7 @@ extension MediaDetailView {
             SectionRow(title: "More Like This") {
                 if detailVM.secondaryStatus.isLoading {
                     SectionRowMediaList(
-                        items: defaultSimilarItems
+                        itemIDs: defaultSimilarItems.compactMap(\.id)
                     )
                 } else {
                     similarItemsContent
@@ -45,12 +45,12 @@ extension MediaDetailView {
 
     private var similarItemsContent: some View {
         SectionRowMediaList(
-            itemIDs: detailVM.similarItems.map{ $0.id! },
+            itemIDs: detailVM.similarItems,
             namespace: relatedTransition,
             rowKey: "related",
             onSelect: { relatedItem, zoomID in
                 relatedZoomID = zoomID
-                selectedRelatedItem = libraryViewModel.item(for: relatedItem)
+                selectedRelatedItem = LibraryViewModel.shared[relatedItem]
             },
             posterURL: { relatedItem in
                 guard let client = serverViewModel.client else { return nil }

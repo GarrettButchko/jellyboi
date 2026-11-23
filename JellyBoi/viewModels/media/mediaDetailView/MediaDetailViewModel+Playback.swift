@@ -1,5 +1,5 @@
 //
-//  Playback.swift
+//  MediaDetailViewModel+Playback.swift
 //  JellyBoi
 //
 //  Created by Garrett Butchko on 9/2/26.
@@ -17,21 +17,93 @@ extension MediaDetailViewModel {
         case resetProgress
     }
 
-    func playableItem(libraryViewModel: LibraryViewModel?, fromBeginning: Bool = false) -> BaseItemDto {
-        var currentItem = displayItem ?? BaseItemDto()
-        if currentItem.type == .series || currentItem.type == .boxSet {
-            return nextPlayableEpisode(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning) ?? currentItem
+    // MARK: - Next Playable Resolution
+
+    /// Resolves the next playable item ID (episode, movie, or collection child) based on watch/resume state.
+    func nextPlayableItem(fromBeginning: Bool = false) -> String? {
+        let library = LibraryViewModel.shared
+        
+        let defaultID = displayItem?.id ?? sourceItemId
+
+        // 1. Single Movie or Episode
+        if displayItem?.type == .episode || displayItem?.type == .movie {
+            return defaultID
         }
-        if let id = currentItem.id,
-           currentItem.resumePlaybackTicks == 0,
-           let matching = libraryViewModel?.movies.first(where: { $0.id == id }) ?? libraryViewModel?.resumeShows.first(where: { $0.id == id }),
-           matching.resumePlaybackTicks > 0 {
-            currentItem.userData = matching.userData
+
+        // 2. Series: Resume episode ID -> Next unplayed episode ID -> First episode ID -> Series ID
+        if displayItem?.type == .series  {
+            let resolvedEpisodes = episodes.compactMap { library[$0] }
+            if let playableID = resolvedEpisodes.nextPlayableID(fromBeginning: fromBeginning) {
+                return playableID
+            }
+            return defaultID
         }
-        return currentItem
+
+        // 3. BoxSet / Collection: Next unplayed item ID (or next episode ID if that item is a show)
+        if displayItem?.type == .boxSet {
+            let resolvedCollectionItems: [BaseItemDto] = collectionItems.compactMap { library[$0] }
+            if let nextItemID = resolvedCollectionItems.nextPlayableID(fromBeginning: fromBeginning) {
+                let nextItem = library[nextItemID]
+                if nextItem?.type == .series {
+                    if !fromBeginning,
+                       let sID = nextItem?.id,
+                       let resumeID = library.resumeShowIDs.first(where: { library.parentSeriesId(childId: $0) == sID }) {
+                        return resumeID
+                    }
+                    let matching = library.episodes(forSeriesID: nextItem?.id ?? "")
+                        .sorted { a, b in
+                            let sA = a.parentIndexNumber ?? 1
+                            let sB = b.parentIndexNumber ?? 1
+                            if sA != sB { return sA < sB }
+                            return (a.indexNumber ?? 1) < (b.indexNumber ?? 1)
+                        }
+                    if let epID = matching.nextPlayableID(fromBeginning: fromBeginning) {
+                        return epID
+                    }
+                    return nextItem?.id
+                }
+                return nextItemID
+            }
+            return displayItem?.id ?? sourceItem?.id ?? sourceItemId
+        }
+
+        return displayItem?.id ?? sourceItem?.id ?? sourceItemId
     }
 
-    var playbackQueue: [BaseItemDto]? {
+    /// The next playable item ID for this detail view.
+    var nextPlayableItem: String? {
+        nextPlayableItem(fromBeginning: false)
+    }
+
+    /// The item ID of the next playable item (guaranteeing non-empty fallback if available).
+    var nextPlayableItemID: String {
+        nextPlayableItem ?? sourceItemId ?? ""
+    }
+
+    /// Returns the resolved item ready for playback (guaranteeing a fallback BaseItemDto).
+    func playableItem(fromBeginning: Bool = false) -> BaseItemDto {
+        let library = LibraryViewModel.shared
+        if let targetID = nextPlayableItem(fromBeginning: fromBeginning) {
+            if let item = library[targetID] {
+                var res = item
+                if !fromBeginning, res.resumePlaybackTicks == 0, let matching = library[targetID], matching.resumePlaybackTicks > 0 {
+                    res.userData = matching.userData
+                }
+                return res
+            }
+        }
+        var fallback = displayItem ?? sourceItem ?? BaseItemDto()
+        if !fromBeginning, let id = fallback.id, fallback.resumePlaybackTicks == 0, let matching = library[id], matching.resumePlaybackTicks > 0 {
+            fallback.userData = matching.userData
+        }
+        return fallback
+    }
+
+    var playableItemID: String {
+        nextPlayableItemID
+    }
+
+    var playbackQueue: [String]? {
         if displayItem?.type == .series, !episodes.isEmpty {
             return episodes
         }
@@ -44,51 +116,23 @@ extension MediaDetailViewModel {
     func playMedia(
         fromBeginning: Bool,
         playbackManager: PlaybackManager,
-        serverViewModel: ServerViewModel,
-        libraryViewModel: LibraryViewModel
+        serverViewModel: ServerViewModel
     ) {
-        let itemToPlay = playableItem(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning)
+        if playbackManager.client == nil {
+            playbackManager.client = serverViewModel.client
+            playbackManager.userID = serverViewModel.currentUser?.id
+        }
+        let itemID = nextPlayableItem(fromBeginning: fromBeginning) ?? nextPlayableItemID
+        guard !itemID.isEmpty else { return }
         playbackManager.play(
-            item: itemToPlay,
+            itemID: itemID,
+            playbackInfo: currentPlaybackInfo,
             fromBeginning: fromBeginning,
-            client: serverViewModel.client,
-            userID: serverViewModel.currentUser?.id,
-            libraryViewModel: libraryViewModel,
-            mediaSourceID: selectedMediaSourceID,
-            audioStreamIndex: selectedAudioStreamIndex,
-            subtitleStreamIndex: selectedSubtitleStreamIndex,
-            maxBitrate: selectedMaxBitrate,
-            queue: playbackQueue
-        )
-    }
-
-    func startPreload(
-        playbackManager: PlaybackManager,
-        serverViewModel: ServerViewModel,
-        libraryViewModel: LibraryViewModel
-    ) {
-        guard !isPlayDisabled else { return }
-        let fromBeginning = displayItem?.isWatched ?? false
-        let itemToPlay = playableItem(libraryViewModel: libraryViewModel, fromBeginning: fromBeginning)
-        playbackManager.preload(
-            item: itemToPlay,
-            fromBeginning: fromBeginning,
-            client: serverViewModel.client,
-            userID: serverViewModel.currentUser?.id,
-            libraryViewModel: libraryViewModel,
-            mediaSourceID: selectedMediaSourceID,
-            audioStreamIndex: selectedAudioStreamIndex,
-            subtitleStreamIndex: selectedSubtitleStreamIndex,
-            maxBitrate: selectedMaxBitrate,
             queue: playbackQueue
         )
     }
 
     // MARK: - Server-derived Playback State
-
-    // Everything below reads `BaseItemDto.userData` directly. Nothing is aggregated locally from
-    // `episodes` or `collectionItems`: if the Jellyfin server does not report progress for an item,
-    // the UI shows none rather than inventing a number that would not match other Jellyfin clients.
 
     /// True when the server reports progress that has not reached the played threshold.
     var isInProgress: Bool {
@@ -110,16 +154,15 @@ extension MediaDetailViewModel {
         displayItem?.percentText ?? ""
     }
 
-    func targetPlayableTitle(libraryViewModel: LibraryViewModel? = nil) -> String {
-        let target = playableItem(libraryViewModel: libraryViewModel)
+    func targetPlayableTitle() -> String {
+        let target = playableItem()
         let title = target.contextMenuTitle(includeSeriesName: false)
         return title.isEmpty ? (displayItem?.name ?? "") : title
     }
 
     func handlePlayTap(
         playbackManager: PlaybackManager,
-        serverViewModel: ServerViewModel,
-        libraryViewModel: LibraryViewModel
+        serverViewModel: ServerViewModel
     ) {
         if isPlayDisabled {
             return
@@ -128,15 +171,13 @@ extension MediaDetailViewModel {
             playMedia(
                 fromBeginning: true,
                 playbackManager: playbackManager,
-                serverViewModel: serverViewModel,
-                libraryViewModel: libraryViewModel
+                serverViewModel: serverViewModel
             )
         } else {
             playMedia(
                 fromBeginning: false,
                 playbackManager: playbackManager,
-                serverViewModel: serverViewModel,
-                libraryViewModel: libraryViewModel
+                serverViewModel: serverViewModel
             )
         }
     }
@@ -146,35 +187,35 @@ extension MediaDetailViewModel {
     func resetProgress(serverViewModel: ServerViewModel?) {
         guard let item = displayItem else { return }
         Task {
-            await serverViewModel?.resetProgress(for: item, episodes: episodes)
+            let epItems = episodes.compactMap { LibraryViewModel.shared[$0] }
+            await serverViewModel?.resetProgress(for: item, episodes: epItems)
         }
     }
 
     func startSeriesFromBeginning(
         playbackManager: PlaybackManager,
-        serverViewModel: ServerViewModel,
-        libraryViewModel: LibraryViewModel
+        serverViewModel: ServerViewModel
     ) {
         Task {
+            let epItems = episodes.compactMap { LibraryViewModel.shared[$0] }
             if let item = displayItem {
-                await serverViewModel.resetProgress(for: item, episodes: episodes)
+                await serverViewModel.resetProgress(for: item, episodes: epItems)
             }
 
-            let firstEpisode = episodes.first(where: { ($0.parentIndexNumber ?? 1) >= 1 && ($0.indexNumber ?? 1) == 1 })
-                ?? episodes.first(where: { ($0.parentIndexNumber ?? 1) >= 1 })
-                ?? episodes.first
-                ?? playableItem(libraryViewModel: libraryViewModel, fromBeginning: true)
+            let firstEpisode = epItems.first(where: { ($0.parentIndexNumber ?? 1) >= 1 && ($0.indexNumber ?? 1) == 1 })
+                ?? epItems.first(where: { ($0.parentIndexNumber ?? 1) >= 1 })
+                ?? epItems.first
+                ?? playableItem(fromBeginning: true)
 
+            guard let itemID = firstEpisode.id else { return }
+            if playbackManager.client == nil {
+                playbackManager.client = serverViewModel.client
+                playbackManager.userID = serverViewModel.currentUser?.id
+            }
             playbackManager.play(
-                item: firstEpisode,
+                itemID: itemID,
+                playbackInfo: currentPlaybackInfo,
                 fromBeginning: true,
-                client: serverViewModel.client,
-                userID: serverViewModel.currentUser?.id,
-                libraryViewModel: libraryViewModel,
-                mediaSourceID: selectedMediaSourceID,
-                audioStreamIndex: selectedAudioStreamIndex,
-                subtitleStreamIndex: selectedSubtitleStreamIndex,
-                maxBitrate: selectedMaxBitrate,
                 queue: !episodes.isEmpty ? episodes : nil
             )
         }
@@ -189,7 +230,6 @@ extension MediaDetailViewModel {
                 sourceItem?.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
             }
         }
-        episodes.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
-        collectionItems.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        LibraryViewModel.shared.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
     }
 }

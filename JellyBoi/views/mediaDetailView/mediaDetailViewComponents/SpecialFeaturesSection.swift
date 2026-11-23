@@ -79,18 +79,18 @@ extension MediaDetailView {
         .scrollIndicators(.hidden)
     }
 
-    private func specialFeaturesContent(_ features: [BaseItemDto]) -> some View {
+    private func specialFeaturesContent(_ featureIDs: [String]) -> some View {
         ScrollView(.horizontal) {
             LazyHStack(alignment: .top, spacing: 14) {
-                ForEach(features, id: \.id) { feature in
-                    if let featureID = feature.id {
+                ForEach(featureIDs, id: \.self) { featureID in
+                    if let feature = LibraryViewModel.shared[featureID] {
                         let ratio = feature.imageAspectRatio
                         let cardWidth = specialFeatureCardHeight * ratio
                         let zoomID = feature.zoomTransitionID(rowKey: "specialFeature")
 
                         VStack(alignment: .leading, spacing: 6) {
                             MediaCard(
-                                item: feature,
+                                itemID: featureID,
                                 posterURL: feature.backdropURL(client: serverViewModel.client)
                                     ?? feature.thumbnailURL(client: serverViewModel.client),
                                 namespace: specialFeatureTransition,
@@ -101,10 +101,10 @@ extension MediaDetailView {
                                 zoomID: zoomID,
                                 imageAspectRatio: ratio,
                                 onContinueWatching: {
-                                    playbackManager.play(item: feature, fromBeginning: false, queue: features)
+                                    playbackManager.play(itemID: featureID, fromBeginning: false, queue: featureIDs)
                                 },
                                 onStartFromBeginning: {
-                                    playbackManager.play(item: feature, fromBeginning: true, queue: features)
+                                    playbackManager.play(itemID: featureID, fromBeginning: true, queue: featureIDs)
                                 }
                             )
                             .equatable()

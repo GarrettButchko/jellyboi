@@ -28,23 +28,10 @@ struct TabsView: View {
     /// Owns the single tab bar overlay shared by every tab's scroll view.
     @State private var scrollOverlayCoordinator = ScrollOverlayCoordinator()
 
-    init(libraryViewModel: LibraryViewModel? = nil) {
-        let lib = libraryViewModel ?? LibraryViewModel()
-        _homeViewModel = State(initialValue: HomeViewModel(library: lib))
-        _mediaViewModel = State(initialValue: MediaViewModel(library: lib))
-        _searchViewModel = State(initialValue: SearchViewModel(library: lib))
-    }
-
-    private func syncViewModels() {
-        if homeViewModel.library !== libraryViewModel {
-            homeViewModel.library = libraryViewModel
-        }
-        if mediaViewModel.library !== libraryViewModel {
-            mediaViewModel.library = libraryViewModel
-        }
-        if searchViewModel.library !== libraryViewModel {
-            searchViewModel.library = libraryViewModel
-        }
+    init() {
+        _homeViewModel = State(initialValue: HomeViewModel())
+        _mediaViewModel = State(initialValue: MediaViewModel())
+        _searchViewModel = State(initialValue: SearchViewModel())
     }
 
     var body: some View {
@@ -75,16 +62,13 @@ struct TabsView: View {
         .environment(mediaViewModel)
         .environment(searchViewModel)
         .task {
-            syncViewModels()
             playbackManager.client = serverViewModel.client
             playbackManager.userID = serverViewModel.currentUser?.id
-            playbackManager.libraryViewModel = libraryViewModel
             if libraryViewModel.isLibraryEmpty, let client = serverViewModel.client {
                 await libraryViewModel.load(using: client, userID: serverViewModel.currentUser?.id)
             }
         }
         .onAppear {
-            syncViewModels()
             updateTabBarTint()
             // SwiftUI can install the underlying `UITabBar` after the first
             // appearance pass, so re-apply once the current update completes.
@@ -96,7 +80,6 @@ struct TabsView: View {
             updateTabBarTint()
         }
         .onChange(of: serverViewModel.client != nil) { _, _ in
-            syncViewModels()
             playbackManager.client = serverViewModel.client
             playbackManager.userID = serverViewModel.currentUser?.id
         }

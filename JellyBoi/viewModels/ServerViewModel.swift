@@ -24,6 +24,8 @@ class ServerViewModel {
 
     var serverURL: URL?
     var serverName: String?
+    var serverVersion: String?
+    var isConnected: Bool { client != nil }
     private(set) var client: JellyfinClient?
     var currentUser: UserDto?
 
@@ -60,6 +62,15 @@ class ServerViewModel {
     func saveSession(token: String) {
         guard let url = serverURL, let name = serverName else { return }
         KeychainStore.save(StoredSession(token: token, serverURL: url, serverName: name), for: storedSessionKeychainKey)
+    }
+
+    func signOut() {
+        KeychainStore.delete(for: storedSessionKeychainKey)
+        KeychainStore.delete(for: "jellyfinSession")
+        client = nil
+        currentUser = nil
+        serverURL = nil
+        serverName = nil
     }
 
     /// Restores a previous session from the keychain.

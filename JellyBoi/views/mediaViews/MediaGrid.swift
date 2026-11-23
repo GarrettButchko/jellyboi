@@ -11,7 +11,6 @@ import JellyfinAPI
 
 struct MediaGrid: View {
     @Environment(ServerViewModel.self) private var serverViewModel: ServerViewModel?
-    @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     let itemIDs: [String]
@@ -46,7 +45,7 @@ struct MediaGrid: View {
 
             LazyVGrid(columns: columns, spacing: 16) {
                 ForEach(itemIDs, id: \.self) { itemID in
-                    let item = libraryViewModel?.item(for: itemID)
+                    let item = LibraryViewModel.shared.item(for: itemID)
                     MediaCard(
                         itemID: itemID,
                         posterURL: item.flatMap { posterURL(for: $0, client: serverViewModel?.client) },

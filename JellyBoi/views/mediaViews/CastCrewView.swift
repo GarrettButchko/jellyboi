@@ -78,7 +78,7 @@ struct CastCrewView: View {
                             .foregroundStyle(Color.mainOpp)
                             .padding(.horizontal, 16)
 
-                        MediaGrid(items: defaultCastCrewMediaItems, namespace: mediaZoomTransition)
+                        MediaGrid(itemIDs: defaultCastCrewMediaItems.compactMap(\.id), namespace: mediaZoomTransition)
                             .skeleton()
                     }
                     .transition(.opacity)

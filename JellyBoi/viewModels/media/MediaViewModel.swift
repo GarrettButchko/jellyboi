@@ -60,10 +60,10 @@ struct MediaSection: Identifiable {
 @MainActor
 class MediaViewModel {
     var scope: MediaScope = .movies
-    var library = LibraryViewModel()
+    var library = LibraryViewModel.shared
 
-    init(library: LibraryViewModel? = nil) {
-        if let library { self.library = library }
+    init() {
+        self.library = .shared
     }
 
     // MARK: - Regular Library Items (IDs)
@@ -106,7 +106,7 @@ class MediaViewModel {
         let starredShowIDs = Set(favoriteShowIDs)
         return library.episodeIDs.filter { epID in
             guard let ep = library.item(for: epID), ep.userData?.isFavorite == true else { return false }
-            let showID = ep.seriesID ?? ep.parentBackdropItemID
+            let showID = library.parentSeriesId(for: ep) ?? ep.parentBackdropItemID
             if let showID, starredShowIDs.contains(showID) {
                 return false
             }

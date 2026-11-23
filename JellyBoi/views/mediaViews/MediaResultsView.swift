@@ -78,7 +78,6 @@ struct MediaResultsView: View {
         }
     }
 
-    @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
     @Namespace private var zoomTransition
     @State private var selectedItemID: String?
 
@@ -98,7 +97,7 @@ struct MediaResultsView: View {
             }
         }
         .navigationDestination(item: $selectedItemID) { itemID in
-            if let item = libraryViewModel?.item(for: itemID) {
+            if let item = LibraryViewModel.shared.item(for: itemID) {
                 MediaDetailView(item: item)
                     .navigationTransition(.zoom(sourceID: item.zoomTransitionID(), in: zoomTransition))
             }

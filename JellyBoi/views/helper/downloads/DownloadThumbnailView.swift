@@ -64,11 +64,10 @@ struct DownloadThumbnailView: View, Equatable {
     init(
         item: DownloadItem,
         client: JellyfinClient?,
-        libraryViewModel: LibraryViewModel? = nil,
         size: DownloadThumbnailSize = .regular
     ) {
         let isEp = item.item.type == .episode
-        let url = item.artworkURL(client: client, libraryViewModel: libraryViewModel)
+        let url = item.artworkURL(client: client)
         self.init(
             imageURL: url,
             isEpisode: isEp,
@@ -80,10 +79,9 @@ struct DownloadThumbnailView: View, Equatable {
     init(
         group: ShowDownloadGroup,
         client: JellyfinClient?,
-        libraryViewModel: LibraryViewModel? = nil,
         size: DownloadThumbnailSize = .regular
     ) {
-        let url = group.posterURL(client: client, libraryViewModel: libraryViewModel)
+        let url = group.posterURL(client: client)
         self.init(
             imageURL: url,
             isEpisode: false,

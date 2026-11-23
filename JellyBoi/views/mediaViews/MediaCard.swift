@@ -72,7 +72,6 @@ struct MediaCard: View, Equatable {
     }
 
     @Environment(ServerViewModel.self) private var serverViewModel: ServerViewModel?
-    @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
     @Environment(PlaybackManager.self) private var playbackManager: PlaybackManager?
     @Environment(\.redactionReasons) private var redactionReasons
 
@@ -80,7 +79,7 @@ struct MediaCard: View, Equatable {
     @State private var isFavoriteOverride: Bool? = nil
 
     private var resolvedItem: BaseItemDto? {
-        if let itemID, let found = libraryViewModel?.item(for: itemID) {
+        if let itemID, let found = LibraryViewModel.shared.item(for: itemID) {
             return found
         }
         return fallbackItem

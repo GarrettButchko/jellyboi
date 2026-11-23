@@ -50,7 +50,10 @@ extension MediaDetailViewModel {
         }
         episodesStatus = .loading
 
-        // 1. Fetch seasons and sort them off the main actor
+        // 1. Fetch all episodes for the series concurrently across all seasons in a single request
+        async let rawEpisodesTask = client.fetchEpisodesOrEmpty(seriesID: seriesID, userID: userID)
+
+        // 2. Fetch seasons and sort them off the main actor
         let sortedSeasons = await Task.detached(priority: .userInitiated) { () -> [BaseItemDto] in
             let seasonResult = await client.fetchSeasonsOrEmpty(seriesID: seriesID, userID: userID)
 
@@ -70,50 +73,46 @@ extension MediaDetailViewModel {
 
         guard !Task.isCancelled else { return }
 
-        // Publish seasons immediately so the season picker appears without waiting for episodes
+        // Publish seasons immediately if available so the season picker appears without waiting for episodes
         if !sortedSeasons.isEmpty {
-            Self.seasonsCache[seriesID] = sortedSeasons
             self.seasons = sortedSeasons
             if !seasons.indices.contains(selectedSeasonIndex) {
                 selectedSeasonIndex = 0
             }
         }
 
-        guard !sortedSeasons.isEmpty else {
+        // 3. Await all episodes from the single series request
+        let rawEpisodes = await rawEpisodesTask
+        guard !Task.isCancelled else { return }
+
+        // Fallback to deriving seasons from episodes if seasons fetch returned empty
+        let resolvedSeasons = sortedSeasons.isEmpty
+            ? Self.deriveSeasons(from: rawEpisodes, seriesID: seriesID)
+            : sortedSeasons
+
+        if self.seasons.isEmpty && !resolvedSeasons.isEmpty {
+            self.seasons = resolvedSeasons
+            if !seasons.indices.contains(selectedSeasonIndex) {
+                selectedSeasonIndex = 0
+            }
+        }
+
+        guard !resolvedSeasons.isEmpty, !rawEpisodes.isEmpty else {
             self.episodes = []
             self.episodesStatus = .empty
             return
         }
 
-        // 2. Fetch all seasons' episodes in parallel off the main actor
+        // 4. Sort episodes by season number and episode number off the main actor
         var seasonNumberMap: [String: Int] = [:]
-        for season in sortedSeasons {
+        for season in resolvedSeasons {
             if let id = season.id {
                 seasonNumberMap[id] = season.indexNumber ?? season.parentIndexNumber ?? 1
             }
         }
 
-        let sortedEpisodes = await Task.detached(priority: .userInitiated) { () -> [BaseItemDto] in
-            let allEpisodes = await withTaskGroup(of: (Int, [BaseItemDto]).self) { group in
-                for (index, season) in sortedSeasons.enumerated() {
-                    group.addTask {
-                        let seasonNum = season.indexNumber ?? season.parentIndexNumber
-                        let eps = await client.fetchEpisodesOrEmpty(
-                            seriesID: seriesID,
-                            seasonNumber: seasonNum,
-                            userID: userID
-                        )
-                        return (index, eps)
-                    }
-                }
-                var dict: [Int: [BaseItemDto]] = [:]
-                for await (index, eps) in group {
-                    dict[index] = eps
-                }
-                return dict.sorted { $0.key < $1.key }.map(\.value)
-            }
-
-            return allEpisodes.flatMap { $0 }.sorted { a, b in
+        let sortedEpisodes = await Task.detached(priority: .userInitiated) { [rawEpisodes, seasonNumberMap] () -> [BaseItemDto] in
+            rawEpisodes.sorted { a, b in
                 let sA = a.parentIndexNumber ?? (a.seasonID.flatMap { seasonNumberMap[$0] }) ?? 1
                 let sB = b.parentIndexNumber ?? (b.seasonID.flatMap { seasonNumberMap[$0] }) ?? 1
                 if sA != sB {
@@ -130,14 +129,19 @@ extension MediaDetailViewModel {
 
         guard !Task.isCancelled else { return }
 
-        Self.episodesCache[seriesID] = sortedEpisodes
+        for ep in sortedEpisodes {
+            if let id = ep.id {
+                LibraryViewModel.shared[id] = ep
+            }
+        }
 
-        self.episodes = sortedEpisodes
-        self.episodesStatus = sortedEpisodes.isEmpty ? .empty : .loaded
+        let ids = sortedEpisodes.compactMap(\.id)
+        self.episodes = ids
+        self.episodesStatus = ids.isEmpty ? .empty : .loaded
 
         if !hasInitialEpisodeScrolled {
-            if let nextEp = nextPlayableEpisode(libraryViewModel: libraryViewModel),
-               let sIdx = seasonIndex(for: nextEp) {
+            if let nextEpID = nextPlayableItem,
+               let sIdx = seasonIndex(for: nextEpID) {
                 selectedSeasonIndex = sIdx
             } else {
                 selectedSeasonIndex = 0
@@ -175,11 +179,19 @@ extension MediaDetailViewModel {
         return nil
     }
 
+    func seasonIndex(for episodeID: String) -> Int? {
+        if let ep = LibraryViewModel.shared[episodeID] {
+            return seasonIndex(for: ep)
+        }
+        return nil
+    }
+
     func firstEpisode(forSeasonIndex index: Int) -> BaseItemDto? {
         guard seasons.indices.contains(index) else { return nil }
         let season = seasons[index]
         let targetSeasonNum = season.indexNumber ?? season.parentIndexNumber
-        return episodes.first { ep in
+        let epItems = episodes.compactMap { LibraryViewModel.shared[$0] }
+        return epItems.first { ep in
             if let sID = season.id, let epSeasonID = ep.seasonID, sID == epSeasonID {
                 return true
             }
@@ -193,60 +205,7 @@ extension MediaDetailViewModel {
         }
     }
 
-    func nextPlayableEpisode(libraryViewModel: LibraryViewModel?, fromBeginning: Bool = false) -> BaseItemDto? {
-        if displayItem?.type == .episode {
-            return displayItem
-        }
-        if displayItem?.type == .movie {
-            return displayItem
-        }
-        if displayItem?.type == .series {
-            if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == displayItem?.id }) {
-                if var matched = episodes.first(where: { $0.id == resumeEp.id }) {
-                    if matched.resumePlaybackTicks == 0 && resumeEp.resumePlaybackTicks > 0 {
-                        matched.userData = resumeEp.userData
-                    }
-                    return matched
-                }
-                return resumeEp
-            }
-            if var playable = episodes.nextPlayableItem(fromBeginning: fromBeginning) {
-                if !fromBeginning, playable.resumePlaybackTicks == 0,
-                   let matchingResume = libraryViewModel?.resumeShows.first(where: { $0.id == playable.id }),
-                   matchingResume.resumePlaybackTicks > 0 {
-                    playable.userData = matchingResume.userData
-                }
-                return playable
-            }
-            return nil
-        }
-        if displayItem?.type == .boxSet {
-            let resolvedCollectionItems: [BaseItemDto] = collectionItems.map { ci in
-                guard let id = ci.id else { return ci }
-                return libraryViewModel?.item(for: id) ?? ci
-            }
-            guard let nextItem = resolvedCollectionItems.nextPlayableItem(fromBeginning: fromBeginning) else {
-                return nil
-            }
-            if nextItem.type == .series {
-                if !fromBeginning, let resumeEp = libraryViewModel?.resumeShows.first(where: { $0.seriesID == nextItem.id }) {
-                    return resumeEp
-                }
-                let matching = (libraryViewModel?.episodes(forSeriesID: nextItem.id ?? "") ?? [])
-                    .sorted { a, b in
-                        let sA = a.parentIndexNumber ?? 1
-                        let sB = b.parentIndexNumber ?? 1
-                        if sA != sB { return sA < sB }
-                        return (a.indexNumber ?? 1) < (b.indexNumber ?? 1)
-                    }
-                return matching.nextPlayableItem(fromBeginning: fromBeginning) ?? nextItem
-            }
-            return nextItem
-        }
-        return displayItem
-    }
-
-    func loadCollectionItems(client: JellyfinClient, userID: String?, libraryViewModel: LibraryViewModel? = nil) async {
+    func loadCollectionItems(client: JellyfinClient, userID: String?) async {
         guard let collectionID = sourceItem?.id ?? detailedItem?.id else { return }
         collectionStatus = .loading
 
@@ -267,14 +226,13 @@ extension MediaDetailViewModel {
 
         guard !Task.isCancelled else { return }
 
-        let mapped = sorted.map { item in
-            guard let id = item.id else { return item }
-            return libraryViewModel?.item(for: id) ?? item
+        for item in sorted {
+            if let id = item.id {
+                LibraryViewModel.shared[id] = item
+            }
         }
-        collectionItems = mapped
-        collectionStatus = mapped.isEmpty ? .empty : .loaded
-        if let collectionID = sourceItem?.id ?? detailedItem?.id {
-            Self.collectionItemsCache[collectionID] = mapped
-        }
+        let ids = sorted.compactMap(\.id)
+        collectionItems = ids
+        collectionStatus = ids.isEmpty ? .empty : .loaded
     }
 }

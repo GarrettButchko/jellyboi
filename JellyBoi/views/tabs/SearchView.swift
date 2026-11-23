@@ -28,6 +28,7 @@ struct SearchView: View {
     @Namespace private var zoomTransition
 
     var body: some View {
+        @Bindable var viewModel = viewModel
         NavigationStack {
             ScrollToTopScrollView(position: $scrollPosition) {
                 Group {

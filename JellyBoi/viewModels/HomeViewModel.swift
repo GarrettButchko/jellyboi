@@ -13,10 +13,10 @@ import JellyfinAPI
 @Observable
 @MainActor
 class HomeViewModel {
-    var library = LibraryViewModel()
+    var library = LibraryViewModel.shared
 
-    init(library: LibraryViewModel? = nil) {
-        if let library { self.library = library }
+    init() {
+        self.library = .shared
     }
 
     var movieIDs: [String] {

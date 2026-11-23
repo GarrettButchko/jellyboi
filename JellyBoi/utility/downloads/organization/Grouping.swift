@@ -60,23 +60,22 @@ public struct ShowDownloadGroup: Identifiable, Equatable, Sendable, Hashable {
         activeDownloads.first?.item ?? completedDownloads.first?.item
     }
 
-    func posterURL(client: JellyfinClient?, libraryViewModel: LibraryViewModel? = nil) -> URL? {
+    func posterURL(client: JellyfinClient?) -> URL? {
         if let directURL = groupInfo?.posterURL(client: client) {
             return directURL
         }
         guard let client else { return nil }
-        if let libraryViewModel {
-            if groupInfo?.type == .collection {
-                if let collection = libraryViewModel.collections.first(where: { $0.id == id }) {
-                    return collection.posterURL(client: client)
-                }
-            } else {
-                if let show = libraryViewModel.tvShows.first(where: { $0.id == id }) {
-                    return show.posterURL(client: client)
-                }
-                if let first = representativeItem, let url = first.seriesPosterURL(client: client) {
-                    return url
-                }
+        let libraryViewModel = LibraryViewModel.shared
+        if groupInfo?.type == .collection {
+            if let collection = libraryViewModel[id] {
+                return collection.posterURL(client: client)
+            }
+        } else {
+            if let show = libraryViewModel[id] {
+                return show.posterURL(client: client)
+            }
+            if let first = representativeItem, let url = first.seriesPosterURL(client: client) {
+                return url
             }
         }
         let tag = representativeItem?.seriesPrimaryImageTag ?? representativeItem?.imageTags?["Primary"]
@@ -443,7 +442,7 @@ public enum DownloadGrouping {
 // MARK: - DownloadItem Artwork Helper
 
 extension DownloadItem {
-    func artworkURL(client: JellyfinClient?, libraryViewModel: LibraryViewModel? = nil) -> URL? {
+    func artworkURL(client: JellyfinClient?) -> URL? {
         guard let client else { return nil }
         if item.type == .episode {
             let hasThumb = item.imageTags?.keys.contains("Thumb") == true

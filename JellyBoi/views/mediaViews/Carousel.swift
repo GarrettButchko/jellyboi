@@ -25,7 +25,7 @@ final class CarouselImageMemoryCache {
     static let shared = CarouselImageMemoryCache()
     private init() {}
 
-    func preloadImages(for urls: [URL]) {
+    func prefetchImages(for urls: [URL]) {
         SDWebImagePrefetcher.shared.prefetchURLs(urls)
     }
 }
@@ -54,7 +54,6 @@ struct Carousel: View {
     var onSnap: ((Int, String) -> Void)? = nil
 
     @Environment(HomeViewModel.self) private var viewModel
-    @Environment(LibraryViewModel.self) private var libraryViewModel: LibraryViewModel?
     @Environment(ViewManager.self) private var viewManager: ViewManager?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -115,7 +114,7 @@ struct Carousel: View {
         result.reserveCapacity(count * 3)
 
         let itemURLs = ids.map { id in
-            libraryViewModel?.item(for: id).flatMap { backdropURL($0) }
+            LibraryViewModel.shared.item(for: id).flatMap { backdropURL($0) }
         }
 
         for set in 0..<3 {
@@ -127,7 +126,7 @@ struct Carousel: View {
                     CarouselLoopedItem(
                         id: loopedID,
                         itemID: itemID,
-                        item: libraryViewModel?.item(for: itemID),
+                        item: LibraryViewModel.shared.item(for: itemID),
                         url: itemURLs[i],
                         isRealSection: isReal
                     )
@@ -330,18 +329,18 @@ struct Carousel: View {
         .onAppear {
             isViewVisible = true
             let urls = currentItemIDs.compactMap { id in
-                libraryViewModel?.item(for: id).flatMap { backdropURL($0) }
+                LibraryViewModel.shared.item(for: id).flatMap { backdropURL($0) }
             }
-            CarouselImageMemoryCache.shared.preloadImages(for: urls)
+            CarouselImageMemoryCache.shared.prefetchImages(for: urls)
         }
         .onDisappear {
             isViewVisible = false
         }
         .onChange(of: currentItemIDs) { _, newIDs in
             let urls = newIDs.compactMap { id in
-                libraryViewModel?.item(for: id).flatMap { backdropURL($0) }
+                LibraryViewModel.shared.item(for: id).flatMap { backdropURL($0) }
             }
-            CarouselImageMemoryCache.shared.preloadImages(for: urls)
+            CarouselImageMemoryCache.shared.prefetchImages(for: urls)
             if !newIDs.isEmpty {
                 let validTarget = (0..<loopedItems.count).contains(snappedIndex) ? snappedIndex : loopStart
                 if snappedIndex != validTarget {
@@ -504,4 +503,8 @@ private struct CarouselCard: View {
         .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
+}
+
+extension Carousel {
+    typealias Placeholder = CarouselSkeleton
 }

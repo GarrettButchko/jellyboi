@@ -36,7 +36,7 @@ struct ContentView: View {
                     GetStartedView()
                 } else {
                     ZStack {
-                        TabsView(libraryViewModel: libraryViewModel)
+                        TabsView()
 
                         if isOffline {
                             OfflineMediaView(onRetry: {
@@ -112,8 +112,21 @@ struct ContentView: View {
         ) { playerVM in
             if let player = playerVM.player {
                 ZStack(alignment: .topLeading) {
-                    NativePlayerView(
+                    CustomPlayerView(
                         player: player,
+                        itemID: playerVM.itemID,
+                        nextItem: playerVM.nextItem,
+                        onPlayNext: {
+                            Task {
+                                await playerVM.playNextItem()
+                            }
+                        },
+                        onDismiss: {
+                            #if os(iOS)
+                            OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
+                            #endif
+                            playbackManager.stop()
+                        },
                         onControlsVisibilityChanged: { isVisible in
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 playerVM.areControlsVisible = isVisible
@@ -205,10 +218,6 @@ struct ContentView: View {
                         }
                     }
                 }
-            } else if newPhase == .background {
-                if playbackManager.activePlayerViewModel == nil {
-                    playbackManager.cancelPreload()
-                }
             }
         }
         .onChange(of: networkMonitor.isConnected) { wasConnected, isConnected in
@@ -258,7 +267,6 @@ struct ContentView: View {
                 let userID = serverViewModel.currentUser?.id
                 playbackManager.client = client
                 playbackManager.userID = userID
-                playbackManager.libraryViewModel = libraryViewModel
                 DownloadManager.shared.client = client
                 Task {
                     await libraryViewModel.load(using: client, userID: userID)

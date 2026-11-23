@@ -51,7 +51,7 @@ extension MediaDetailView {
     }
 
     private var collectionSkeleton: some View {
-        MediaGrid(items: defaultCollectionItems, namespace: collectionTransition)
+        MediaGrid(itemIDs: defaultCollectionItems.compactMap(\.id), namespace: collectionTransition)
     }
 
     @ViewBuilder
@@ -65,10 +65,11 @@ extension MediaDetailView {
             .padding(.top, 20)
         } else {
             LazyVGrid(columns: collectionColumns, spacing: 16) {
-                ForEach(detailVM.collectionItems, id: \.id) { item in
+                ForEach(detailVM.collectionItems, id: \.self) { itemID in
+                    let item = LibraryViewModel.shared[itemID]
                     MediaCard(
-                        item: item,
-                        posterURL: item.posterURL(client: serverViewModel.client),
+                        itemID: itemID,
+                        posterURL: item?.posterURL(client: serverViewModel.client),
                         namespace: collectionTransition,
                         onSelect: {
                             selectedCollectionItem = item

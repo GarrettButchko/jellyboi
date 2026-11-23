@@ -104,7 +104,7 @@ struct MediaView: View {
                 }
             }
             .navigationDestination(item: $selectedItemID) { itemID in
-                if let item = libraryViewModel.item(for: itemID) {
+                if let item = libraryViewModel[itemID] {
                     MediaDetailView(item: item)
                         .navigationTransition(.zoom(sourceID: item.zoomTransitionID(), in: zoomTransition))
                 }

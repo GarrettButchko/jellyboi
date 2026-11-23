@@ -84,7 +84,7 @@ struct JellyBoiApp: App {
 
     @State private var viewManager = ViewManager()
     @State private var serverViewModel = ServerViewModel.shared
-    @State private var libraryViewModel = LibraryViewModel()
+    @State private var libraryViewModel = LibraryViewModel.shared
     @State private var playbackManager = PlaybackManager.shared
     @State private var downloadManager = DownloadManager.shared
     @State private var networkMonitor = NetworkMonitor.shared
