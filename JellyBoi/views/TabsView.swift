@@ -21,18 +21,12 @@ struct TabsView: View {
     @Environment(PlaybackManager.self) private var playbackManager
     @Environment(AppPreferences.self) private var preferences
     @Environment(\.colorScheme) private var colorScheme
-    @State private var homeViewModel: HomeViewModel
-    @State private var mediaViewModel: MediaViewModel
-    @State private var searchViewModel: SearchViewModel
+    @State private var homeTabViewModel = HomeTabViewModel.shared
+    @State private var mediaTabViewModel = MediaTabViewModel.shared
+    @State private var searchTabViewModel = SearchTabViewModel.shared
 
     /// Owns the single tab bar overlay shared by every tab's scroll view.
     @State private var scrollOverlayCoordinator = ScrollOverlayCoordinator()
-
-    init() {
-        _homeViewModel = State(initialValue: HomeViewModel())
-        _mediaViewModel = State(initialValue: MediaViewModel())
-        _searchViewModel = State(initialValue: SearchViewModel())
-    }
 
     var body: some View {
         @Bindable var bindableViewManager = viewManager
@@ -58,9 +52,9 @@ struct TabsView: View {
         .background(Color.bg.ignoresSafeArea())
         
         .environment(scrollOverlayCoordinator)
-        .environment(homeViewModel)
-        .environment(mediaViewModel)
-        .environment(searchViewModel)
+        .environment(homeTabViewModel)
+        .environment(mediaTabViewModel)
+        .environment(searchTabViewModel)
         .task {
             playbackManager.client = serverViewModel.client
             playbackManager.userID = serverViewModel.currentUser?.id

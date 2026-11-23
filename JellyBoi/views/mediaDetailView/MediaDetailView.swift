@@ -98,14 +98,14 @@ struct MediaDetailView: View {
             if detailVM.downloadAlertAction == .cancel {
                 Button("Cancel Download", role: .destructive) {
                     withAnimation(.skeleton) {
-                        detailVM.cancelDownload(downloadManager: downloadManager)
+                        detailVM.cancelDownload()
                     }
                 }
                 Button("Keep Downloading", role: .cancel) { }
             } else {
                 Button("Remove", role: .destructive) {
                     withAnimation(.skeleton) {
-                        detailVM.deleteDownload(downloadManager: downloadManager)
+                        detailVM.deleteDownload()
                     }
                 }
                 Button("Cancel", role: .cancel) { }

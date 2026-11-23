@@ -23,10 +23,67 @@ private let carouselAutoScrollInterval: TimeInterval = 6.0
 @MainActor
 final class CarouselImageMemoryCache {
     static let shared = CarouselImageMemoryCache()
+
+    private var memoryCache: [URL: UIImage] = [:]
+
     private init() {}
 
-    func prefetchImages(for urls: [URL]) {
-        SDWebImagePrefetcher.shared.prefetchURLs(urls)
+    func image(for url: URL) -> UIImage? {
+        if let img = memoryCache[url] {
+            return img
+        }
+        let key = SDWebImageManager.shared.cacheKey(for: url)
+        if let img = SDImageCache.shared.imageFromMemoryCache(forKey: key) {
+            memoryCache[url] = img
+            return img
+        }
+        return nil
+    }
+
+    func store(_ image: UIImage, for url: URL) {
+        memoryCache[url] = image
+        let key = SDWebImageManager.shared.cacheKey(for: url)
+        SDImageCache.shared.store(image, forKey: key, toDisk: true)
+    }
+
+    func preloadImages(for urls: [URL]) {
+        for url in urls {
+            if image(for: url) != nil { continue }
+            loadImage(for: url) { _ in }
+        }
+    }
+
+    func loadImage(for url: URL, completion: (@Sendable @MainActor (UIImage?) -> Void)? = nil) {
+        if let cached = image(for: url) {
+            completion?(cached)
+            return
+        }
+
+        let key = SDWebImageManager.shared.cacheKey(for: url)
+        SDImageCache.shared.queryImage(
+            forKey: key,
+            options: [],
+            context: nil
+        ) { [weak self] image, _, _ in
+            if let image {
+                Task { @MainActor [weak self] in
+                    self?.store(image, for: url)
+                    completion?(image)
+                }
+            } else {
+                SDWebImageManager.shared.loadImage(
+                    with: url,
+                    options: [.avoidAutoSetImage, .highPriority],
+                    progress: nil
+                ) { [weak self] image, _, _, _, finished, _ in
+                    guard let image, finished else { return }
+                    Task { @MainActor [weak self] in
+                        self?.store(image, for: url)
+                        completion?(image)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -35,7 +92,6 @@ final class CarouselImageMemoryCache {
 private struct CarouselLoopedItem: Identifiable {
     let id: Int
     let itemID: String
-    let item: BaseItemDto?
     let url: URL?
     let isRealSection: Bool
 }
@@ -53,7 +109,7 @@ struct Carousel: View {
     let onSelect: (String) -> Void
     var onSnap: ((Int, String) -> Void)? = nil
 
-    @Environment(HomeViewModel.self) private var viewModel
+    @Environment(HomeTabViewModel.self) private var viewModel
     @Environment(ViewManager.self) private var viewManager: ViewManager?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -126,7 +182,6 @@ struct Carousel: View {
                     CarouselLoopedItem(
                         id: loopedID,
                         itemID: itemID,
-                        item: LibraryViewModel.shared.item(for: itemID),
                         url: itemURLs[i],
                         isRealSection: isReal
                     )
@@ -217,7 +272,8 @@ struct Carousel: View {
                         let target = viewModel.carouselSnappedIndex ?? loopStart
                         let validTarget = (0..<loopedItems.count).contains(target) ? target : loopStart
                         if lastReportedSnappedIndex == nil {
-                            lastReportedSnappedIndex = itemIndex(for: validTarget, count: count)
+                            let initialIdx = itemIndex(for: validTarget, count: count)
+                            lastReportedSnappedIndex = initialIdx
                         }
                         if currentIndex != validTarget {
                             currentIndex = validTarget
@@ -241,6 +297,13 @@ struct Carousel: View {
                         guard count > 0 else { return }
 
                         snappedIndex = newValue
+
+                        // Immediately blend backdrop and notify selection as index changes
+                        let snappedItemIdx = itemIndex(for: newValue, count: count)
+                        if lastReportedSnappedIndex != snappedItemIdx {
+                            lastReportedSnappedIndex = snappedItemIdx
+                            onSnap?(snappedItemIdx, currentItemIDs[snappedItemIdx])
+                        }
 
                         if newValue < count {
                             pendingTeleportTarget = count + ((newValue % count) + count) % count
@@ -298,11 +361,6 @@ struct Carousel: View {
                             try? await Task.sleep(for: .milliseconds(460))
                             guard !Task.isCancelled else { break }
                             isAutoScrolling = false
-                            let snappedItemIdx = itemIndex(for: nextIndex, count: count)
-                            if snappedItemIdx < currentItemIDs.count {
-                                lastReportedSnappedIndex = snappedItemIdx
-                                onSnap?(snappedItemIdx, currentItemIDs[snappedItemIdx])
-                            }
                         }
                     }
                 }
@@ -320,7 +378,8 @@ struct Carousel: View {
                 CarouselPageIndicator(
                     count: count,
                     currentIndex: displayedItemIndex,
-                    isPaused: !isEffectivelyActive || isScrolling || isAutoScrolling
+                    isPaused: !isEffectivelyActive || isScrolling || isAutoScrolling,
+                    timerResetTrigger: timerResetTrigger
                 )
             }
         }
@@ -331,7 +390,7 @@ struct Carousel: View {
             let urls = currentItemIDs.compactMap { id in
                 LibraryViewModel.shared.item(for: id).flatMap { backdropURL($0) }
             }
-            CarouselImageMemoryCache.shared.prefetchImages(for: urls)
+            CarouselImageMemoryCache.shared.preloadImages(for: urls)
         }
         .onDisappear {
             isViewVisible = false
@@ -340,7 +399,7 @@ struct Carousel: View {
             let urls = newIDs.compactMap { id in
                 LibraryViewModel.shared.item(for: id).flatMap { backdropURL($0) }
             }
-            CarouselImageMemoryCache.shared.prefetchImages(for: urls)
+            CarouselImageMemoryCache.shared.preloadImages(for: urls)
             if !newIDs.isEmpty {
                 let validTarget = (0..<loopedItems.count).contains(snappedIndex) ? snappedIndex : loopStart
                 if snappedIndex != validTarget {
@@ -365,10 +424,10 @@ struct Carousel: View {
         let cardURL = shouldLoadContent ? looped.url : nil
 
         Group {
-            if let item = looped.item {
+            if let item = LibraryViewModel.shared.item(for: looped.itemID) {
                 if looped.id == snappedIndex {
                     CarouselCard(
-                        item: item,
+                        itemID: looped.itemID,
                         url: cardURL,
                         width: cardWidth,
                         height: cardHeight,
@@ -380,7 +439,7 @@ struct Carousel: View {
                     )
                 } else {
                     CarouselCard(
-                        item: item,
+                        itemID: looped.itemID,
                         url: cardURL,
                         width: cardWidth,
                         height: cardHeight,
@@ -428,48 +487,79 @@ private struct CarouselPageIndicator: View {
     let count: Int
     let currentIndex: Int
     let isPaused: Bool
+    var timerResetTrigger: UUID = UUID()
 
     @State private var pillStartDate: Date = Date()
     @State private var previousIndex: Int = 0
 
-    private let pillWidth: CGFloat = 20
+    private let activePillWidth: CGFloat = 20
     private let dotSize: CGFloat = 6
     private let height: CGFloat = 6
 
+    private var isWrapTransition: Bool {
+        guard count > 1 else { return false }
+        return (previousIndex == count - 1 && currentIndex == 0) ||
+               (previousIndex == 0 && currentIndex == count - 1)
+    }
+
+    private var indicatorAnimation: Animation {
+        if isWrapTransition {
+            return .spring(response: 0.44, dampingFraction: 0.78)
+        } else {
+            return .spring(response: 0.36, dampingFraction: 0.74)
+        }
+    }
+
     var body: some View {
+        #if DEBUG
+        let showTimerAnimation = !DebugSettings.shared.disableCarouselTimerAnimation
+        #else
+        let showTimerAnimation = true
+        #endif
+
         HStack(spacing: 5) {
             ForEach(0..<count, id: \.self) { index in
-                if index == currentIndex {
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.mainOpp.opacity(0.2))
-                            .frame(width: pillWidth, height: height)
+                let isActive = index == currentIndex
+                let width = isActive ? activePillWidth : dotSize
 
-                        ActiveIndicatorPill(
-                            startDate: pillStartDate,
-                            isPaused: isPaused,
-                            width: pillWidth,
-                            height: height
-                        )
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.mainOpp.opacity(isActive ? 0.2 : 0.3))
+                        .frame(width: width, height: height)
+
+                    if isActive {
+                        if showTimerAnimation {
+                            ActiveIndicatorPill(
+                                startDate: pillStartDate,
+                                isPaused: isPaused,
+                                width: width,
+                                height: height
+                            )
+                            .transition(.opacity)
+                        } else {
+                            Capsule()
+                                .fill(Color.mainOpp)
+                                .frame(width: width, height: height)
+                        }
                     }
-                    .clipShape(Capsule())
-                    .transition(.identity)
-                } else {
-                    Circle()
-                        .fill(Color.mainOpp.opacity(0.3))
-                        .frame(width: dotSize, height: dotSize)
-                        .transition(.identity)
                 }
+                .clipShape(Capsule())
+                .frame(width: width, height: height)
             }
         }
         .padding(.vertical, 4)
-        .animation(.easeInOut(duration: 0.3), value: currentIndex)
+        .animation(indicatorAnimation, value: currentIndex)
         .onChange(of: currentIndex) { oldVal, newVal in
+            previousIndex = oldVal
             if oldVal != newVal {
                 pillStartDate = Date()
             }
         }
+        .onChange(of: timerResetTrigger) { _, _ in
+            pillStartDate = Date()
+        }
         .onAppear {
+            previousIndex = currentIndex
             pillStartDate = Date()
         }
     }
@@ -478,18 +568,35 @@ private struct CarouselPageIndicator: View {
 // MARK: - Carousel Card
 
 private struct CarouselCard: View {
-    let item: BaseItemDto
+    let itemID: String
     let url: URL?
     let width: CGFloat
     let height: CGFloat
     let shouldLoadContent: Bool
 
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.mainOpp.opacity(0.06))
+    @State private var displayImage: UIImage? = nil
+    private let outerCornerRadius: CGFloat = 16
 
-            if shouldLoadContent, let url {
+    private var item: BaseItemDto? {
+        LibraryViewModel.shared.item(for: itemID)
+    }
+
+    private var watchProgress: Double? {
+        item?.watchProgress
+    }
+
+    var body: some View {
+        let cachedImage = url.flatMap { CarouselImageMemoryCache.shared.image(for: $0) }
+        let currentImage = displayImage ?? cachedImage
+
+        ZStack(alignment: .bottomTrailing) {
+            placeholder
+
+            if let currentImage {
+                Image(uiImage: currentImage)
+                    .resizable()
+                    .scaledToFill()
+            } else if shouldLoadContent, let url {
                 WebImage(url: url) { phase in
                     if let image = phase.image {
                         image
@@ -498,10 +605,61 @@ private struct CarouselCard: View {
                     }
                 }
                 .cancelOnDisappear(true)
+                .onSuccess { image, _, _ in
+                    displayImage = image
+                    CarouselImageMemoryCache.shared.store(image, for: url)
+                }
+            }
+
+            if shouldLoadContent, let item {
+                VStack(alignment: .trailing, spacing: 6) {
+                    if AppPreferences.shared.showProgressBar,
+                       let progress = watchProgress,
+                       !item.isWatched && item.isInProgress && Int(progress * 100) > 0 {
+                        ProgressBar(progress: progress, label: item.timeRemainingFormatted)
+                    }
+                    if let episodeNumber = item.formattedEpisodeNumber {
+                        EpisodeBadge(text: episodeNumber)
+                    }
+                }
+                .padding(10)
             }
         }
         .frame(width: width, height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous))
+        .onChange(of: shouldLoadContent) { _, shouldLoad in
+            if !shouldLoad {
+                displayImage = nil
+            }
+        }
+        .task(id: url) {
+            guard let url else { return }
+            if let cached = CarouselImageMemoryCache.shared.image(for: url) {
+                if displayImage !== cached {
+                    displayImage = cached
+                }
+            } else {
+                CarouselImageMemoryCache.shared.loadImage(for: url) { image in
+                    if let image {
+                        displayImage = image
+                    }
+                }
+            }
+        }
+    }
+
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
+            .fill(Color.sub)
+            .overlay {
+                Image("Jellyboi")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 75, height: 75)
+                    .foregroundStyle(Color.mainOpp.opacity(0.05))
+                    .rotationEffect(.degrees(45))
+            }
     }
 }
 

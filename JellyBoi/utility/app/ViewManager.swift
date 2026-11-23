@@ -21,7 +21,9 @@ extension Notification.Name {
 
 @Observable
 @MainActor
-class ViewManager {
+final class ViewManager {
+
+    static let shared = ViewManager()
 
     var isSignedIn: Bool
     var showSignInFlow: Bool = false

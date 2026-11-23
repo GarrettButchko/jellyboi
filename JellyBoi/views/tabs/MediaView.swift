@@ -10,8 +10,7 @@ private let defaultMediaGridItemIDs: [String] = (0..<12).map { "default-media-\(
 struct MediaView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
-    @Environment(DownloadManager.self) private var downloadManager
-    @Environment(MediaViewModel.self) private var viewModel
+    @Environment(MediaTabViewModel.self) private var viewModel
     @State private var selectedItemID: String?
     @State private var scrollPosition = ScrollPosition()
     @Namespace private var zoomTransition
@@ -22,7 +21,7 @@ struct MediaView: View {
     private var scopeMenuButton: some View {
         Menu {
             Picker("Section", selection: scopeSelection) {
-                ForEach(viewModel.availableScopes(downloadManager: downloadManager), id: \.self) { scope in
+                ForEach(viewModel.availableScopes, id: \.self) { scope in
                     Label(scope.title, systemImage: scope.icon)
                         .tag(scope)
                 }
@@ -87,7 +86,7 @@ struct MediaView: View {
                     .onChange(of: viewModel.scope) { _, _ in
                         withAnimation { scrollPosition.scrollToTop() }
                     }
-                    .onChange(of: viewModel.availableScopes(downloadManager: downloadManager)) { _, scopes in
+                    .onChange(of: viewModel.availableScopes) { _, scopes in
                         // Fall back to Movies if the active scope empties out
                         // (last favorite removed, last download deleted).
                         guard !scopes.contains(viewModel.scope) else { return }
@@ -196,7 +195,7 @@ struct MediaView: View {
 
     @ViewBuilder
     private var downloadsContent: some View {
-        let downloadSections = viewModel.downloadSections(downloadManager: downloadManager)
+        let downloadSections = viewModel.downloadSections
         if downloadSections.isEmpty {
             EmptyStateView(
                 icon: "square.and.arrow.down",

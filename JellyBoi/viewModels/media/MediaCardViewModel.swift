@@ -18,8 +18,17 @@ class MediaCardViewModel {
     var isHovered: Bool = false
     var isProgressReset: Bool = false
 
-    init(item: BaseItemDto) {
+    private let library: LibraryViewModel
+    private weak var serverViewModel: ServerViewModel?
+
+    init(
+        item: BaseItemDto,
+        library: LibraryViewModel? = nil,
+        serverViewModel: ServerViewModel? = nil
+    ) {
         self.item = item
+        self.library = library ?? .shared
+        self.serverViewModel = serverViewModel
     }
 
     func updateItem(_ newItem: BaseItemDto) {
@@ -45,7 +54,7 @@ class MediaCardViewModel {
         let watched = isWatched ?? self.isWatched()
         if watched { return 1.0 }
         if item.type == .series, let seriesID = item.id {
-            return item.seriesWatchProgress(allEpisodes: LibraryViewModel.shared.episodes(forSeriesID: seriesID))
+            return item.seriesWatchProgress(allEpisodes: library.episodes(forSeriesID: seriesID))
         }
         return item.watchProgress
     }
@@ -53,7 +62,7 @@ class MediaCardViewModel {
     func isWatched() -> Bool {
         if isProgressReset { return false }
         if item.type == .series, let seriesID = item.id {
-            return item.isSeriesWatched(allEpisodes: LibraryViewModel.shared.episodes(forSeriesID: seriesID))
+            return item.isSeriesWatched(allEpisodes: library.episodes(forSeriesID: seriesID))
         }
         return item.isWatched
     }
@@ -63,10 +72,9 @@ class MediaCardViewModel {
         let watched = isWatched ?? self.isWatched()
         if watched { return false }
         if item.type == .series, let seriesID = item.id {
-            let lib = LibraryViewModel.shared
             return item.isSeriesInProgress(
-                allEpisodes: lib.episodes(forSeriesID: seriesID),
-                resumeShows: lib.resumeShowIDs.compactMap { lib[$0] }
+                allEpisodes: library.episodes(forSeriesID: seriesID),
+                resumeShows: library.resumeShowIDs.compactMap { library[$0] }
             )
         }
         return item.isInProgress
@@ -75,11 +83,12 @@ class MediaCardViewModel {
     // MARK: - Actions
 
     func handleResetProgress(
-        serverViewModel: ServerViewModel?,
+        serverViewModel: ServerViewModel? = nil,
         onResetProgress: (() -> Void)? = nil
     ) {
+        let svm = serverViewModel ?? self.serverViewModel ?? ServerViewModel.shared
         Task {
-            _ = await serverViewModel?.resetProgress(for: item)
+            _ = await svm.resetProgress(for: item)
             onResetProgress?()
         }
     }
@@ -99,13 +108,14 @@ class MediaCardViewModel {
 
     // MARK: - Favorite Management
 
-    func handleToggleFavorite(serverViewModel: ServerViewModel?) {
-        guard let serverViewModel, let itemID = item.id else { return }
+    func handleToggleFavorite(serverViewModel: ServerViewModel? = nil) {
+        guard let itemID = item.id else { return }
+        let svm = serverViewModel ?? self.serverViewModel ?? ServerViewModel.shared
         let currentFavorite = item.isFavorite
         let newFavorite = !currentFavorite
         item.setFavorite(newFavorite)
         Task {
-            let result = await serverViewModel.setFavorite(newFavorite, forItemID: itemID)
+            let result = await svm.setFavorite(newFavorite, forItemID: itemID)
             if result == nil {
                 item.setFavorite(currentFavorite)
             }

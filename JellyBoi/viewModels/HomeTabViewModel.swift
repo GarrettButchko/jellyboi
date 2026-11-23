@@ -1,5 +1,5 @@
 //
-//  HomeViewModel.swift
+//  HomeTabViewModel.swift
 //  JellyBoi
 //
 //  Created by Garrett Butchko on 8/24/26.
@@ -12,11 +12,14 @@ import JellyfinAPI
 
 @Observable
 @MainActor
-class HomeViewModel {
-    var library = LibraryViewModel.shared
+final class HomeTabViewModel {
 
-    init() {
-        self.library = .shared
+    static let shared = HomeTabViewModel()
+
+    private let library: LibraryViewModel
+
+    init(library: LibraryViewModel? = nil) {
+        self.library = library ?? .shared
     }
 
     var movieIDs: [String] {
@@ -155,11 +158,13 @@ class HomeViewModel {
         library.item(for: id)
     }
 
-    func load(using client: JellyfinClient) async {
+    func load(using client: JellyfinClient? = nil) async {
+        guard let client = client ?? ServerViewModel.shared.client else { return }
         await library.load(using: client)
     }
 
-    func refresh(using client: JellyfinClient) async {
+    func refresh(using client: JellyfinClient? = nil) async {
+        guard let client = client ?? ServerViewModel.shared.client else { return }
         await library.refresh(using: client)
     }
 }

@@ -168,16 +168,10 @@ struct CastCrewView: View {
                 ))
         }
         .task {
-            await viewModel.loadData(
-                client: serverViewModel.client,
-                userID: serverViewModel.currentUser?.id
-            )
+            await viewModel.loadData()
         }
         .refreshable {
-            await viewModel.loadData(
-                client: serverViewModel.client,
-                userID: serverViewModel.currentUser?.id
-            )
+            await viewModel.loadData()
         }
     }
 
@@ -269,7 +263,7 @@ struct CastCrewView: View {
 
     @ViewBuilder
     private var personImage: some View {
-        if let url = viewModel.personImageURL(client: serverViewModel.client) {
+        if let url = viewModel.personImageURL() {
             WebImage(
                 url: url,
                 transaction: Transaction(animation: .easeInOut(duration: 0.3))

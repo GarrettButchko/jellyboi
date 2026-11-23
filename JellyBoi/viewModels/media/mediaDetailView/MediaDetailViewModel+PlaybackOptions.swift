@@ -273,18 +273,20 @@ extension MediaDetailViewModel {
 
     // MARK: - Playback Options Loading (ID-Only)
 
-    func loadPlaybackOptions(itemID: String, client: JellyfinClient?, userID: String?) async {
+    func loadPlaybackOptions(itemID: String, client: JellyfinClient? = nil, userID: String? = nil) async {
+        let activeClient = client ?? self.client ?? serverViewModel?.client ?? ServerViewModel.shared.client
+        let activeUserID = userID ?? serverViewModel?.currentUser?.id ?? ServerViewModel.shared.currentUser?.id
         if mediaSources.isEmpty {
             isLoadingPlaybackOptions = true
         }
 
-        guard let client else {
+        guard let activeClient else {
             isLoadingPlaybackOptions = false
             return
         }
 
         do {
-            let response = try await client.fetchPlaybackInfo(itemID: itemID, userID: userID)
+            let response = try await activeClient.fetchPlaybackInfo(itemID: itemID, userID: activeUserID)
             if let sources = response.mediaSources, !sources.isEmpty {
                 self.mediaSources = sources
                 configureInitialStreamSelection()
@@ -296,7 +298,7 @@ extension MediaDetailViewModel {
         isLoadingPlaybackOptions = false
     }
 
-    func loadPlaybackOptions(for item: BaseItemDto, client: JellyfinClient?, userID: String?) async {
+    func loadPlaybackOptions(for item: BaseItemDto, client: JellyfinClient? = nil, userID: String? = nil) async {
         if let itemSources = item.mediaSources, !itemSources.isEmpty {
             self.mediaSources = itemSources
             configureInitialStreamSelection()

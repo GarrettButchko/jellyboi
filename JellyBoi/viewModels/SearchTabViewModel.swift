@@ -1,5 +1,5 @@
 //
-//  SearchViewModel.swift
+//  SearchTabViewModel.swift
 //  JellyBoi
 //
 //  Created by Garrett Butchko on 8/28/26.
@@ -26,14 +26,17 @@ public struct GenreCount: Identifiable, Hashable, Sendable {
 
 @Observable
 @MainActor
-class SearchViewModel {
-    var library = LibraryViewModel.shared
+final class SearchTabViewModel {
+
+    static let shared = SearchTabViewModel()
+
+    private let library: LibraryViewModel
     var searchText = ""
 
     private let ranker = MediaSearchRanker()
 
-    init() {
-        self.library = .shared
+    init(library: LibraryViewModel? = nil) {
+        self.library = library ?? .shared
     }
 
     // MARK: Derived state

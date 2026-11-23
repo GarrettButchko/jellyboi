@@ -57,8 +57,11 @@ class MediaDetailViewModel {
         primaryDetailsStatus.isLoaded || primaryDetailsStatus.isEmpty
     }
 
-    // MARK: - Dependencies (set in load)
+    // MARK: - Dependencies (Stored Once)
 
+    let library: LibraryViewModel
+    let downloadManager: DownloadManager
+    let playbackManager: PlaybackManager
     weak var client: JellyfinClient?
     weak var serverViewModel: ServerViewModel?
 
@@ -79,9 +82,21 @@ class MediaDetailViewModel {
 
     // MARK: - Initialization
 
-    init(item: String, itemType: ItemType? = nil, fromDetailView: Bool = false) {
+    init(
+        item: String,
+        itemType: ItemType? = nil,
+        fromDetailView: Bool = false,
+        library: LibraryViewModel? = nil,
+        downloadManager: DownloadManager? = nil,
+        playbackManager: PlaybackManager? = nil,
+        serverViewModel: ServerViewModel? = nil
+    ) {
+        self.library = library ?? .shared
+        self.downloadManager = downloadManager ?? .shared
+        self.playbackManager = playbackManager ?? .shared
+        self.serverViewModel = serverViewModel
         self.sourceItemId = item
-        if let item = LibraryViewModel.shared[item] {
+        if let item = self.library[item] {
             self.sourceItem = item
             if let itemType {
                 self.itemType = itemType
@@ -197,7 +212,7 @@ class MediaDetailViewModel {
     }
 
     var parentSeries: BaseItemDto? {
-        LibraryViewModel.shared.parentSeriesItem(for: displayItem)
+        library.parentSeriesItem(for: displayItem)
     }
 
     var hasExtraInfo: Bool {
@@ -245,7 +260,7 @@ class MediaDetailViewModel {
     }
 
     func toggleFavorite(serverViewModel: ServerViewModel? = nil) {
-        let svm = serverViewModel ?? self.serverViewModel
+        let svm = serverViewModel ?? self.serverViewModel ?? ServerViewModel.shared
         guard let itemID = displayItem?.id else { return }
         let isFavorite = !(displayItem?.isFavorite ?? false)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
@@ -253,7 +268,7 @@ class MediaDetailViewModel {
             sourceItem?.setFavorite(isFavorite)
         }
         Task {
-            _ = await svm?.setFavorite(isFavorite, forItemID: itemID)
+            _ = await svm.setFavorite(isFavorite, forItemID: itemID)
         }
     }
 
@@ -310,7 +325,7 @@ class MediaDetailViewModel {
 
         let baseItem = item ?? sourceItem ?? BaseItemDto()
         let itemID = baseItem.id ?? (sourceItemId ?? "")
-        let currentItem = LibraryViewModel.shared[itemID] ?? baseItem
+        let currentItem = library[itemID] ?? baseItem
         self.sourceItem = currentItem
         self.hasInitialEpisodeScrolled = false
         self.scrolledEpisodeID = nil
@@ -332,12 +347,12 @@ class MediaDetailViewModel {
                 }
 
                 if isSeries {
-                    let downloadedEps = DownloadManager.shared.downloadedEpisodes
+                    let downloadedEps = downloadManager.downloadedEpisodes
                         .filter { ($0.seriesID ?? $0.parentBackdropItemID) == itemID }
                         .sorted { ($0.indexNumber ?? 0) < ($1.indexNumber ?? 0) }
                     for ep in downloadedEps {
                         if let id = ep.id {
-                            LibraryViewModel.shared[id] = ep
+                            library[id] = ep
                         }
                     }
                     self.episodes = downloadedEps.compactMap(\.id)
@@ -389,7 +404,7 @@ class MediaDetailViewModel {
         withAnimation(.skeleton) {
             let activeItem = fetchedItem ?? currentItem
             if let fetchedItem {
-                LibraryViewModel.shared[itemID] = fetchedItem
+                library[itemID] = fetchedItem
                 self.detailedItem = fetchedItem
 
                 if let sources = activeItem.mediaSources, !sources.isEmpty {
@@ -451,8 +466,8 @@ class MediaDetailViewModel {
             )
         ).value.items) ?? []
         for item in result {
-            if let id = item.id, LibraryViewModel.shared[id] == nil {
-                LibraryViewModel.shared[id] = item
+            if let id = item.id, library[id] == nil {
+                library[id] = item
             }
         }
         return result.compactMap(\.id)
@@ -464,7 +479,7 @@ class MediaDetailViewModel {
         ).value) ?? []
         for item in result {
             if let id = item.id {
-                LibraryViewModel.shared[id] = item
+                library[id] = item
             }
         }
         return result.compactMap(\.id)
@@ -474,12 +489,12 @@ class MediaDetailViewModel {
 
     func loadParentSeries(client: JellyfinClient, userID: String?) async {
         guard let seriesID = sourceItem?.seriesID else { return }
-        if LibraryViewModel.shared[seriesID] != nil {
+        if library[seriesID] != nil {
             return
         }
         if let fetched = await client.fetchItemOrNil(itemID: seriesID, userID: userID) {
             guard !Task.isCancelled else { return }
-            LibraryViewModel.shared[seriesID] = fetched
+            library[seriesID] = fetched
         }
     }
 }

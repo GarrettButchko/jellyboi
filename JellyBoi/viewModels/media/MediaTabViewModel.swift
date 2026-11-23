@@ -1,5 +1,5 @@
 //
-//  MediaViewModel.swift
+//  MediaTabViewModel.swift
 //  JellyBoi
 //
 //  Created by Garrett Butchko on 8/23/26.
@@ -58,12 +58,18 @@ struct MediaSection: Identifiable {
 
 @Observable
 @MainActor
-class MediaViewModel {
-    var scope: MediaScope = .movies
-    var library = LibraryViewModel.shared
+final class MediaTabViewModel {
 
-    init() {
-        self.library = .shared
+    static let shared = MediaTabViewModel()
+
+    var scope: MediaScope = .movies
+
+    private let library: LibraryViewModel
+    private let downloadManager: DownloadManager
+
+    init(library: LibraryViewModel? = nil, downloadManager: DownloadManager? = nil) {
+        self.library = library ?? .shared
+        self.downloadManager = downloadManager ?? .shared
     }
 
     // MARK: - Regular Library Items (IDs)
@@ -124,7 +130,7 @@ class MediaViewModel {
     // MARK: - Download State & Filtering
 
     /// Determines if all episodes of a TV show are downloaded.
-    func isShowFullyDownloaded(_ seriesID: String, downloadManager: DownloadManager) -> Bool {
+    func isShowFullyDownloaded(_ seriesID: String) -> Bool {
         let episodesForShow = library.episodes(forSeriesID: seriesID)
         if !episodesForShow.isEmpty {
             let completedIDs = Set(downloadManager.completedDownloads.compactMap(\.item.id))
@@ -151,7 +157,7 @@ class MediaViewModel {
     }
 
     /// Returns show IDs that are fully downloaded.
-    func downloadedShowIDs(downloadManager: DownloadManager) -> [String] {
+    var downloadedShowIDs: [String] {
         var candidateShowIDs = Set<String>()
 
         for download in downloadManager.completedDownloads {
@@ -168,7 +174,7 @@ class MediaViewModel {
 
         var results: [String] = []
         for showID in candidateShowIDs {
-            if isShowFullyDownloaded(showID, downloadManager: downloadManager) {
+            if isShowFullyDownloaded(showID) {
                 results.append(showID)
             }
         }
@@ -176,19 +182,19 @@ class MediaViewModel {
     }
 
     /// Only returns downloaded episodes if their whole show isn't downloaded.
-    func downloadedEpisodeIDs(downloadManager: DownloadManager) -> [String] {
+    var downloadedEpisodeIDs: [String] {
         downloadManager.completedDownloads
             .map(\.item)
             .filter { item in
                 guard item.type == .episode || item.seriesName != nil else { return false }
                 guard let showID = item.seriesID ?? item.parentBackdropItemID else { return true }
-                return !isShowFullyDownloaded(showID, downloadManager: downloadManager)
+                return !isShowFullyDownloaded(showID)
             }
             .compactMap(\.id)
     }
 
     /// Returns downloaded movie IDs.
-    func downloadedMovieIDs(downloadManager: DownloadManager) -> [String] {
+    var downloadedMovieIDs: [String] {
         downloadManager.downloadedMovies.compactMap(\.id)
     }
 
@@ -206,11 +212,11 @@ class MediaViewModel {
     }
 
     /// Fully downloaded shows plus any individually downloaded episodes and movies.
-    func downloadSections(downloadManager: DownloadManager) -> [MediaSection] {
+    var downloadSections: [MediaSection] {
         [
-            MediaSection(title: "TV Shows", itemIDs: downloadedShowIDs(downloadManager: downloadManager)),
-            MediaSection(title: "Episodes", itemIDs: downloadedEpisodeIDs(downloadManager: downloadManager)),
-            MediaSection(title: "Movies", itemIDs: downloadedMovieIDs(downloadManager: downloadManager)),
+            MediaSection(title: "TV Shows", itemIDs: downloadedShowIDs),
+            MediaSection(title: "Episodes", itemIDs: downloadedEpisodeIDs),
+            MediaSection(title: "Movies", itemIDs: downloadedMovieIDs),
         ]
         .filter { !$0.itemIDs.isEmpty }
     }
@@ -219,19 +225,19 @@ class MediaViewModel {
 
     /// Movies and TV Shows are always offered. Favorites and Downloads only
     /// appear once something has actually been favorited or downloaded.
-    func availableScopes(downloadManager: DownloadManager) -> [MediaScope] {
+    var availableScopes: [MediaScope] {
         var scopes: [MediaScope] = [.movies, .tvShows]
         if !favoriteSections.isEmpty {
             scopes.append(.favorites)
         }
-        if !downloadSections(downloadManager: downloadManager).isEmpty {
+        if !downloadSections.isEmpty {
             scopes.append(.downloads)
         }
         return scopes
     }
 
     /// Number of items the scope would show, used for the menu badges.
-    func scopeCount(_ scope: MediaScope, downloadManager: DownloadManager) -> Int {
+    func scopeCount(_ scope: MediaScope) -> Int {
         switch scope {
         case .movies:
             return regularMovieIDs.count
@@ -240,14 +246,15 @@ class MediaViewModel {
         case .favorites:
             return favoriteSections.reduce(0) { $0 + $1.itemIDs.count }
         case .downloads:
-            return downloadSections(downloadManager: downloadManager).reduce(0) { $0 + $1.itemIDs.count }
+            return downloadSections.reduce(0) { $0 + $1.itemIDs.count }
         }
     }
 
     var isLoading: Bool { library.isLoading }
     var errorMessage: String? { library.errorMessage }
 
-    func refresh(using client: JellyfinClient) async {
+    func refresh(using client: JellyfinClient? = nil) async {
+        guard let client = client ?? ServerViewModel.shared.client else { return }
         await library.refresh(using: client)
     }
 }

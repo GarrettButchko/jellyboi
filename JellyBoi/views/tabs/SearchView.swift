@@ -20,7 +20,7 @@ private let defaultGenres: [GenreCount] = [
 
 struct SearchView: View {
     @Environment(LibraryViewModel.self) private var libraryViewModel
-    @Environment(SearchViewModel.self) private var viewModel
+    @Environment(SearchTabViewModel.self) private var viewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var selectedItemID: String?
     @State private var selectedGenre: String?

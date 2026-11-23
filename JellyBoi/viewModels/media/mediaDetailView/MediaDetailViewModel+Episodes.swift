@@ -131,7 +131,7 @@ extension MediaDetailViewModel {
 
         for ep in sortedEpisodes {
             if let id = ep.id {
-                LibraryViewModel.shared[id] = ep
+                library[id] = ep
             }
         }
 
@@ -180,7 +180,7 @@ extension MediaDetailViewModel {
     }
 
     func seasonIndex(for episodeID: String) -> Int? {
-        if let ep = LibraryViewModel.shared[episodeID] {
+        if let ep = library[episodeID] {
             return seasonIndex(for: ep)
         }
         return nil
@@ -190,7 +190,7 @@ extension MediaDetailViewModel {
         guard seasons.indices.contains(index) else { return nil }
         let season = seasons[index]
         let targetSeasonNum = season.indexNumber ?? season.parentIndexNumber
-        let epItems = episodes.compactMap { LibraryViewModel.shared[$0] }
+        let epItems = episodes.compactMap { library[$0] }
         return epItems.first { ep in
             if let sID = season.id, let epSeasonID = ep.seasonID, sID == epSeasonID {
                 return true
@@ -228,7 +228,7 @@ extension MediaDetailViewModel {
 
         for item in sorted {
             if let id = item.id {
-                LibraryViewModel.shared[id] = item
+                library[id] = item
             }
         }
         let ids = sorted.compactMap(\.id)

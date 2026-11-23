@@ -44,13 +44,11 @@ extension MediaDetailView {
 struct MediaDetailFavoriteButton: View {
     let detailVM: MediaDetailViewModel
 
-    @Environment(ServerViewModel.self) private var serverViewModel
-
     var body: some View {
         let isFavorited = detailVM.isFavorite
 
         Button {
-            detailVM.toggleFavorite(serverViewModel: serverViewModel)
+            detailVM.toggleFavorite()
         } label: {
             Image(systemName: isFavorited ? "star.fill" : "star")
                 .foregroundStyle(isFavorited ? Color.yellow : Color.primary)
@@ -68,20 +66,14 @@ struct MediaDetailFavoriteButton: View {
 struct MediaDetailDownloadButton: View {
     let detailVM: MediaDetailViewModel
 
-    @Environment(DownloadManager.self) private var downloadManager
-    @Environment(ServerViewModel.self) private var serverViewModel
-
     var body: some View {
-        let isDownloading = detailVM.isDetailDownloading(downloadManager: downloadManager)
-        let isDownloaded = detailVM.isDetailDownloaded(downloadManager: downloadManager)
-        let downloadProgress = detailVM.detailDownloadProgress(downloadManager: downloadManager)
+        let isDownloading = detailVM.isDetailDownloading
+        let isDownloaded = detailVM.isDetailDownloaded
+        let downloadProgress = detailVM.detailDownloadProgress
         let accent = Color.appAccent
 
         Button {
-            detailVM.handleDownloadTap(
-                downloadManager: downloadManager,
-                client: serverViewModel.client
-            )
+            detailVM.handleDownloadTap()
         } label: {
             if isDownloading {
                 ZStack {

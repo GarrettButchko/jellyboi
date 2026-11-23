@@ -53,11 +53,7 @@ extension MediaDetailView {
         .task(id: detailVM.playableItemID) {
             let itemID = detailVM.playableItemID
             guard !itemID.isEmpty else { return }
-            await detailVM.loadPlaybackOptions(
-                itemID: itemID,
-                client: serverViewModel.client,
-                userID: serverViewModel.currentUser?.id
-            )
+            await detailVM.loadPlaybackOptions(itemID: itemID)
         }
     }
 

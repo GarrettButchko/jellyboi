@@ -485,8 +485,13 @@ class LibraryViewModel {
         let targetIDs = itemIDs ?? carouselItemIDs
         let neighbors = [index - 1, index, index + 1]
             .filter { $0 >= 0 && $0 < targetIDs.count }
-        let urls = neighbors.compactMap { self[targetIDs[$0]]?.backdropURL(client: client) }
-        SDWebImagePrefetcher.shared.prefetchURLs(urls)
+        let urls: [URL] = neighbors.compactMap { idx -> URL? in
+            guard let item = self[targetIDs[idx]] else { return nil }
+            let lookup: (String) -> BaseItemDto? = { [weak self] id in self?.item(for: id) }
+            return item.imageWithTitleURL(client: client, seriesLookup: lookup)
+                ?? item.backdropURL(client: client)
+        }
+        CarouselImageMemoryCache.shared.preloadImages(for: urls)
     }
 
     func refreshMediaArtwork(using client: JellyfinClient? = nil, userID: String? = nil) async {
@@ -498,23 +503,35 @@ class LibraryViewModel {
         let targetIDs = itemIDs ?? movieIDs
         let neighbors = [index - 1, index, index + 1]
             .filter { $0 >= 0 && $0 < targetIDs.count }
-        let urls = neighbors.compactMap { self[targetIDs[$0]]?.posterURL(client: client) }
+        let urls: [URL] = neighbors.compactMap { idx -> URL? in
+            self[targetIDs[idx]]?.posterURL(client: client)
+        }
         SDWebImagePrefetcher.shared.prefetchURLs(urls)
     }
 
     func prefetchArtwork(client: JellyfinClient, maxCount: Int = 50) {
-        var urls: [URL] = []
+        var backdropURLs: [URL] = []
+        let lookup: (String) -> BaseItemDto? = { [weak self] id in self?.item(for: id) }
         for id in carouselItemIDs.prefix(10) {
-            if let url = self[id]?.backdropURL(client: client) {
-                urls.append(url)
+            guard let item = self[id] else { continue }
+            if let url = item.imageWithTitleURL(client: client, seriesLookup: lookup)
+                ?? item.backdropURL(client: client) {
+                backdropURLs.append(url)
             }
         }
+        if !backdropURLs.isEmpty {
+            CarouselImageMemoryCache.shared.preloadImages(for: backdropURLs)
+        }
+
+        var posterURLs: [URL] = []
         let cardIDs = movieIDs.prefix(maxCount) + tvShowIDs.prefix(maxCount) + collectionIDs.prefix(20)
         for id in cardIDs {
             if let url = self[id]?.posterURL(client: client) {
-                urls.append(url)
+                posterURLs.append(url)
             }
         }
-        SDWebImagePrefetcher.shared.prefetchURLs(urls)
+        if !posterURLs.isEmpty {
+            SDWebImagePrefetcher.shared.prefetchURLs(posterURLs)
+        }
     }
 }

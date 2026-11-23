@@ -17,18 +17,23 @@ extension MediaDetailViewModel {
         case delete
     }
 
-    func isShowFullyDownloaded(downloadManager: DownloadManager) -> Bool {
+    var isShowFullyDownloaded: Bool {
+        isShowFullyDownloaded(downloadManager: nil)
+    }
+
+    func isShowFullyDownloaded(downloadManager: DownloadManager? = nil) -> Bool {
+        let dm = downloadManager ?? self.downloadManager
         guard let item = displayItem, item.type == .series, let showID = item.id else { return false }
 
         if !episodes.isEmpty {
             return episodes.allSatisfy { epID in
-                downloadManager.isDownloaded(id: epID)
+                dm.isDownloaded(id: epID)
             }
         }
 
-        let total = item.recursiveItemCount ?? (LibraryViewModel.shared[showID]?.recursiveItemCount)
+        let total = item.recursiveItemCount ?? (library[showID]?.recursiveItemCount)
         if let total, total > 0 {
-            let downloadedCount = downloadManager.completedDownloads.filter {
+            let downloadedCount = dm.completedDownloads.filter {
                 $0.item.seriesID == showID || $0.item.parentBackdropItemID == showID
             }.count
             return downloadedCount >= total
@@ -37,32 +42,52 @@ extension MediaDetailViewModel {
         return false
     }
 
-    func isShowDownloading(downloadManager: DownloadManager) -> Bool {
-        guard let item = displayItem, item.type == .series, let showID = item.id else { return false }
-        return downloadManager.activeDownloads.contains(where: { $0.group?.id == showID })
+    var isShowDownloading: Bool {
+        isShowDownloading(downloadManager: nil)
     }
 
-    func isCollectionFullyDownloaded(downloadManager: DownloadManager) -> Bool {
+    func isShowDownloading(downloadManager: DownloadManager? = nil) -> Bool {
+        let dm = downloadManager ?? self.downloadManager
+        guard let item = displayItem, item.type == .series, let showID = item.id else { return false }
+        return dm.activeDownloads.contains(where: { $0.group?.id == showID })
+    }
+
+    var isCollectionFullyDownloaded: Bool {
+        isCollectionFullyDownloaded(downloadManager: nil)
+    }
+
+    func isCollectionFullyDownloaded(downloadManager: DownloadManager? = nil) -> Bool {
+        let dm = downloadManager ?? self.downloadManager
         guard let item = displayItem, item.type == .boxSet, let _ = item.id else { return false }
         guard !collectionItems.isEmpty else { return false }
         return collectionItems.allSatisfy { id in
-            downloadManager.isDownloaded(id: id)
+            dm.isDownloaded(id: id)
         }
     }
 
-    func isCollectionDownloading(downloadManager: DownloadManager) -> Bool {
-        guard let item = displayItem, item.type == .boxSet, let collectionID = item.id else { return false }
-        return downloadManager.activeDownloads.contains(where: { $0.group?.id == collectionID })
+    var isCollectionDownloading: Bool {
+        isCollectionDownloading(downloadManager: nil)
     }
 
-    func collectionDownloadProgress(downloadManager: DownloadManager) -> Double {
+    func isCollectionDownloading(downloadManager: DownloadManager? = nil) -> Bool {
+        let dm = downloadManager ?? self.downloadManager
+        guard let item = displayItem, item.type == .boxSet, let collectionID = item.id else { return false }
+        return dm.activeDownloads.contains(where: { $0.group?.id == collectionID })
+    }
+
+    var collectionDownloadProgress: Double {
+        collectionDownloadProgress(downloadManager: nil)
+    }
+
+    func collectionDownloadProgress(downloadManager: DownloadManager? = nil) -> Double {
+        let dm = downloadManager ?? self.downloadManager
         guard let item = displayItem, item.type == .boxSet, let collectionID = item.id else { return 0 }
-        let downloading = downloadManager.activeDownloads.filter {
+        let downloading = dm.activeDownloads.filter {
             $0.group?.id == collectionID
         }
         guard !downloading.isEmpty else { return 0 }
 
-        let completed = downloadManager.completedDownloads.filter {
+        let completed = dm.completedDownloads.filter {
             $0.group?.id == collectionID
         }
         let totalCount = downloading.count + completed.count
@@ -72,23 +97,33 @@ extension MediaDetailViewModel {
         return totalProgress / Double(totalCount)
     }
 
-    func episodesLeft(downloadManager: DownloadManager) -> Int? {
+    var episodesLeft: Int? {
+        episodesLeft(downloadManager: nil)
+    }
+
+    func episodesLeft(downloadManager: DownloadManager? = nil) -> Int? {
+        let dm = downloadManager ?? self.downloadManager
         guard let item = displayItem, item.type == .series, let showID = item.id else { return nil }
-        let count = downloadManager.activeDownloads.filter {
+        let count = dm.activeDownloads.filter {
             $0.group?.id == showID
         }.count
         return count > 0 ? count : nil
     }
 
-    func showDownloadProgress(downloadManager: DownloadManager) -> Double {
+    var showDownloadProgress: Double {
+        showDownloadProgress(downloadManager: nil)
+    }
+
+    func showDownloadProgress(downloadManager: DownloadManager? = nil) -> Double {
+        let dm = downloadManager ?? self.downloadManager
         guard let item = displayItem, item.type == .series, let showID = item.id else { return 0 }
 
-        let downloading = downloadManager.activeDownloads.filter {
+        let downloading = dm.activeDownloads.filter {
             $0.group?.id == showID
         }
         guard !downloading.isEmpty else { return 0 }
 
-        let completed = downloadManager.completedDownloads.filter {
+        let completed = dm.completedDownloads.filter {
             $0.group?.id == showID
         }
         let totalCount = downloading.count + completed.count
@@ -98,51 +133,68 @@ extension MediaDetailViewModel {
         return totalProgress / Double(totalCount)
     }
 
-    func isDetailDownloaded(downloadManager: DownloadManager) -> Bool {
-        if displayItem?.type == .series {
-            return isShowFullyDownloaded(downloadManager: downloadManager)
-        } else if displayItem?.type == .boxSet {
-            return isCollectionFullyDownloaded(downloadManager: downloadManager)
-        }
-        let playable = playableItem()
-        return downloadManager.isDownloaded(id: playable.id ?? "")
+    var isDetailDownloaded: Bool {
+        isDetailDownloaded(downloadManager: nil)
     }
 
-    func isDetailDownloading(downloadManager: DownloadManager) -> Bool {
+    func isDetailDownloaded(downloadManager: DownloadManager? = nil) -> Bool {
+        let dm = downloadManager ?? self.downloadManager
         if displayItem?.type == .series {
-            return isShowDownloading(downloadManager: downloadManager)
+            return isShowFullyDownloaded(downloadManager: dm)
         } else if displayItem?.type == .boxSet {
-            return isCollectionDownloading(downloadManager: downloadManager)
+            return isCollectionFullyDownloaded(downloadManager: dm)
         }
         let playable = playableItem()
-        return downloadManager.isDownloading(id: playable.id ?? "")
+        return dm.isDownloaded(id: playable.id ?? "")
     }
 
-    func detailDownloadProgress(downloadManager: DownloadManager) -> Double {
+    var isDetailDownloading: Bool {
+        isDetailDownloading(downloadManager: nil)
+    }
+
+    func isDetailDownloading(downloadManager: DownloadManager? = nil) -> Bool {
+        let dm = downloadManager ?? self.downloadManager
         if displayItem?.type == .series {
-            return showDownloadProgress(downloadManager: downloadManager)
+            return isShowDownloading(downloadManager: dm)
         } else if displayItem?.type == .boxSet {
-            return collectionDownloadProgress(downloadManager: downloadManager)
+            return isCollectionDownloading(downloadManager: dm)
         }
         let playable = playableItem()
-        return downloadManager.progress(for: playable.id ?? "") ?? 0.0
+        return dm.isDownloading(id: playable.id ?? "")
+    }
+
+    var detailDownloadProgress: Double {
+        detailDownloadProgress(downloadManager: nil)
+    }
+
+    func detailDownloadProgress(downloadManager: DownloadManager? = nil) -> Double {
+        let dm = downloadManager ?? self.downloadManager
+        if displayItem?.type == .series {
+            return showDownloadProgress(downloadManager: dm)
+        } else if displayItem?.type == .boxSet {
+            return collectionDownloadProgress(downloadManager: dm)
+        }
+        let playable = playableItem()
+        return dm.progress(for: playable.id ?? "") ?? 0.0
     }
 
     @discardableResult
     func handleDownloadTap(
-        downloadManager: DownloadManager,
-        client: JellyfinClient?
+        downloadManager: DownloadManager? = nil,
+        client: JellyfinClient? = nil
     ) -> DownloadAlertAction? {
+        let dm = downloadManager ?? self.downloadManager
+        let currentClient = client ?? self.client ?? serverViewModel?.client
         let action: DownloadAlertAction?
         if displayItem?.type == .series {
-            if isShowFullyDownloaded(downloadManager: downloadManager) {
+            if isShowFullyDownloaded(downloadManager: dm) {
                 action = .delete
-            } else if isShowDownloading(downloadManager: downloadManager) {
+            } else if isShowDownloading(downloadManager: dm) {
                 action = .cancel
-            } else if let client {
+            } else if let currentClient {
                 let uncompletedEpisodes: [BaseItemDto] = episodes.compactMap { epID in
-                    guard !downloadManager.isDownloaded(id: epID) && !downloadManager.isDownloading(id: epID) else { return nil }
-                    return LibraryViewModel.shared[epID]
+                    guard !dm.isDownloaded(id: epID) && !dm.isDownloading(id: epID) else { return nil }
+                    return library[epID]
                 }
                 let groupInfo = DownloadGroupInfo(
                     id: displayItem?.id ?? "",
@@ -150,17 +202,17 @@ extension MediaDetailViewModel {
                     type: .show,
                     primaryImageTag: displayItem?.imageTags?["Primary"]
                 )
-                downloadManager.startDownloads(items: uncompletedEpisodes, client: client, group: groupInfo)
+                dm.startDownloads(items: uncompletedEpisodes, client: currentClient, group: groupInfo)
                 action = nil
             } else {
                 action = nil
             }
         } else if displayItem?.type == .boxSet {
-            if isCollectionFullyDownloaded(downloadManager: downloadManager) {
+            if isCollectionFullyDownloaded(downloadManager: dm) {
                 action = .delete
-            } else if isCollectionDownloading(downloadManager: downloadManager) {
+            } else if isCollectionDownloading(downloadManager: dm) {
                 action = .cancel
-            } else if let client {
+            } else if let currentClient {
                 let collectionID = displayItem?.id ?? ""
                 let collectionName = displayItem?.name ?? "Collection"
                 let groupInfo = DownloadGroupInfo(
@@ -171,15 +223,15 @@ extension MediaDetailViewModel {
                 )
                 let startItems: ([String]) -> Void = { ids in
                     let uncompletedItems: [BaseItemDto] = ids.compactMap { itemID in
-                        guard !downloadManager.isDownloaded(id: itemID), !downloadManager.isDownloading(id: itemID) else { return nil }
-                        return LibraryViewModel.shared[itemID]
+                        guard !dm.isDownloaded(id: itemID), !dm.isDownloading(id: itemID) else { return nil }
+                        return self.library[itemID]
                     }
-                    downloadManager.startDownloads(items: uncompletedItems, client: client, group: groupInfo)
+                    dm.startDownloads(items: uncompletedItems, client: currentClient, group: groupInfo)
                 }
 
                 if collectionItems.isEmpty {
                     Task {
-                        await self.loadCollectionItems(client: client, userID: nil)
+                        await self.loadCollectionItems(client: currentClient, userID: nil)
                         startItems(self.collectionItems)
                     }
                 } else {
@@ -192,12 +244,12 @@ extension MediaDetailViewModel {
         } else {
             let playable = playableItem()
             if let itemID = playable.id {
-                if downloadManager.isDownloaded(id: itemID) {
+                if dm.isDownloaded(id: itemID) {
                     action = .delete
-                } else if downloadManager.isDownloading(id: itemID) {
+                } else if dm.isDownloading(id: itemID) {
                     action = .cancel
-                } else if let client {
-                    downloadManager.startDownload(item: playable, client: client, group: nil)
+                } else if let currentClient {
+                    dm.startDownload(item: playable, client: currentClient, group: nil)
                     action = nil
                 } else {
                     action = nil
@@ -210,29 +262,31 @@ extension MediaDetailViewModel {
         return action
     }
 
-    func cancelDownload(downloadManager: DownloadManager) {
+    func cancelDownload(downloadManager: DownloadManager? = nil) {
+        let dm = downloadManager ?? self.downloadManager
         if displayItem?.type == .series {
             guard let showID = displayItem?.id else { return }
-            let idsToCancel = downloadManager.activeDownloads
+            let idsToCancel = dm.activeDownloads
                 .filter { $0.group?.id == showID }
                 .map(\.id)
-            downloadManager.cancelDownloads(ids: idsToCancel)
+            dm.cancelDownloads(ids: idsToCancel)
         } else if displayItem?.type == .boxSet {
             guard let collectionID = displayItem?.id else { return }
-            let idsToCancel = downloadManager.activeDownloads
+            let idsToCancel = dm.activeDownloads
                 .filter { $0.group?.id == collectionID }
                 .map(\.id)
-            downloadManager.cancelDownloads(ids: idsToCancel)
+            dm.cancelDownloads(ids: idsToCancel)
         } else if let itemID = playableItem().id {
-            downloadManager.cancelDownload(id: itemID)
+            dm.cancelDownload(id: itemID)
         }
     }
 
-    func deleteDownload(downloadManager: DownloadManager) {
+    func deleteDownload(downloadManager: DownloadManager? = nil) {
+        let dm = downloadManager ?? self.downloadManager
         if displayItem?.type == .series {
             guard let showID = displayItem?.id else { return }
             let episodeIDs = Set(episodes)
-            let idsToDelete = downloadManager.completedDownloads
+            let idsToDelete = dm.completedDownloads
                 .filter {
                     $0.group?.id == showID ||
                     $0.item.seriesID == showID ||
@@ -240,19 +294,19 @@ extension MediaDetailViewModel {
                     episodeIDs.contains($0.id)
                 }
                 .map(\.id)
-            downloadManager.deleteDownloads(ids: idsToDelete)
+            dm.deleteDownloads(ids: idsToDelete)
         } else if displayItem?.type == .boxSet {
             guard let collectionID = displayItem?.id else { return }
             let collectionItemIDs = Set(collectionItems)
-            let idsToDelete = downloadManager.completedDownloads
+            let idsToDelete = dm.completedDownloads
                 .filter {
                     $0.group?.id == collectionID ||
                     collectionItemIDs.contains($0.id)
                 }
                 .map(\.id)
-            downloadManager.deleteDownloads(ids: idsToDelete)
+            dm.deleteDownloads(ids: idsToDelete)
         } else if let itemID = playableItem().id {
-            downloadManager.deleteDownload(id: itemID)
+            dm.deleteDownload(id: itemID)
         }
     }
 

@@ -12,7 +12,6 @@ import JellyfinAPI
 struct ServerDetailsView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
-    @Environment(DownloadsViewModel.self) private var downloadsViewModel
 
     @State private var isSyncing = false
     @State private var syncError: String?

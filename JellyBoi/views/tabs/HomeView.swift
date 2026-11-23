@@ -22,7 +22,7 @@ private let defaultHomeItemIDs: [String] = (0..<8).map { "default-home-\($0)" }
 struct HomeView: View {
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
-    @Environment(HomeViewModel.self) private var viewModel
+    @Environment(HomeTabViewModel.self) private var viewModel
     @Environment(AppPreferences.self) private var preferences
     @Namespace private var zoomTransition
     
@@ -43,7 +43,7 @@ struct HomeView: View {
                     LazyVStack(alignment: .leading, spacing: 24) {
                             if let error = viewModel.errorMessage, viewModel.movieIDs.isEmpty {
                                 EmptyStateView(
-                                    icon: "wifi.exclamationmark",
+                                    icon: "exclamationmark.triangle.fill",
                                     title: "Couldn't load your library",
                                     message: error,
                                     buttonTitle: "Try Again"
@@ -175,9 +175,15 @@ struct HomeView: View {
                     selectedStat = nil
                 }
             }
-            .navigationTitle("Home")
-            .toolbarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Text("Home")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .fixedSize()
+                }
+                .sharedBackgroundVisibility(.hidden)
+                
                 ToolbarItem(placement: .topBarTrailing) {
                     ProfileAvatarButton()
                 }
@@ -209,7 +215,7 @@ struct HomeView: View {
                     progress: nil
                 ) { _, _, _, _, _, _ in }
             }
-            CarouselImageMemoryCache.shared.prefetchImages(for: carouselURLs)
+            CarouselImageMemoryCache.shared.preloadImages(for: carouselURLs)
         }
     }
 
@@ -319,9 +325,13 @@ private struct HomeHeroBackdrop: View {
            let activeItem = libraryViewModel.item(for: activeID),
            let url = activeItem.imageWithTitleURL(client: client, seriesLookup: seriesLookup)
             ?? activeItem.backdropURL(client: client) {
-            HeroBackdropView(url: url)
-                .offset(y: offsetY)
-                .transition(.opacity)
+            HeroBackdropView(
+                url: url,
+                itemID: activeID,
+                blurRadius: 30
+            )
+            .offset(y: offsetY)
+            .transition(.opacity)
         }
     }
 }

@@ -16,8 +16,11 @@ class MediaButtonColumnViewModel {
     var item: BaseItemDto
     var isProgressReset: Bool = false
 
-    init(item: BaseItemDto) {
+    private weak var serverViewModel: ServerViewModel?
+
+    init(item: BaseItemDto, serverViewModel: ServerViewModel? = nil) {
         self.item = item
+        self.serverViewModel = serverViewModel
     }
 
     func updateItem(_ newItem: BaseItemDto) {
@@ -35,11 +38,12 @@ class MediaButtonColumnViewModel {
     // MARK: - Playback Actions
 
     func handleResetProgress(
-        serverViewModel: ServerViewModel?,
+        serverViewModel: ServerViewModel? = nil,
         onResetProgress: (() -> Void)? = nil
     ) {
+        let svm = serverViewModel ?? self.serverViewModel ?? ServerViewModel.shared
         Task {
-            _ = await serverViewModel?.resetProgress(for: item)
+            _ = await svm.resetProgress(for: item)
             onResetProgress?()
         }
     }

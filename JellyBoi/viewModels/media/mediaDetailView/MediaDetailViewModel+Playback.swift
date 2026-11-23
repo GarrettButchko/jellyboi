@@ -21,8 +21,6 @@ extension MediaDetailViewModel {
 
     /// Resolves the next playable item ID (episode, movie, or collection child) based on watch/resume state.
     func nextPlayableItem(fromBeginning: Bool = false) -> String? {
-        let library = LibraryViewModel.shared
-        
         let defaultID = displayItem?.id ?? sourceItemId
 
         // 1. Single Movie or Episode
@@ -82,7 +80,6 @@ extension MediaDetailViewModel {
 
     /// Returns the resolved item ready for playback (guaranteeing a fallback BaseItemDto).
     func playableItem(fromBeginning: Bool = false) -> BaseItemDto {
-        let library = LibraryViewModel.shared
         if let targetID = nextPlayableItem(fromBeginning: fromBeginning) {
             if let item = library[targetID] {
                 var res = item
@@ -115,16 +112,18 @@ extension MediaDetailViewModel {
 
     func playMedia(
         fromBeginning: Bool,
-        playbackManager: PlaybackManager,
-        serverViewModel: ServerViewModel
+        playbackManager: PlaybackManager? = nil,
+        serverViewModel: ServerViewModel? = nil
     ) {
-        if playbackManager.client == nil {
-            playbackManager.client = serverViewModel.client
-            playbackManager.userID = serverViewModel.currentUser?.id
+        let pm = playbackManager ?? self.playbackManager
+        let svm = serverViewModel ?? self.serverViewModel ?? ServerViewModel.shared
+        if pm.client == nil {
+            pm.client = self.client ?? svm.client
+            pm.userID = svm.currentUser?.id
         }
         let itemID = nextPlayableItem(fromBeginning: fromBeginning) ?? nextPlayableItemID
         guard !itemID.isEmpty else { return }
-        playbackManager.play(
+        pm.play(
             itemID: itemID,
             playbackInfo: currentPlaybackInfo,
             fromBeginning: fromBeginning,
@@ -161,8 +160,8 @@ extension MediaDetailViewModel {
     }
 
     func handlePlayTap(
-        playbackManager: PlaybackManager,
-        serverViewModel: ServerViewModel
+        playbackManager: PlaybackManager? = nil,
+        serverViewModel: ServerViewModel? = nil
     ) {
         if isPlayDisabled {
             return
@@ -184,22 +183,25 @@ extension MediaDetailViewModel {
 
     /// Resets watch state on the server. Nothing is cleared locally: the server's response is
     /// broadcast through `.mediaUserDataChanged` and applied by `applyUserData`.
-    func resetProgress(serverViewModel: ServerViewModel?) {
+    func resetProgress(serverViewModel: ServerViewModel? = nil) {
         guard let item = displayItem else { return }
+        let svm = serverViewModel ?? self.serverViewModel ?? ServerViewModel.shared
         Task {
-            let epItems = episodes.compactMap { LibraryViewModel.shared[$0] }
-            await serverViewModel?.resetProgress(for: item, episodes: epItems)
+            let epItems = episodes.compactMap { library[$0] }
+            await svm.resetProgress(for: item, episodes: epItems)
         }
     }
 
     func startSeriesFromBeginning(
-        playbackManager: PlaybackManager,
-        serverViewModel: ServerViewModel
+        playbackManager: PlaybackManager? = nil,
+        serverViewModel: ServerViewModel? = nil
     ) {
+        let pm = playbackManager ?? self.playbackManager
+        let svm = serverViewModel ?? self.serverViewModel ?? ServerViewModel.shared
         Task {
-            let epItems = episodes.compactMap { LibraryViewModel.shared[$0] }
+            let epItems = episodes.compactMap { library[$0] }
             if let item = displayItem {
-                await serverViewModel.resetProgress(for: item, episodes: epItems)
+                await svm.resetProgress(for: item, episodes: epItems)
             }
 
             let firstEpisode = epItems.first(where: { ($0.parentIndexNumber ?? 1) >= 1 && ($0.indexNumber ?? 1) == 1 })
@@ -208,11 +210,11 @@ extension MediaDetailViewModel {
                 ?? playableItem(fromBeginning: true)
 
             guard let itemID = firstEpisode.id else { return }
-            if playbackManager.client == nil {
-                playbackManager.client = serverViewModel.client
-                playbackManager.userID = serverViewModel.currentUser?.id
+            if pm.client == nil {
+                pm.client = self.client ?? svm.client
+                pm.userID = svm.currentUser?.id
             }
-            playbackManager.play(
+            pm.play(
                 itemID: itemID,
                 playbackInfo: currentPlaybackInfo,
                 fromBeginning: true,
@@ -230,6 +232,6 @@ extension MediaDetailViewModel {
                 sourceItem?.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
             }
         }
-        LibraryViewModel.shared.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+        library.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
     }
 }

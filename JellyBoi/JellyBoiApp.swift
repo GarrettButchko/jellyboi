@@ -82,7 +82,7 @@ struct JellyBoiApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     #endif
 
-    @State private var viewManager = ViewManager()
+    @State private var viewManager = ViewManager.shared
     @State private var serverViewModel = ServerViewModel.shared
     @State private var libraryViewModel = LibraryViewModel.shared
     @State private var playbackManager = PlaybackManager.shared

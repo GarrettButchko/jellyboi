@@ -21,8 +21,11 @@ class CastCrewViewModel {
     private(set) var episodeItems: [BaseItemDto] = []
     private(set) var isLoading: Bool = true
 
-    init(person: BaseItemPerson) {
+    private weak var serverViewModel: ServerViewModel?
+
+    init(person: BaseItemPerson, serverViewModel: ServerViewModel? = nil) {
         self.person = person
+        self.serverViewModel = serverViewModel
     }
 
     var personName: String {
@@ -83,19 +86,20 @@ class CastCrewViewModel {
         return URL(string: "https://maps.apple.com/?q=\(encoded)")
     }
 
-    func personImageURL(client: JellyfinClient?) -> URL? {
+    func personImageURL(client: JellyfinClient? = nil) -> URL? {
         #if DEBUG
         if DebugSettings.shared.hidePersonImage { return nil }
         #endif
-        guard let client else { return nil }
+        let activeClient = client ?? serverViewModel?.client ?? ServerViewModel.shared.client
+        guard let activeClient else { return nil }
         if let id = detailedPerson?.id ?? person.id {
             let tag = detailedPerson?.imageTags?["Primary"] ?? person.primaryImageTag
-            return client.itemImageURL(
+            return activeClient.itemImageURL(
                 itemID: id,
                 parameters: .poster(maxWidth: 400, quality: 85, tag: tag)
             )
         } else if let name = detailedPerson?.name ?? person.name {
-            return client.personImageURL(
+            return activeClient.personImageURL(
                 name: name,
                 parameters: .standard(maxWidth: 400, quality: 85)
             )
@@ -103,8 +107,11 @@ class CastCrewViewModel {
         return nil
     }
 
-    func loadData(client: JellyfinClient?, userID: String?) async {
-        guard let client else { return }
+    func loadData(client: JellyfinClient? = nil, userID: String? = nil) async {
+        let svm = serverViewModel ?? ServerViewModel.shared
+        let activeClient = client ?? svm.client
+        let activeUserID = userID ?? svm.currentUser?.id
+        guard let activeClient else { return }
 
         isLoading = true
         defer { isLoading = false }
@@ -112,13 +119,13 @@ class CastCrewViewModel {
         // 1. Fetch detailed person info
         do {
             if let id = person.id, !id.isEmpty {
-                detailedPerson = try await client.fetchItem(itemID: id, userID: userID)
+                detailedPerson = try await activeClient.fetchItem(itemID: id, userID: activeUserID)
             } else if let name = person.name, !name.isEmpty {
-                detailedPerson = try await client.fetchPerson(name: name, userID: userID)
+                detailedPerson = try await activeClient.fetchPerson(name: name, userID: activeUserID)
             }
         } catch {
             if detailedPerson == nil, let name = person.name, !name.isEmpty {
-                detailedPerson = await client.fetchPersonOrNil(name: name, userID: userID)
+                detailedPerson = await activeClient.fetchPersonOrNil(name: name, userID: activeUserID)
             }
         }
 
@@ -130,15 +137,15 @@ class CastCrewViewModel {
             itemTypes: [.movie, .series],
             personID: personID,
             personName: personName,
-            client: client,
-            userID: userID
+            client: activeClient,
+            userID: activeUserID
         )
         async let fetchedEpisodes = fetchItems(
             itemTypes: [.episode],
             personID: personID,
             personName: personName,
-            client: client,
-            userID: userID
+            client: activeClient,
+            userID: activeUserID
         )
 
         let (items, episodes) = await (fetchedMedia, fetchedEpisodes)

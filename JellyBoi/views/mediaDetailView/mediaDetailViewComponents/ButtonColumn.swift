@@ -115,36 +115,24 @@ extension MediaDetailView {
             isInProgress: detailVM.isInProgress,
             isWatched: detailVM.displayItem?.isWatched ?? false,
             onContinueWatching: {
-                detailVM.playMedia(
-                    fromBeginning: false,
-                    playbackManager: playbackManager,
-                    serverViewModel: serverViewModel
-                )
+                detailVM.playMedia(fromBeginning: false)
             },
             onStartFromBeginning: {
                 if isSeriesContainer {
                     detailVM.seriesAlertAction = .startFromBeginning
                 } else {
-                    detailVM.playMedia(
-                        fromBeginning: true,
-                        playbackManager: playbackManager,
-                        serverViewModel: serverViewModel
-                    )
+                    detailVM.playMedia(fromBeginning: true)
                 }
             },
             onStart: {
-                detailVM.playMedia(
-                    fromBeginning: false,
-                    playbackManager: playbackManager,
-                    serverViewModel: serverViewModel
-                )
+                detailVM.playMedia(fromBeginning: false)
             },
             onResetProgress: {
                 withAnimation(.skeleton) {
                     if isSeriesContainer {
                         detailVM.seriesAlertAction = .resetProgress
                     } else {
-                        detailVM.resetProgress(serverViewModel: serverViewModel)
+                        detailVM.resetProgress()
                     }
                 }
             }
