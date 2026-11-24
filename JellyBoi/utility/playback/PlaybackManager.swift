@@ -9,8 +9,10 @@ import Foundation
 import SwiftUI
 import AVFoundation
 import AVKit
+import CoreMedia
 import JellyfinAPI
 import LoggingKit
+import SDWebImage
 
 // MARK: - PlaybackURL Helpers
 
@@ -100,6 +102,19 @@ final class PlayerViewModel: Identifiable {
     var upNextState: UpNextState = UpNextState()
     var nextItem: BaseItemDto? = nil
     var queue: [String] = []
+    var legibleGroup: AVMediaSelectionGroup? = nil
+    var availableLegibleOptions: [AVMediaSelectionOption] = []
+    var isSubtitlesOn: Bool = false
+
+    var currentItem: BaseItemDto? {
+        LibraryViewModel.shared[itemID]
+    }
+
+    private var timeObserverToken: Any? = nil
+    private var endObserverToken: NSObjectProtocol? = nil
+    private var muteObserver: NSKeyValueObservation? = nil
+    private var itemStatusObserver: NSKeyValueObservation? = nil
+    private var isDismissed: Bool = false
 
     init(itemID: String, playbackInfo: PlaybackInfoDto, player: AVPlayer? = nil, queue: [String] = []) {
         self.itemID = itemID
@@ -108,6 +123,7 @@ final class PlayerViewModel: Identifiable {
         self.queue = queue
         AppLogger.debug("PlayerViewModel initialized for itemID: '\(itemID)', queue count: \(queue.count)")
         resolveNextItem()
+        setupPlayerObservations()
     }
 
     func resolveNextItem() {
@@ -119,6 +135,107 @@ final class PlayerViewModel: Identifiable {
         let nextID = queue[currentIndex + 1]
         self.nextItem = LibraryViewModel.shared[nextID]
         AppLogger.debug("Resolved next item in queue: '\(self.nextItem?.name ?? nextID)' (\(nextID))")
+    }
+
+    func setupPlayerObservations() {
+        guard let player else { return }
+
+        // Periodic time observer to monitor remaining duration and trigger UpNextOverlay
+        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            Task { @MainActor [weak self] in
+                guard let self, let currentItem = self.player?.currentItem else { return }
+                let durationSeconds = currentItem.duration.seconds
+                guard durationSeconds.isFinite, durationSeconds > 0 else { return }
+
+                let currentSeconds = time.seconds
+                let remaining = durationSeconds - currentSeconds
+
+                if remaining <= 30 && remaining > 0 && self.nextItem != nil && !self.isDismissed {
+                    let secondsRemaining = Int(ceil(remaining))
+                    let fraction = max(0, min(1, (30.0 - remaining) / 30.0))
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        self.upNextState = UpNextState(
+                            isVisible: true,
+                            secondsRemaining: secondsRemaining,
+                            progressFraction: fraction
+                        )
+                    }
+                } else if remaining <= 0 || remaining > 30 || self.isDismissed {
+                    if self.upNextState.isVisible {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            self.upNextState.isVisible = false
+                        }
+                    }
+                }
+            }
+        }
+
+        // Un-mute observer to prevent silent switch / route change mute bugs
+        var lastNonZeroVolume: Float = 1.0
+        muteObserver = player.observe(\.isMuted, options: [.new]) { player, _ in
+            if player.isMuted {
+                if player.volume > 0.0 {
+                    lastNonZeroVolume = player.volume
+                }
+                player.isMuted = false
+                player.volume = lastNonZeroVolume > 0.0 ? lastNonZeroVolume : 1.0
+            }
+        }
+
+        // When item finishes playing to the end, automatically advance to next item
+        endObserverToken = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      let endedItem = notification.object as? AVPlayerItem,
+                      endedItem === self.player?.currentItem else { return }
+                await self.playNextItem()
+            }
+        }
+
+        // Observe currentItem status to populate available subtitle tracks once ready
+        if let currentItem = player.currentItem {
+            itemStatusObserver = currentItem.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+                guard item.status == .readyToPlay else { return }
+                Task { @MainActor [weak self] in
+                    await self?.loadLegibleOptions()
+                }
+            }
+        }
+    }
+
+    func loadLegibleOptions() async {
+        guard let item = player?.currentItem else {
+            self.legibleGroup = nil
+            self.availableLegibleOptions = []
+            self.isSubtitlesOn = false
+            return
+        }
+        do {
+            let group = try await item.asset.loadMediaSelectionGroup(for: .legible)
+            self.legibleGroup = group
+            self.availableLegibleOptions = group?.options ?? []
+            if let group {
+                let selected = item.currentMediaSelection.selectedMediaOption(in: group)
+                self.isSubtitlesOn = (selected != nil)
+            } else {
+                self.isSubtitlesOn = false
+            }
+        } catch {
+            self.legibleGroup = nil
+            self.availableLegibleOptions = []
+            self.isSubtitlesOn = false
+        }
+    }
+
+    func selectSubtitleOption(_ option: AVMediaSelectionOption?) {
+        guard let item = player?.currentItem, let group = legibleGroup else { return }
+        item.select(option, in: group)
+        self.isSubtitlesOn = (option != nil)
     }
 
     func playNextItem() async {
@@ -138,16 +255,35 @@ final class PlayerViewModel: Identifiable {
 
     func dismissUpNextOverlay() {
         AppLogger.debug("Dismissed up-next overlay for itemID: '\(itemID)'")
-        upNextState.isVisible = false
+        isDismissed = true
+        withAnimation(.easeInOut(duration: 0.25)) {
+            upNextState.isVisible = false
+        }
     }
 
     func startPlaybackIfNeeded() async {
         AppLogger.debug("startPlaybackIfNeeded invoked for itemID: '\(itemID)'")
+        try? AVAudioSession.sharedInstance().setActive(true)
         player?.play()
     }
 
     func cleanup() {
         AppLogger.info("Cleaning up PlayerViewModel for itemID: '\(itemID)'")
+        if let token = timeObserverToken {
+            player?.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+        if let endToken = endObserverToken {
+            NotificationCenter.default.removeObserver(endToken)
+            endObserverToken = nil
+        }
+        muteObserver?.invalidate()
+        muteObserver = nil
+        itemStatusObserver?.invalidate()
+        itemStatusObserver = nil
+
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+
         player?.pause()
         player = nil
     }
@@ -301,13 +437,15 @@ final class PlaybackManager {
             return localURL
         }
 
-        // Check if transcoding is explicitly requested or required (bitrate cap, subtitle selection, or disabled direct play)
+        // Check if transcoding is explicitly requested or required (bitrate cap, non-compatible subtitle, or disabled direct play)
         let hasBitrateCap = (playbackInfo.maxStreamingBitrate != nil && playbackInfo.maxStreamingBitrate! > 0)
-        let hasCustomSubtitle = (playbackInfo.subtitleStreamIndex != nil && playbackInfo.subtitleStreamIndex! >= 0)
+        let item = LibraryViewModel.shared[itemID]
+        let selectedSubtitleStream = item?.mediaStreams?.first(where: { $0.type == .subtitle && $0.index == playbackInfo.subtitleStreamIndex })
+        let requiresSubtitleTranscode = (selectedSubtitleStream != nil && !ApplePlayableSubtitle.isCompatible(selectedSubtitleStream))
         let forcesTranscoding = playbackInfo.enableTranscoding == true && playbackInfo.enableDirectPlay == false
 
-        if hasBitrateCap || hasCustomSubtitle || forcesTranscoding {
-            AppLogger.debug("streamURL resolving via transcoding URL for item '\(itemID)' (bitrateCap: \(hasBitrateCap), customSubtitle: \(hasCustomSubtitle), forcesTranscoding: \(forcesTranscoding))")
+        if hasBitrateCap || requiresSubtitleTranscode || forcesTranscoding {
+            AppLogger.debug("streamURL resolving via transcoding URL for item '\(itemID)' (bitrateCap: \(hasBitrateCap), nonCompatibleSubtitle: \(requiresSubtitleTranscode), forcesTranscoding: \(forcesTranscoding))")
             return transcodingURL(itemID: itemID, playbackInfo: playbackInfo, startTimeTicks: startTimeTicks)
         } else {
             AppLogger.debug("streamURL resolving via direct play with transcoding fallback for item '\(itemID)'")
@@ -317,6 +455,12 @@ final class PlaybackManager {
     }
 
     // MARK: - Playback Engine Lifecycle
+
+    private func playNextInQueue() {
+        Task(priority: .userInitiated) { @MainActor [weak self] in
+            await self?.activePlayerViewModel?.playNextItem()
+        }
+    }
 
     /// Plays the requested item by presenting the player UI on demand.
     func play(
@@ -352,8 +496,33 @@ final class PlaybackManager {
             AppLogger.info("Item '\(itemID)' is available locally at '\(localURL.path)'. Initiating local playback.")
             isPreparing = false
 
+            try? AVAudioSession.sharedInstance().setActive(true)
+
             let playerItem = AVPlayerItem(url: localURL)
+            var fallbackItem = BaseItemDto()
+            fallbackItem.id = itemID
+            let item = LibraryViewModel.shared[itemID] ?? fallbackItem
+            playerItem.configureMetadata(for: item, client: client)
+
+            Task { [weak playerItem] in
+                await playerItem?.selectRequestedSubtitle(
+                    index: playbackInfo.subtitleStreamIndex,
+                    streams: item.mediaStreams
+                )
+            }
+
+            Task { [weak playerItem] in
+                await playerItem?.selectRequestedSubtitle(
+                    index: playbackInfo.subtitleStreamIndex,
+                    streams: item.mediaStreams
+                )
+            }
+
             let player = AVPlayer(playerItem: playerItem)
+            player.allowsExternalPlayback = true
+            player.usesExternalPlaybackWhileExternalScreenIsActive = true
+            player.audiovisualBackgroundPlaybackPolicy = .continuesIfPossible
+            player.preventsDisplaySleepDuringVideoPlayback = true
 
             if let resumeTicks, resumeTicks > 0 {
                 let seconds = Double(resumeTicks) / 10_000_000.0
@@ -375,7 +544,7 @@ final class PlaybackManager {
         isPreparing = true
         loadingMessage = "Preparing Playback..."
 
-        preparationTask = Task { @MainActor [weak self] in
+        let task = Task<Void, Never> { @MainActor [weak self] in
             guard let self else { return }
 
             guard let client = self.client else {
@@ -507,13 +676,17 @@ final class PlaybackManager {
                     title: "Playback Error",
                     message: "Unable to resolve stream URL from server.",
                     retryAction: { [weak self] in
-                        self?.play(itemID: itemID, playbackInfo: playbackInfo, fromBeginning: fromBeginning, queue: queue)
+                        Task { @MainActor [weak self] in
+                            self?.play(itemID: itemID, playbackInfo: playbackInfo, fromBeginning: fromBeginning, queue: queue)
+                        }
                     }
                 )
                 return
             }
 
             AppLogger.info("Initializing AVPlayer with stream URL: \(url.absoluteString)")
+
+            try? AVAudioSession.sharedInstance().setActive(true)
 
             let playerItem: AVPlayerItem
             if url.isFileURL {
@@ -523,7 +696,16 @@ final class PlaybackManager {
                 playerItem = AVPlayerItem(asset: asset)
             }
 
+            var fallbackItem = BaseItemDto()
+            fallbackItem.id = itemID
+            let item = LibraryViewModel.shared[itemID] ?? fallbackItem
+            playerItem.configureMetadata(for: item, client: client)
+
             let player = AVPlayer(playerItem: playerItem)
+            player.allowsExternalPlayback = true
+            player.usesExternalPlaybackWhileExternalScreenIsActive = true
+            player.audiovisualBackgroundPlaybackPolicy = .continuesIfPossible
+            player.preventsDisplaySleepDuringVideoPlayback = true
 
             if let resumeTicks, resumeTicks > 0 {
                 let seconds = Double(resumeTicks) / 10_000_000.0
@@ -541,6 +723,8 @@ final class PlaybackManager {
             let totalElapsed = String(format: "%.2f", Date().timeIntervalSince(preparationStartedAt))
             AppLogger.success("Playback preparation reached ready in \(totalElapsed)s for item '\(itemID)'")
         }
+
+        self.preparationTask = task
     }
 
     func cancelPreparation() {
@@ -553,6 +737,7 @@ final class PlaybackManager {
     func stop() {
         AppLogger.info("Stopping playback and releasing player")
         cancelPreparation()
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         activePlayerViewModel?.cleanup()
         activePlayerViewModel = nil
     }
@@ -579,6 +764,7 @@ final class PlaybackManager {
             AppLogger.error("Cannot play item without ID: '\(item.name ?? "Unknown")'")
             return
         }
+        LibraryViewModel.shared[itemID] = item
         AppLogger.info("Compatibility play invoked for item '\(item.name ?? itemID)' (ID: \(itemID))")
         if let client { self.client = client }
         if let userID { self.userID = userID }
@@ -591,5 +777,117 @@ final class PlaybackManager {
             userID: userID ?? self.userID
         )
         play(itemID: itemID, playbackInfo: info, fromBeginning: fromBeginning, queue: queue?.compactMap(\.id))
+    }
+}
+
+// MARK: - AVPlayerItem System Metadata
+
+extension AVPlayerItem {
+    /// Configures system metadata (title, artist, genres, and artwork) on the player item.
+    /// Because `AVPlayerViewController.updatesNowPlayingInfoCenter` is enabled, iOS automatically
+    /// publishes this metadata to Lock Screen, Dynamic Island, Control Center, and AirPlay.
+    func configureMetadata(for item: BaseItemDto, client: JellyfinClient?) {
+        var items: [AVMetadataItem] = []
+
+        func makeItem(_ identifier: AVMetadataIdentifier, value: NSString?) -> AVMetadataItem? {
+            guard let value, value.length > 0 else { return nil }
+            let meta = AVMutableMetadataItem()
+            meta.identifier = identifier
+            meta.value = value
+            meta.extendedLanguageTag = "und"
+            return meta
+        }
+
+        if let titleItem = makeItem(.commonIdentifierTitle, value: item.playbackTitle as NSString) {
+            items.append(titleItem)
+        }
+
+        if let subtitle = item.playbackSubtitle {
+            if let subtitleItem = makeItem(.commonIdentifierArtist, value: subtitle as NSString) {
+                items.append(subtitleItem)
+            }
+            if let trackSubTitle = makeItem(.iTunesMetadataTrackSubTitle, value: subtitle as NSString) {
+                items.append(trackSubTitle)
+            }
+        }
+
+        if let overview = item.overview,
+           let descItem = makeItem(.commonIdentifierDescription, value: overview as NSString) {
+            items.append(descItem)
+        }
+
+        if let genres = item.genres, !genres.isEmpty,
+           let genreItem = makeItem(.quickTimeMetadataGenre, value: genres.joined(separator: ", ") as NSString) {
+            items.append(genreItem)
+        }
+
+        self.externalMetadata = items
+
+        // Asynchronously load artwork from cache or network and attach to externalMetadata
+        let urls = item.artworkURLs(client: client)
+        guard !urls.isEmpty else { return }
+
+        Task(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            for url in urls {
+                let artworkData: Data? = await withCheckedContinuation { continuation in
+                    SDWebImageManager.shared.loadImage(
+                        with: url,
+                        options: [.continueInBackground],
+                        progress: nil
+                    ) { image, data, _, _, _, _ in
+                        let resultData = data ?? image?.jpegData(compressionQuality: 0.85)
+                        continuation.resume(returning: resultData)
+                    }
+                }
+
+                if let validData = artworkData, !validData.isEmpty {
+                    await MainActor.run {
+                        let artworkItem = AVMutableMetadataItem()
+                        artworkItem.identifier = .commonIdentifierArtwork
+                        artworkItem.dataType = validData.first == 0x89
+                            ? (kCMMetadataBaseDataType_PNG as String)
+                            : (kCMMetadataBaseDataType_JPEG as String)
+                        artworkItem.value = validData as NSData
+                        artworkItem.extendedLanguageTag = "und"
+
+                        var current = self.externalMetadata
+                        current.removeAll { $0.identifier == .commonIdentifierArtwork }
+                        current.append(artworkItem)
+                        self.externalMetadata = current
+                    }
+                    break
+                }
+            }
+        }
+    }
+
+    /// Auto-selects the requested subtitle track in the player item's legible media selection group.
+    func selectRequestedSubtitle(index: Int?, streams: [MediaStream]?) async {
+        guard let group = try? await asset.loadMediaSelectionGroup(for: .legible) else { return }
+
+        if index == -1 {
+            select(nil, in: group)
+            AppLogger.debug("Deselected subtitle stream group for item (Subtitles Off)")
+            return
+        }
+
+        if let subIndex = index, subIndex >= 0 {
+            if let targetStream = streams?.first(where: { $0.type == .subtitle && $0.index == subIndex }) {
+                let streamLang = targetStream.language?.lowercased()
+                if let match = group.options.first(where: { opt in
+                    if let lang = streamLang, (opt.extendedLanguageTag?.lowercased() == lang || opt.locale?.identifier.lowercased().hasPrefix(lang) == true) {
+                        return true
+                    }
+                    if let title = targetStream.title, opt.displayName.localizedCaseInsensitiveContains(title) {
+                        return true
+                    }
+                    return false
+                }) {
+                    select(match, in: group)
+                    AppLogger.debug("Auto-selected subtitle track: '\(match.displayName)'")
+                }
+            }
+        }
     }
 }

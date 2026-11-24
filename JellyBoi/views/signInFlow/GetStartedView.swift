@@ -11,8 +11,6 @@ import StatusOverlayKit
 
 struct GetStartedView: View {
 
-    @Environment(ViewManager.self) private var viewManager
-
     var body: some View {
         ZStack {
             AnimatedGradientBackground()
@@ -45,14 +43,13 @@ struct GetStartedView: View {
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.60))
 
-                    Button {
-                        viewManager.startSignIn()
+                    NavigationLink {
+                        LetsConnectView()
                     } label: {
                         Text("Get Started")
                             .font(.system(size: 17, weight: .semibold, design: .rounded))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            
                     }
                     .glassEffect(
                         .clear.interactive(),
@@ -67,4 +64,11 @@ struct GetStartedView: View {
         .ignoresSafeArea()
         .consumesTransientStatus()
     }
+}
+
+#Preview {
+    NavigationStack {
+        GetStartedView()
+    }
+    .environment(ViewManager())
 }

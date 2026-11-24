@@ -19,7 +19,6 @@ struct ServerSignInView: View {
 
     @Environment(ViewManager.self) private var viewManager
     @Environment(ServerViewModel.self) private var serverViewModel
-    @Environment(\.dismiss) private var dismiss
     @State private var viewModel = ServerSignInViewModel()
     @State private var showQuickConnectOverlay = false
     @State private var isOverlayActive = false
@@ -46,17 +45,36 @@ struct ServerSignInView: View {
                     credentialsSection
                     Spacer()
                 }
-                .padding(.top, 60)
             }
             .scrollDismissesKeyboard(.interactively)
 
-            topSection
-
             quickConnectOverlay
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar {
+            if let name = serverViewModel.serverName {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "server.rack")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.appAccent)
+                        Text(name)
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color.appAccent)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background {
+                        RoundedRectangle(cornerRadius: 25)
+                            .fill(Color.appAccent.opacity(0.1))
+                    }
+                }
+            }
+        }
         .onAppear { hideKeyboard() }
-        .onDisappear { hideKeyboard() }
+        .onDisappear {
+            hideKeyboard()
+            viewModel.stopQuickConnect()
+        }
         .animation(overlaySpring, value: showQuickConnectOverlay)
         .onChange(of: viewModel.didAuthenticate) { _, authenticated in
             if authenticated {
@@ -76,44 +94,6 @@ struct ServerSignInView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Top Bar
-
-    private var topSection: some View {
-        ZStack(alignment: .center) {
-            HStack {
-                BackButton {
-                    viewModel.stopQuickConnect()
-                    let hadFocus = focusedField != nil
-                    focusedField = nil
-                    KeyboardHelper.dismissThen(wasFocused: hadFocus) {
-                        dismiss()
-                    }
-                }
-                .padding(.leading, 20)
-
-                Spacer()
-            }
-
-            if let name = serverViewModel.serverName {
-                HStack {
-                    Image(systemName: "server.rack")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.appAccent)
-                    Text(name)
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.appAccent)
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 6)
-                .background {
-                    RoundedRectangle(cornerRadius: 25)
-                        .fill(Color.appAccent.opacity(0.1))
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Credentials Section
@@ -348,6 +328,9 @@ struct ServerSignInView: View {
 }
 
 #Preview {
-    ServerSignInView()
-        .environment(ViewManager())
+    NavigationStack {
+        ServerSignInView()
+    }
+    .environment(ViewManager())
+    .environment(ServerViewModel())
 }

@@ -9,12 +9,28 @@ import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
+#if canImport(AVFoundation)
+import AVFoundation
+#endif
 import LoggingKit
 import StatusOverlayKit
 
 #if os(iOS)
 final class AppDelegate: NSObject, UIApplicationDelegate {
     static var orientationLock: UIInterfaceOrientationMask = .portrait
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
+    ) -> Bool {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            AppLogger.info("AppDelegate: Configured initial AVAudioSession (.playback, .moviePlayback)")
+        } catch {
+            AppLogger.error("AppDelegate: Failed to set initial AVAudioSession category: \(error.localizedDescription)")
+        }
+        return true
+    }
 
     func application(
         _ application: UIApplication,

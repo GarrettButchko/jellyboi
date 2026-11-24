@@ -13,6 +13,7 @@ struct MediaView: View {
     @Environment(MediaTabViewModel.self) private var viewModel
     @State private var selectedItemID: String?
     @State private var scrollPosition = ScrollPosition()
+    @State private var isHeaderCollapsed: Bool = false
     @Namespace private var zoomTransition
 
     // MARK: - Header
@@ -61,26 +62,37 @@ struct MediaView: View {
                     .ignoresSafeArea()
 
                 ScrollToTopScrollView(
-                    position: $scrollPosition
+                    position: $scrollPosition,
+                    isHeaderCollapsed: $isHeaderCollapsed
                 ) {
-                    Group {
-                        switch viewModel.scope {
-                        case .movies:
-                            libraryContent(
-                                itemIDs: viewModel.regularMovieIDs,
-                                emptyIcon: "film",
-                                emptyTitle: "No Movies"
-                            )
-                        case .tvShows:
-                            libraryContent(
-                                itemIDs: viewModel.regularShowIDs,
-                                emptyIcon: "tv",
-                                emptyTitle: "No TV Shows"
-                            )
-                        case .favorites:
-                            favoritesContent
-                        case .downloads:
-                            downloadsContent
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text(viewModel.scope.title)
+                            .font(.largeTitle.bold())
+                            .foregroundStyle(Color.mainOpp)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
+                            .opacity(isHeaderCollapsed ? 0 : 1)
+                            .animation(.easeInOut(duration: 0.2), value: isHeaderCollapsed)
+
+                        Group {
+                            switch viewModel.scope {
+                            case .movies:
+                                libraryContent(
+                                    itemIDs: viewModel.regularMovieIDs,
+                                    emptyIcon: "film",
+                                    emptyTitle: "No Movies"
+                                )
+                            case .tvShows:
+                                libraryContent(
+                                    itemIDs: viewModel.regularShowIDs,
+                                    emptyIcon: "tv",
+                                    emptyTitle: "No TV Shows"
+                                )
+                            case .favorites:
+                                favoritesContent
+                            case .downloads:
+                                downloadsContent
+                            }
                         }
                     }
                     .onChange(of: viewModel.scope) { _, _ in
@@ -112,11 +124,21 @@ struct MediaView: View {
                 selectedItemID = nil
             }
             .navigationTitle(viewModel.scope.title)
-            .toolbarTitleDisplayMode(.large)
+            .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     scopeMenuButton
                 }
+
+                ToolbarItem(placement: .principal) {
+                    Text(viewModel.scope.title)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Color.mainOpp)
+                        .opacity(isHeaderCollapsed ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.2), value: isHeaderCollapsed)
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     ProfileAvatarButton()
                 }

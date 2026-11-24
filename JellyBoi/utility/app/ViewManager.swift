@@ -26,36 +26,25 @@ final class ViewManager {
     static let shared = ViewManager()
 
     var isSignedIn: Bool
-    var showSignInFlow: Bool = false
-    var showServerSignIn: Bool = false
     var selectedTab: AppTab = .home
 
     init() {
         isSignedIn = KeychainStore.read(for: "jellyfinSession") != nil
-    }
-
-    func startSignIn() {
-        showSignInFlow = true
-    }
-
-    func dismissSignInFlow() {
-        showSignInFlow = false
-    }
-
-    func navigateToServerSignIn() {
-        showServerSignIn = true
+            || KeychainStore.read(StoredSession.self, for: storedSessionKeychainKey) != nil
     }
 
     func completeSignIn() {
         isSignedIn = true
-        showSignInFlow = false
     }
 
     func signOut() {
+        KeychainStore.delete(for: storedSessionKeychainKey)
         KeychainStore.delete(for: "jellyfinSession")
         isSignedIn = false
-        showSignInFlow = false
-        showServerSignIn = false
+        selectedTab = .home
+        if ServerViewModel.shared.client != nil || ServerViewModel.shared.currentUser != nil {
+            ServerViewModel.shared.signOut()
+        }
     }
 
     func navigateToDownloads() {

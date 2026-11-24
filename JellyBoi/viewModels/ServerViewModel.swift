@@ -71,6 +71,9 @@ class ServerViewModel {
         currentUser = nil
         serverURL = nil
         serverName = nil
+        if ViewManager.shared.isSignedIn {
+            ViewManager.shared.signOut()
+        }
     }
 
     /// Restores a previous session from the keychain.

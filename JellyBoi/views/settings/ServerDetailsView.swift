@@ -8,8 +8,11 @@
 import SwiftUI
 import BaseColors
 import JellyfinAPI
+import StatusOverlayKit
 
 struct ServerDetailsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(ViewManager.self) private var viewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @Environment(LibraryViewModel.self) private var libraryViewModel
 
@@ -154,7 +157,14 @@ struct ServerDetailsView: View {
             // MARK: - Sign Out
             Section {
                 Button(role: .destructive) {
-                    serverViewModel.signOut()
+                    TransientStatusSignal.shared.pending = StatusMessage(
+                        title: "Signed Out",
+                        subtitle: "See you next time!",
+                        icon: "rectangle.portrait.and.arrow.right",
+                        tint: .blue
+                    )
+                    viewManager.signOut()
+                    dismiss()
                 } label: {
                     HStack {
                         Spacer()

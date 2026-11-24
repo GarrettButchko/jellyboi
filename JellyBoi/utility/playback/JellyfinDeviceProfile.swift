@@ -40,7 +40,11 @@ nonisolated enum JellyfinDeviceProfile {
                 SubtitleProfile(format: "subrip", method: .hls),
                 SubtitleProfile(format: "srt", method: .hls),
                 SubtitleProfile(format: "ass", method: .encode),
-                SubtitleProfile(format: "ssa", method: .encode)
+                SubtitleProfile(format: "ssa", method: .encode),
+                SubtitleProfile(format: "pgs", method: .encode),
+                SubtitleProfile(format: "pgssub", method: .encode),
+                SubtitleProfile(format: "sub", method: .encode),
+                SubtitleProfile(format: "dvd_subtitle", method: .encode)
             ],
             transcodingProfiles: [
                 TranscodingProfile(

@@ -32,8 +32,12 @@ extension MediaDetailView {
             }
         }
         
-        ToolbarItem(id: "detail-favorite", placement: .topBarTrailing) {
+        ToolbarItem(id: "detail-favorite") {
             MediaDetailFavoriteButton(detailVM: detailVM)
+            MediaDetailDownloadButton(detailVM: detailVM)
+        }
+        
+        ToolbarItem(id: "detail-download") {
             MediaDetailDownloadButton(detailVM: detailVM)
         }
     }

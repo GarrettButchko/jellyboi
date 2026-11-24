@@ -85,6 +85,8 @@ struct MediaDetailView: View {
         .toolbar {
             mediaDetailToolbar
         }
+        .navigationTitle("")
+        .toolbarTitleDisplayMode(.inline)
         .sheet(isPresented: $showOptionsSheet) {
             optionsSheet
                 .presentationDetents(optionsSheetHeight > 0 ? [.height(optionsSheetHeight)] : [.medium])

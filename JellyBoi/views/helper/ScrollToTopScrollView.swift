@@ -61,8 +61,9 @@ private struct ScrollOverlayContainer: View {
 /// A reusable `ScrollView` wrapper that integrates a floating "Top" scroll-to-top button,
 /// tracks discrete scroll thresholds to prevent 120Hz view re-renders and frame drops,
 /// handles dynamic content insets for headers and the floating button,
-/// and provides programmatic scroll-to-top support via `ScrollPosition`.
+/// and provides programmatic scroll-to-top support via `ScrollViewReader` without affecting normal scrolling.
 public struct ScrollToTopScrollView<Content: View, Header: View>: View {
+    private static var topAnchorID: String { "ScrollToTopScrollView.topAnchor" }
     private static var titleCollapseThreshold: CGFloat { 40 }
     private static var bottomBarThreshold: CGFloat { 300 }
 
@@ -72,31 +73,23 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
     private let content: () -> Content
 
     private var externalPosition: Binding<ScrollPosition>?
+    private var isHeaderCollapsed: Binding<Bool>?
 
-    @State private var internalPosition = ScrollPosition()
     @State private var coordinator = ScrollStateCoordinator()
     @State private var overlaySourceID = UUID()
 
     @Environment(ScrollOverlayCoordinator.self) private var overlayCoordinator: ScrollOverlayCoordinator?
 
-    private var effectivePosition: Binding<ScrollPosition> {
-        externalPosition ?? $internalPosition
-    }
-
-    private func scrollToTop() {
-        withAnimation {
-            effectivePosition.wrappedValue.scrollTo(edge: .top)
-        }
-    }
-
     public init(
         position: Binding<ScrollPosition>? = nil,
+        isHeaderCollapsed: Binding<Bool>? = nil,
         topInset: CGFloat = 0,
         bottomInset: CGFloat = 16,
         @ViewBuilder header: @escaping (_ showTitle: Bool) -> Header,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.externalPosition = position
+        self.isHeaderCollapsed = isHeaderCollapsed
         self.topInset = topInset
         self.bottomInset = bottomInset
         self.header = header
@@ -105,6 +98,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
 
     public init(
         position: Binding<ScrollPosition>? = nil,
+        isHeaderCollapsed: Binding<Bool>? = nil,
         topInset: CGFloat = 0,
         bottomInset: CGFloat = 16,
         @ViewBuilder header: @escaping () -> Header,
@@ -112,6 +106,7 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
     ) {
         self.init(
             position: position,
+            isHeaderCollapsed: isHeaderCollapsed,
             topInset: topInset,
             bottomInset: bottomInset,
             header: { _ in header() },
@@ -120,51 +115,71 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
     }
 
     public var body: some View {
-        ZStack(alignment: .top) {
-            ScrollView(.vertical, showsIndicators: true) {
-                content()
-            }
-            .scrollPosition(effectivePosition)
-            .contentMargins(.top, topInset, for: .scrollContent)
-            .contentMargins(.bottom, 48 + bottomInset, for: .scrollContent)
-            // Discrete Equatable geometry change: SwiftUI only calls action when Equatable newState != oldState!
-            .onScrollGeometryChange(for: ScrollToTopScrollState.self) { geometry in
-                let offset = geometry.contentOffset.y + geometry.contentInsets.top
-                return ScrollToTopScrollState(
-                    showTitle: offset > Self.titleCollapseThreshold,
-                    showBottomBar: offset > Self.bottomBarThreshold
-                )
-            } action: { _, newState in
-                if coordinator.showTitle != newState.showTitle {
-                    coordinator.showTitle = newState.showTitle
+        ScrollViewReader { proxy in
+            ZStack(alignment: .top) {
+                ScrollView(.vertical, showsIndicators: true) {
+                    Color.clear
+                        .frame(height: 0)
+                        .id(Self.topAnchorID)
+
+                    content()
                 }
-                if coordinator.showBottomBar != newState.showBottomBar {
-                    coordinator.showBottomBar = newState.showBottomBar
-                    overlayCoordinator?.updateScrollToTopVisibility(
-                        newState.showBottomBar,
-                        for: overlaySourceID
+                .contentMargins(.top, topInset, for: .scrollContent)
+                .contentMargins(.bottom, 48 + bottomInset, for: .scrollContent)
+                // Discrete Equatable geometry change: SwiftUI only calls action when Equatable newState != oldState!
+                .onScrollGeometryChange(for: ScrollToTopScrollState.self) { geometry in
+                    let offset = geometry.contentOffset.y + geometry.contentInsets.top
+                    return ScrollToTopScrollState(
+                        showTitle: offset > Self.titleCollapseThreshold,
+                        showBottomBar: offset > Self.bottomBarThreshold
                     )
+                } action: { _, newState in
+                    if coordinator.showTitle != newState.showTitle {
+                        coordinator.showTitle = newState.showTitle
+                        isHeaderCollapsed?.wrappedValue = newState.showTitle
+                    }
+                    if coordinator.showBottomBar != newState.showBottomBar {
+                        coordinator.showBottomBar = newState.showBottomBar
+                        overlayCoordinator?.updateScrollToTopVisibility(
+                            newState.showBottomBar,
+                            for: overlaySourceID
+                        )
+                    }
+                }
+
+                HeaderContainer(coordinator: coordinator, header: header)
+
+                // The tab view owns the overlay through its bottom accessory and
+                // renders a single instance for every tab. Only draw it locally
+                // when no shared coordinator is available.
+                if overlayCoordinator == nil {
+                    ScrollOverlayContainer(coordinator: coordinator) {
+                        withAnimation {
+                            proxy.scrollTo(Self.topAnchorID, anchor: .top)
+                        }
+                    }
                 }
             }
-
-            HeaderContainer(coordinator: coordinator, header: header)
-
-            // The tab view owns the overlay through its bottom accessory and
-            // renders a single instance for every tab. Only draw it locally
-            // when no shared coordinator is available.
-            if overlayCoordinator == nil {
-                ScrollOverlayContainer(coordinator: coordinator, onScrollToTop: scrollToTop)
+            .onAppear {
+                isHeaderCollapsed?.wrappedValue = coordinator.showTitle
+                overlayCoordinator?.activate(
+                    overlaySourceID,
+                    isScrollToTopVisible: coordinator.showBottomBar,
+                    scrollToTop: {
+                        withAnimation {
+                            proxy.scrollTo(Self.topAnchorID, anchor: .top)
+                        }
+                    }
+                )
             }
-        }
-        .onAppear {
-            overlayCoordinator?.activate(
-                overlaySourceID,
-                isScrollToTopVisible: coordinator.showBottomBar,
-                scrollToTop: scrollToTop
-            )
-        }
-        .onDisappear {
-            overlayCoordinator?.deactivate(overlaySourceID)
+            .onDisappear {
+                overlayCoordinator?.deactivate(overlaySourceID)
+            }
+            .onChange(of: externalPosition?.wrappedValue) { _, _ in
+                withAnimation {
+                    proxy.scrollTo(Self.topAnchorID, anchor: .top)
+                }
+            }
         }
     }
 }
@@ -174,12 +189,14 @@ public struct ScrollToTopScrollView<Content: View, Header: View>: View {
 extension ScrollToTopScrollView where Header == EmptyView {
     public init(
         position: Binding<ScrollPosition>? = nil,
+        isHeaderCollapsed: Binding<Bool>? = nil,
         topInset: CGFloat = 0,
         bottomInset: CGFloat = 16,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
             position: position,
+            isHeaderCollapsed: isHeaderCollapsed,
             topInset: topInset,
             bottomInset: bottomInset,
             header: { _ in EmptyView() },

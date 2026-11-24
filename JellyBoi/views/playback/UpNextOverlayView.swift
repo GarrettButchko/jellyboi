@@ -59,8 +59,9 @@ struct UpNextOverlayView: View {
     var body: some View {
         VStack {
             Spacer()
-            HStack {
+            HStack(spacing: 10) {
                 Spacer()
+
                 // "Play Next" button with left-to-right filling progress
                 Button(action: onPlayNow) {
                     buttonLabel(isFilled: false)
@@ -80,10 +81,12 @@ struct UpNextOverlayView: View {
                 }
                 .buttonStyle(.plain)
                 .animation(.linear(duration: 0.25), value: effectiveProgressFraction)
-                .padding(.bottom, areControlsVisible ? 115 : 0)
-                .animation(.easeInOut(duration: 0.25), value: areControlsVisible)
             }
+            .padding(.trailing, 24)
+            .padding(.bottom, areControlsVisible ? 115 : 24)
+            .animation(.easeInOut(duration: 0.25), value: areControlsVisible)
         }
+        .safeAreaPadding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .environment(\.colorScheme, .dark)
         .preferredColorScheme(.dark)

@@ -223,6 +223,10 @@ extension MediaDetailViewModel {
             suffixes.append("Forced")
         }
 
+        if !ApplePlayableSubtitle.isCompatible(stream) {
+            suffixes.append("Transcodes")
+        }
+
         if let title = stream.title, !title.isEmpty {
             let lower = title.lowercased()
             let isFormatOnly = ["srt", "ass", "subrip", "vtt", "pgs", "sub"].contains { lower == $0 }
@@ -360,7 +364,10 @@ extension MediaDetailViewModel {
 
         let subs = (source.mediaStreams ?? []).filter { $0.type == .subtitle }
         if !preserveExisting || selectedSubtitleStreamIndex == nil {
-            if let defSub = source.defaultSubtitleStreamIndex, subs.contains(where: { $0.index == defSub }) {
+            if let defSub = source.defaultSubtitleStreamIndex,
+               let subStream = subs.first(where: { $0.index == defSub }),
+               ApplePlayableSubtitle.isCompatible(subStream) {
+                // Auto-select default subtitle only when natively compatible with AVPlayer
                 selectedSubtitleStreamIndex = defSub
             } else {
                 selectedSubtitleStreamIndex = -1

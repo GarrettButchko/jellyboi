@@ -14,7 +14,6 @@ struct ProfileAvatarButton: View {
     @Environment(ViewManager.self) private var viewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @State private var showProfile = false
-    @State private var pendingSignOut = false
 
     var body: some View {
         Button {
@@ -37,13 +36,11 @@ struct ProfileAvatarButton: View {
         }
         .padding(5)
         .glassEffect(.regular.interactive(), in: Circle())
-        .sheet(isPresented: $showProfile, onDismiss: {
-            if pendingSignOut {
-                pendingSignOut = false
+        .sheet(isPresented: $showProfile) {
+            SettingsView(onSignOut: {
+                showProfile = false
                 viewManager.signOut()
-            }
-        }) {
-            SettingsView(onSignOut: { pendingSignOut = true })
+            })
         }
     }
 

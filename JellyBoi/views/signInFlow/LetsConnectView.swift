@@ -10,10 +10,10 @@ import BaseColors
 import JellyfinAPI
 
 struct LetsConnectView: View {
-    @Environment(ViewManager.self) private var viewManager
     @Environment(ServerViewModel.self) private var serverViewModel
     @State private var viewModel = LetsConnectViewModel()
     @State private var serverURL = ""
+    @State private var navigateToServerSignIn = false
     @FocusState private var urlFieldFocused: Bool
     @ScaledMetric(relativeTo: .body) private var inputHeight: CGFloat = 22
 
@@ -42,22 +42,8 @@ struct LetsConnectView: View {
 
                     contentSection
                 }
-                .padding(.top, 60)
             }
             .scrollDismissesKeyboard(.interactively)
-
-            HStack {
-                BackButton {
-                    let hadFocus = urlFieldFocused
-                    urlFieldFocused = false
-                    KeyboardHelper.dismissThen(wasFocused: hadFocus) {
-                        viewManager.dismissSignInFlow()
-                    }
-                }
-                .padding(.leading, 20)
-                Spacer()
-            }
-            .frame(maxWidth: .infinity)
         }
         .safeAreaInset(edge: .bottom) {
             connectButton
@@ -72,7 +58,9 @@ struct LetsConnectView: View {
                     .ignoresSafeArea(edges: .bottom)
                 )
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(isPresented: $navigateToServerSignIn) {
+            ServerSignInView()
+        }
         .onAppear { hideKeyboard() }
         .task { viewModel.startDiscovery() }
         .onDisappear {
@@ -267,7 +255,7 @@ struct LetsConnectView: View {
         let hadFocus = urlFieldFocused
         urlFieldFocused = false
         KeyboardHelper.dismissThen(wasFocused: hadFocus) {
-            viewManager.navigateToServerSignIn()
+            navigateToServerSignIn = true
         }
     }
 
@@ -285,4 +273,11 @@ struct LetsConnectView: View {
         .disabled(!isVerified)
         .opacity(isVerified ? 1 : 0.4)
     }
+}
+
+#Preview {
+    NavigationStack {
+        LetsConnectView()
+    }
+    .environment(ServerViewModel())
 }

@@ -16,6 +16,7 @@ struct SettingsView: View {
     var onSignOut: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(ViewManager.self) private var viewManager
     @Environment(ServerViewModel.self) private var serverViewModel
 
     var body: some View {
@@ -134,6 +135,7 @@ struct SettingsView: View {
                             icon: "rectangle.portrait.and.arrow.right",
                             tint: .blue
                         )
+                        viewManager.signOut()
                         onSignOut()
                         dismiss()
                     } label: {

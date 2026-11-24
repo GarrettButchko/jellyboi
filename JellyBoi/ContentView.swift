@@ -25,7 +25,6 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var bindablePlayback = playbackManager
-        @Bindable var bindableViewManager = viewManager
 
         ZStack {
             Color.bg
@@ -33,7 +32,10 @@ struct ContentView: View {
 
             Group {
                 if !viewManager.isSignedIn {
-                    GetStartedView()
+                    NavigationStack {
+                        GetStartedView()
+                    }
+                    .transition(.opacity)
                 } else {
                     ZStack {
                         TabsView()
@@ -46,24 +48,11 @@ struct ContentView: View {
                             .zIndex(1)
                         }
                     }
+                    .transition(.opacity)
                 }
             }
             .animation(.smooth(duration: 0.35), value: isOffline)
             .animation(.smooth, value: viewManager.isSignedIn)
-
-            if viewManager.showSignInFlow {
-                NavigationStack {
-                    LetsConnectView()
-                        .navigationDestination(isPresented: $bindableViewManager.showServerSignIn) {
-                            ServerSignInView()
-                        }
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .background(Color.bg)
-                .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
-                .ignoresSafeArea()
-                .zIndex(2)
-            }
 
             #if DEBUG
             if DebugSettings.shared.showFPSCounter {
@@ -72,7 +61,6 @@ struct ContentView: View {
             }
             #endif
         }
-        .animation(.smooth, value: viewManager.showSignInFlow)
         .overlay {
             if playbackManager.isPreparing{
                 PlaybackLoadingOverlay(
@@ -112,21 +100,8 @@ struct ContentView: View {
         ) { playerVM in
             if let player = playerVM.player {
                 ZStack(alignment: .topLeading) {
-                    CustomPlayerView(
+                    NativePlayerView(
                         player: player,
-                        itemID: playerVM.itemID,
-                        nextItem: playerVM.nextItem,
-                        onPlayNext: {
-                            Task {
-                                await playerVM.playNextItem()
-                            }
-                        },
-                        onDismiss: {
-                            #if os(iOS)
-                            OrientationHelper.lockOrientation(.portrait, rotateTo: .portrait)
-                            #endif
-                            playbackManager.stop()
-                        },
                         onControlsVisibilityChanged: { isVisible in
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 playerVM.areControlsVisible = isVisible
