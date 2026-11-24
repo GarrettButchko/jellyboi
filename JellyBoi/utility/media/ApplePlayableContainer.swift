@@ -19,12 +19,28 @@ nonisolated enum ApplePlayableContainer {
     /// Comma-separated form expected by Jellyfin's `DirectPlayProfile.container`.
     static let jellyfinContainerList = names.joined(separator: ",")
 
+    /// Returns the first natively supported container found in `container`, if any.
+    ///
+    /// Handles single extensions ("mp4"), dot-prefixed (".mp4"), or comma-separated lists from Jellyfin/FFmpeg ("mov,mp4,m4a").
+    static func preferredContainer(for container: String?) -> String? {
+        guard let container else { return nil }
+        let raw = container.lowercased()
+        let items = raw.split(separator: ",").map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        }
+        for name in names {
+            if items.contains(name) {
+                return name
+            }
+        }
+        return nil
+    }
+
     /// True when `container` (for example `MediaSourceInfo.container`) is natively playable.
     ///
-    /// Case-insensitive and tolerant of a missing container, so callers do not have to normalise first.
+    /// Case-insensitive and tolerant of comma-separated format strings or missing container.
     static func supports(_ container: String?) -> Bool {
-        guard let container else { return false }
-        return names.contains(container.lowercased())
+        preferredContainer(for: container) != nil
     }
 
     /// True when the file at `url` is in a natively playable container.

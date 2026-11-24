@@ -262,6 +262,9 @@ final class PlayerViewModel: Identifiable {
         // Observe currentItem status to populate available subtitle tracks once ready
         if let currentItem = player.currentItem {
             itemStatusObserver = currentItem.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+                if item.status == .failed {
+                    AppLogger.error("Player item failed with error: \(item.error?.localizedDescription ?? "unknown error")")
+                }
                 guard item.status == .readyToPlay else { return }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
@@ -455,7 +458,7 @@ final class PlaybackManager {
 
     /// Builds a direct static stream URL for an item.
     /// Returns the local file URL if the media is downloaded locally, or the direct static Jellyfin stream URL.
-    public func directPlayURL(itemID: String, mediaSourceID: String? = nil) -> URL? {
+    public func directPlayURL(itemID: String, container: String? = nil, mediaSourceID: String? = nil) -> URL? {
         if let localURL = DownloadManager.shared.localFileURL(for: itemID) {
             AppLogger.debug("directPlayURL resolved to local file for item '\(itemID)': \(localURL.path)")
             return localURL
@@ -473,7 +476,11 @@ final class PlaybackManager {
 
         var path = components.path
         if !path.hasSuffix("/") { path += "/" }
-        path += "Videos/\(itemID)/stream"
+        if let container, !container.isEmpty {
+            path += "Videos/\(itemID)/stream.\(container)"
+        } else {
+            path += "Videos/\(itemID)/stream"
+        }
         components.path = path
 
         var queryItems: [URLQueryItem] = [
@@ -588,7 +595,8 @@ final class PlaybackManager {
             return transcodingURL(itemID: itemID, playbackInfo: playbackInfo, startTimeTicks: startTimeTicks)
         } else {
             AppLogger.debug("streamURL resolving via direct play with transcoding fallback for item '\(itemID)'")
-            return directPlayURL(itemID: itemID, mediaSourceID: playbackInfo.mediaSourceID)
+            let directContainer = ApplePlayableContainer.preferredContainer(for: item?.container)
+            return directPlayURL(itemID: itemID, container: directContainer, mediaSourceID: playbackInfo.mediaSourceID)
                 ?? transcodingURL(itemID: itemID, playbackInfo: playbackInfo, startTimeTicks: startTimeTicks)
         }
     }
@@ -769,8 +777,9 @@ final class PlaybackManager {
                 let selectedSource = sources.first(where: { $0.id == playbackInfo.mediaSourceID }) ?? sources.first
                 if let source = selectedSource {
                     let container = source.container?.lowercased() ?? "unknown"
-                    resolvedContainer = container
-                    let isAppleNative = ApplePlayableContainer.supports(container)
+                    let directContainer = ApplePlayableContainer.preferredContainer(for: container)
+                    resolvedContainer = directContainer ?? container
+                    let isAppleNative = directContainer != nil
                     let directPlayAllowed = source.isSupportsDirectPlay == true && isAppleNative && (playbackInfo.maxStreamingBitrate == nil)
 
                     if let transURL = source.transcodingURL, !transURL.isEmpty {
@@ -783,13 +792,13 @@ final class PlaybackManager {
                             diagnosticSummary = "\(method) • \(container) • \(source.bitrate.map { "\($0 / 1000) kbps" } ?? "Auto")"
                             AppLogger.info("Using server-provided transcoding URL (\(method)): \(authenticated.absoluteString)")
                         }
-                    } else if directPlayAllowed {
+                    } else if directPlayAllowed, let directContainer {
                         // Direct Play
-                        if let directURL = client.directVideoStreamURL(itemID: itemID, sessionID: playSessionID, mediaSourceID: source.id) {
+                        if let directURL = client.directVideoStreamURL(itemID: itemID, container: directContainer, sessionID: playSessionID, mediaSourceID: source.id) {
                             let authenticated = PlaybackURL.applyingAuthentication(directURL, token: client.configuration.accessToken)
                             negotiatedURL = authenticated
-                            diagnosticSummary = "Direct Play • \(container.uppercased())"
-                            AppLogger.info("Direct play authorized by server for container '\(container)': \(authenticated.absoluteString)")
+                            diagnosticSummary = "Direct Play • \(directContainer.uppercased())"
+                            AppLogger.info("Direct play authorized by server for container '\(directContainer)': \(authenticated.absoluteString)")
                         }
                     } else {
                         // Container requires remuxing or custom stream selection

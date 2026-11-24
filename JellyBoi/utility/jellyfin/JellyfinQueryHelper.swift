@@ -382,6 +382,20 @@ nonisolated extension Paths.GetVideoStreamParameters {
     }
 }
 
+nonisolated extension Paths.GetVideoStreamByContainerParameters {
+    /// Static direct-play stream parameters for a specific container.
+    public static func directStatic(
+        sessionID: String?,
+        mediaSourceID: String?
+    ) -> Paths.GetVideoStreamByContainerParameters {
+        var params = Paths.GetVideoStreamByContainerParameters()
+        params.isStatic = true
+        params.playSessionID = sessionID
+        params.mediaSourceID = mediaSourceID
+        return params
+    }
+}
+
 // MARK: - JellyfinClient Convenience API Extensions
 
 extension JellyfinClient {
@@ -547,14 +561,25 @@ extension JellyfinClient {
     /// `queryAPIKey: true` at their own call site.
     public func directVideoStreamURL(
         itemID: String,
-        sessionID: String?,
-        mediaSourceID: String?
+        container: String? = nil,
+        sessionID: String? = nil,
+        mediaSourceID: String? = nil
     ) -> URL? {
-        url(
-            with: Paths.getVideoStream(
-                itemID: itemID,
-                parameters: .directStatic(sessionID: sessionID, mediaSourceID: mediaSourceID)
+        if let container, !container.isEmpty {
+            return url(
+                with: Paths.getVideoStreamByContainer(
+                    itemID: itemID,
+                    container: container,
+                    parameters: .directStatic(sessionID: sessionID, mediaSourceID: mediaSourceID)
+                )
             )
-        )
+        } else {
+            return url(
+                with: Paths.getVideoStream(
+                    itemID: itemID,
+                    parameters: .directStatic(sessionID: sessionID, mediaSourceID: mediaSourceID)
+                )
+            )
+        }
     }
 }
