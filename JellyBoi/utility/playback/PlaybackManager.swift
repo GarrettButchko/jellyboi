@@ -105,6 +105,13 @@ final class PlayerViewModel: Identifiable {
     var legibleGroup: AVMediaSelectionGroup? = nil
     var availableLegibleOptions: [AVMediaSelectionOption] = []
     var isSubtitlesOn: Bool = false
+    let playbackRequestedAt: Date
+    let preparationDuration: TimeInterval?
+    let apiDuration: TimeInterval?
+    let isTranscode: Bool
+    let playSessionID: String?
+    let playMethod: String
+    let container: String
 
     var currentItem: BaseItemDto? {
         LibraryViewModel.shared[itemID]
@@ -114,16 +121,54 @@ final class PlayerViewModel: Identifiable {
     private var endObserverToken: NSObjectProtocol? = nil
     private var muteObserver: NSKeyValueObservation? = nil
     private var itemStatusObserver: NSKeyValueObservation? = nil
+    private var timeControlStatusObserver: NSKeyValueObservation? = nil
     private var isDismissed: Bool = false
+    private(set) var firstFrameRendered: Bool = false
+    private var isReadyToPlayLogged: Bool = false
+    private var ttfWaitingTimerTask: Task<Void, Never>? = nil
+    private(set) var readyToPlayAt: Date? = nil
+    private(set) var firstFrameRenderedAt: Date? = nil
+    private var lastLoggedBufferSecond: Int = -1
 
-    init(itemID: String, playbackInfo: PlaybackInfoDto, player: AVPlayer? = nil, queue: [String] = []) {
+    init(
+        itemID: String,
+        playbackInfo: PlaybackInfoDto,
+        player: AVPlayer? = nil,
+        queue: [String] = [],
+        playbackRequestedAt: Date = Date(),
+        preparationDuration: TimeInterval? = nil,
+        apiDuration: TimeInterval? = nil,
+        isTranscode: Bool = false,
+        playSessionID: String? = nil,
+        playMethod: String = "",
+        container: String = ""
+    ) {
         self.itemID = itemID
         self.playbackInfo = playbackInfo
         self.player = player
         self.queue = queue
+        self.playbackRequestedAt = playbackRequestedAt
+        self.preparationDuration = preparationDuration
+        self.apiDuration = apiDuration
+        self.isTranscode = isTranscode
+        self.playSessionID = playSessionID
+        self.playMethod = playMethod
+        self.container = container
         AppLogger.debug("PlayerViewModel initialized for itemID: '\(itemID)', queue count: \(queue.count)")
         resolveNextItem()
         setupPlayerObservations()
+        startTTFWaitingTimer()
+    }
+
+    private func startTTFWaitingTimer() {
+        ttfWaitingTimerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard let self, !self.firstFrameRendered else { break }
+                let elapsed = String(format: "%.1f", Date().timeIntervalSince(self.playbackRequestedAt))
+                AppLogger.info("Playback TTF timer: waiting for first frame (\(elapsed)s elapsed) for item '\(self.itemID)'")
+            }
+        }
     }
 
     func resolveNextItem() {
@@ -150,6 +195,23 @@ final class PlayerViewModel: Identifiable {
 
                 let currentSeconds = time.seconds
                 let remaining = durationSeconds - currentSeconds
+
+                if !self.firstFrameRendered && currentSeconds > 0.05 {
+                    self.markFirstFrameRendered()
+                }
+
+                let sec = Int(currentSeconds)
+                if sec > 0 && sec % 2 == 0 && sec != self.lastLoggedBufferSecond {
+                    self.lastLoggedBufferSecond = sec
+                    var forwardBuffer: Double = 0.0
+                    if let timeRange = currentItem.loadedTimeRanges.first?.timeRangeValue {
+                        let bufferStart = CMTimeGetSeconds(timeRange.start)
+                        let bufferDuration = CMTimeGetSeconds(timeRange.duration)
+                        forwardBuffer = max(0, (bufferStart + bufferDuration) - currentSeconds)
+                    }
+                    let mem = SystemMetrics.residentMemoryMB
+                    AppLogger.info("[BENCHMARK:BUFFER] engine=newBackend item_id=\(self.itemID) playback_sec=\(String(format: "%.1f", currentSeconds)) forward_buffer_sec=\(String(format: "%.2f", forwardBuffer)) preferred_buffer_sec=\(currentItem.preferredForwardBufferDuration) memory_mb=\(String(format: "%.1f", mem))")
+                }
 
                 if remaining <= 30 && remaining > 0 && self.nextItem != nil && !self.isDismissed {
                     let secondsRemaining = Int(ceil(remaining))
@@ -202,7 +264,30 @@ final class PlayerViewModel: Identifiable {
             itemStatusObserver = currentItem.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
                 guard item.status == .readyToPlay else { return }
                 Task { @MainActor [weak self] in
-                    await self?.loadLegibleOptions()
+                    guard let self else { return }
+                    if !self.isReadyToPlayLogged {
+                        self.isReadyToPlayLogged = true
+                        self.readyToPlayAt = Date()
+                        let readyElapsed = Date().timeIntervalSince(self.playbackRequestedAt)
+                        let readyMs = Int(readyElapsed * 1000)
+                        let mem = SystemMetrics.residentMemoryMB
+                        AppLogger.info("[BENCHMARK:READINESS] engine=newBackend item_id=\(self.itemID) ready_to_play_ms=\(readyMs) memory_mb=\(String(format: "%.1f", mem))")
+                        AppLogger.info("Player item readyToPlay in \(String(format: "%.2f", readyElapsed))s for item '\(self.itemID)'")
+                    }
+                    await self.loadLegibleOptions()
+                }
+            }
+        }
+
+        // Fallback for audio-only items or when player begins playback
+        timeControlStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+            if player.timeControlStatus == .playing {
+                Task { @MainActor [weak self] in
+                    guard let self, !self.firstFrameRendered else { return }
+                    let hasVideo = self.player?.currentItem?.tracks.contains(where: { $0.assetTrack?.mediaType == .video }) ?? true
+                    if !hasVideo {
+                        self.markFirstFrameRendered()
+                    }
                 }
             }
         }
@@ -263,12 +348,62 @@ final class PlayerViewModel: Identifiable {
 
     func startPlaybackIfNeeded() async {
         AppLogger.debug("startPlaybackIfNeeded invoked for itemID: '\(itemID)'")
-        try? AVAudioSession.sharedInstance().setActive(true)
+        await AVAudioSession.sharedInstance().activateAsynchronously()
         player?.play()
+    }
+
+    func markFirstFrameRendered() {
+        guard !firstFrameRendered else { return }
+        firstFrameRendered = true
+        ttfWaitingTimerTask?.cancel()
+        ttfWaitingTimerTask = nil
+
+        let firstFrameAt = Date()
+        self.firstFrameRenderedAt = firstFrameAt
+        let ttfSeconds = firstFrameAt.timeIntervalSince(playbackRequestedAt)
+        let ttfFormatted = String(format: "%.2f", ttfSeconds)
+        let ttffMs = Int(ttfSeconds * 1000)
+
+        let apiMs = Int((apiDuration ?? 0) * 1000)
+        let prepMs = Int((preparationDuration ?? 0) * 1000)
+        let decodeMs = readyToPlayAt != nil ? Int(firstFrameAt.timeIntervalSince(readyToPlayAt!) * 1000) : max(0, ttffMs - prepMs)
+
+        AppLogger.info("[BENCHMARK:RENDER] engine=newBackend item_id=\(itemID) first_frame_rendered_ms=\(ttffMs) decode_ms=\(decodeMs)")
+        AppLogger.info("[BENCHMARK:BREAKDOWN] engine=newBackend item_id=\(itemID) ttff_ms=\(ttffMs) t_api_ms=\(apiMs) t_transcode_ms=\(isTranscode ? apiMs : 0) t_seg0_ms=\(prepMs) t_decode_ms=\(decodeMs)")
+
+        if let prep = preparationDuration {
+            let prepFormatted = String(format: "%.2f", prep)
+            let renderFormatted = String(format: "%.2f", max(0, ttfSeconds - prep))
+            AppLogger.success("Playback TTF (time to first frame): \(ttfFormatted)s (preparation: \(prepFormatted)s, render: \(renderFormatted)s) for item '\(itemID)'")
+        } else {
+            AppLogger.success("Playback TTF (time to first frame): \(ttfFormatted)s for item '\(itemID)'")
+        }
+
+        #if DEBUG
+        if !playbackDiagnosticSummary.isEmpty && !playbackDiagnosticSummary.contains("TTF") {
+            playbackDiagnosticSummary += " • TTF: \(ttfFormatted)s"
+        }
+        #endif
     }
 
     func cleanup() {
         AppLogger.info("Cleaning up PlayerViewModel for itemID: '\(itemID)'")
+        ttfWaitingTimerTask?.cancel()
+        ttfWaitingTimerTask = nil
+        if !firstFrameRendered {
+            let elapsed = String(format: "%.2f", Date().timeIntervalSince(playbackRequestedAt))
+            AppLogger.info("Playback TTF timer stopped after \(elapsed)s before first frame rendered for item '\(itemID)'")
+        }
+
+        if let currentItem = player?.currentItem, let log = currentItem.accessLog(), let lastEvent = log.events.last {
+            let startupTime = lastEvent.startupTime
+            let indicated = Int(lastEvent.indicatedBitrate / 1000)
+            let observed = Int(lastEvent.observedBitrate / 1000)
+            let stalls = lastEvent.numberOfStalls
+            let watched = lastEvent.durationWatched
+            AppLogger.info("[BENCHMARK:ACCESS_LOG] engine=newBackend item_id=\(self.itemID) startup_time_s=\(String(format: "%.3f", startupTime)) indicated_kbps=\(indicated) observed_kbps=\(observed) stalls=\(stalls) duration_watched_s=\(String(format: "%.1f", watched))")
+        }
+
         if let token = timeObserverToken {
             player?.removeTimeObserver(token)
             timeObserverToken = nil
@@ -281,8 +416,12 @@ final class PlayerViewModel: Identifiable {
         muteObserver = nil
         itemStatusObserver?.invalidate()
         itemStatusObserver = nil
+        timeControlStatusObserver?.invalidate()
+        timeControlStatusObserver = nil
 
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        Task {
+            await AVAudioSession.sharedInstance().deactivateAsynchronously()
+        }
 
         player?.pause()
         player = nil
@@ -470,7 +609,7 @@ final class PlaybackManager {
         queue: [String]? = nil
     ) {
         let preparationStartedAt = Date()
-        AppLogger.info("Play invoked for itemID: '\(itemID)', fromBeginning: \(fromBeginning), queue count: \(queue?.count ?? 0)")
+        AppLogger.info("Play invoked for itemID: '\(itemID)', fromBeginning: \(fromBeginning), queue count: \(queue?.count ?? 0) (Playback TTF timer started)")
 
         // Cancel any pending preparation task and teardown existing player
         preparationTask?.cancel()
@@ -496,7 +635,9 @@ final class PlaybackManager {
             AppLogger.info("Item '\(itemID)' is available locally at '\(localURL.path)'. Initiating local playback.")
             isPreparing = false
 
-            try? AVAudioSession.sharedInstance().setActive(true)
+            Task {
+                await AVAudioSession.sharedInstance().activateAsynchronously()
+            }
 
             let playerItem = AVPlayerItem(url: localURL)
             var fallbackItem = BaseItemDto()
@@ -531,12 +672,26 @@ final class PlaybackManager {
                 player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: { _ in })
             }
 
-            let vm = PlayerViewModel(itemID: itemID, playbackInfo: playbackInfo, player: player, queue: queue ?? [])
+            let prepElapsed = Date().timeIntervalSince(preparationStartedAt)
+            let elapsed = String(format: "%.2f", prepElapsed)
+            AppLogger.success("Offline playback started successfully in \(elapsed)s for item '\(itemID)'")
+
+            let vm = PlayerViewModel(
+                itemID: itemID,
+                playbackInfo: playbackInfo,
+                player: player,
+                queue: queue ?? [],
+                playbackRequestedAt: preparationStartedAt,
+                preparationDuration: prepElapsed,
+                apiDuration: 0,
+                isTranscode: false,
+                playSessionID: nil,
+                playMethod: "Direct Play (Local)",
+                container: localURL.pathExtension.uppercased()
+            )
             vm.playbackDiagnosticSummary = "Direct Play (Local) • \(localURL.pathExtension.uppercased())"
             self.activePlayerViewModel = vm
             player.play()
-            let elapsed = String(format: "%.2f", Date().timeIntervalSince(preparationStartedAt))
-            AppLogger.success("Offline playback started successfully in \(elapsed)s for item '\(itemID)'")
             return
         }
 
@@ -566,6 +721,7 @@ final class PlaybackManager {
             var negotiatedURL: URL?
             var playSessionID: String?
             var diagnosticSummary: String = ""
+            var resolvedContainer: String = "unknown"
 
             // Build full PlaybackInfoDto with device profile
             var requestDto = playbackInfo
@@ -613,6 +769,7 @@ final class PlaybackManager {
                 let selectedSource = sources.first(where: { $0.id == playbackInfo.mediaSourceID }) ?? sources.first
                 if let source = selectedSource {
                     let container = source.container?.lowercased() ?? "unknown"
+                    resolvedContainer = container
                     let isAppleNative = ApplePlayableContainer.supports(container)
                     let directPlayAllowed = source.isSupportsDirectPlay == true && isAppleNative && (playbackInfo.maxStreamingBitrate == nil)
 
@@ -686,7 +843,7 @@ final class PlaybackManager {
 
             AppLogger.info("Initializing AVPlayer with stream URL: \(url.absoluteString)")
 
-            try? AVAudioSession.sharedInstance().setActive(true)
+            await AVAudioSession.sharedInstance().activateAsynchronously()
 
             let playerItem: AVPlayerItem
             if url.isFileURL {
@@ -714,14 +871,31 @@ final class PlaybackManager {
                 await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
             }
 
-            let vm = PlayerViewModel(itemID: itemID, playbackInfo: playbackInfo, player: player, queue: queue ?? [])
+            let prepElapsed = Date().timeIntervalSince(preparationStartedAt)
+            let totalElapsed = String(format: "%.2f", prepElapsed)
+            AppLogger.success("Playback preparation reached ready in \(totalElapsed)s for item '\(itemID)'")
+
+            let negotiationElapsed = Date().timeIntervalSince(negotiationStartedAt)
+            let isTranscode = diagnosticSummary.contains("Transcode")
+            AppLogger.info("[BENCHMARK:API] engine=newBackend item_id=\(itemID) duration_ms=\(Int(negotiationElapsed * 1000)) session_id=\(playSessionID ?? "none") method=\(diagnosticSummary) is_transcode=\(isTranscode) container=\(resolvedContainer)")
+
+            let vm = PlayerViewModel(
+                itemID: itemID,
+                playbackInfo: playbackInfo,
+                player: player,
+                queue: queue ?? [],
+                playbackRequestedAt: preparationStartedAt,
+                preparationDuration: prepElapsed,
+                apiDuration: negotiationElapsed,
+                isTranscode: isTranscode,
+                playSessionID: playSessionID,
+                playMethod: diagnosticSummary,
+                container: resolvedContainer
+            )
             vm.playbackDiagnosticSummary = diagnosticSummary
             self.activePlayerViewModel = vm
             self.isPreparing = false
             player.play()
-
-            let totalElapsed = String(format: "%.2f", Date().timeIntervalSince(preparationStartedAt))
-            AppLogger.success("Playback preparation reached ready in \(totalElapsed)s for item '\(itemID)'")
         }
 
         self.preparationTask = task
@@ -737,7 +911,9 @@ final class PlaybackManager {
     func stop() {
         AppLogger.info("Stopping playback and releasing player")
         cancelPreparation()
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        Task {
+            await AVAudioSession.sharedInstance().deactivateAsynchronously()
+        }
         activePlayerViewModel?.cleanup()
         activePlayerViewModel = nil
     }
@@ -888,6 +1064,30 @@ extension AVPlayerItem {
                     AppLogger.debug("Auto-selected subtitle track: '\(match.displayName)'")
                 }
             }
+        }
+    }
+}
+
+// MARK: - AVAudioSession Concurrency Extension
+
+private extension AVAudioSession {
+    func activateAsynchronously() async {
+        if #available(iOS 27.0, *) {
+            _ = try? await activate()
+        } else {
+            await Task.detached {
+                try? self.setActive(true)
+            }.value
+        }
+    }
+
+    func deactivateAsynchronously(options: AVAudioSession.SetActiveOptions = .notifyOthersOnDeactivation) async {
+        if #available(iOS 27.0, *) {
+            _ = try? await deactivate(options: .notifyOthersOnDeactivation)
+        } else {
+            await Task.detached {
+                try? self.setActive(false, options: options)
+            }.value
         }
     }
 }

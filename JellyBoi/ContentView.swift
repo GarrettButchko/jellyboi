@@ -106,6 +106,9 @@ struct ContentView: View {
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 playerVM.areControlsVisible = isVisible
                             }
+                        },
+                        onFirstFrameReady: {
+                            playerVM.markFirstFrameRendered()
                         }
                     )
                     .ignoresSafeArea()

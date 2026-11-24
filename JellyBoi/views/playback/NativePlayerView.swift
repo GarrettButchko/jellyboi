@@ -11,9 +11,13 @@ import AVKit
 struct NativePlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
     var onControlsVisibilityChanged: ((Bool) -> Void)? = nil
+    var onFirstFrameReady: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onControlsVisibilityChanged: onControlsVisibilityChanged)
+        Coordinator(
+            onControlsVisibilityChanged: onControlsVisibilityChanged,
+            onFirstFrameReady: onFirstFrameReady
+        )
     }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
@@ -29,6 +33,7 @@ struct NativePlayerView: UIViewControllerRepresentable {
         #endif
 
         context.coordinator.setupControlsObservation(for: controller)
+        context.coordinator.setupDisplayReadinessObservation(for: controller)
 
         return controller
     }
@@ -38,7 +43,9 @@ struct NativePlayerView: UIViewControllerRepresentable {
             uiViewController.player = player
         }
         context.coordinator.onControlsVisibilityChanged = onControlsVisibilityChanged
+        context.coordinator.onFirstFrameReady = onFirstFrameReady
         context.coordinator.setupControlsObservation(for: uiViewController)
+        context.coordinator.setupDisplayReadinessObservation(for: uiViewController)
     }
 
     static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: Coordinator) {
@@ -59,13 +66,35 @@ struct NativePlayerView: UIViewControllerRepresentable {
 
     final class Coordinator: NSObject {
         var onControlsVisibilityChanged: ((Bool) -> Void)?
+        var onFirstFrameReady: (() -> Void)?
 
         private var observations: [NSKeyValueObservation] = []
+        private var displayReadinessObservation: NSKeyValueObservation?
         private var lastReportedVisibility: Bool?
         private var trackingView: ControlsTrackingView?
+        private var hasTriggeredFirstFrame: Bool = false
 
-        init(onControlsVisibilityChanged: ((Bool) -> Void)?) {
+        init(
+            onControlsVisibilityChanged: ((Bool) -> Void)?,
+            onFirstFrameReady: (() -> Void)? = nil
+        ) {
             self.onControlsVisibilityChanged = onControlsVisibilityChanged
+            self.onFirstFrameReady = onFirstFrameReady
+        }
+
+        func setupDisplayReadinessObservation(for controller: AVPlayerViewController) {
+            guard displayReadinessObservation == nil else { return }
+
+            displayReadinessObservation = controller.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] controller, change in
+                guard let self else { return }
+                let isReady = change.newValue ?? controller.isReadyForDisplay
+                if isReady && !self.hasTriggeredFirstFrame {
+                    self.hasTriggeredFirstFrame = true
+                    Task { @MainActor [weak self] in
+                        self?.onFirstFrameReady?()
+                    }
+                }
+            }
         }
 
         func setupControlsObservation(for controller: AVPlayerViewController) {
@@ -135,6 +164,8 @@ struct NativePlayerView: UIViewControllerRepresentable {
         func teardown() {
             observations.forEach { $0.invalidate() }
             observations.removeAll()
+            displayReadinessObservation?.invalidate()
+            displayReadinessObservation = nil
             trackingView?.removeFromSuperview()
             trackingView = nil
         }

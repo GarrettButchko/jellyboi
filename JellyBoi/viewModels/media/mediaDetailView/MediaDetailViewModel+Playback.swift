@@ -7,6 +7,7 @@
 
 import Foundation
 import JellyfinAPI
+import LoggingKit
 
 // MARK: - Playback & Progress State & Actions
 
@@ -19,16 +20,16 @@ extension MediaDetailViewModel {
 
     // MARK: - Next Playable Resolution
 
-    /// Resolves the next playable item ID (episode, movie, or collection child) based on watch/resume state.
+    /// Resolves the next playable item ID for a movie, series, or box set.
     func nextPlayableItem(fromBeginning: Bool = false) -> String? {
-        let defaultID = displayItem?.id ?? sourceItemId
+        let defaultID = displayItem?.id ?? sourceItem?.id ?? sourceItemId
 
-        // 1. Single Movie or Episode
-        if displayItem?.type == .episode || displayItem?.type == .movie {
+        // 1. Movie / Standalone video: Current item ID
+        if displayItem?.type == .movie || displayItem?.type == .video {
             return defaultID
         }
 
-        // 2. Series: Resume episode ID -> Next unplayed episode ID -> First episode ID -> Series ID
+        // 2. Series: Next unplayed episode ID
         if displayItem?.type == .series  {
             let resolvedEpisodes = episodes.compactMap { library[$0] }
             if let playableID = resolvedEpisodes.nextPlayableID(fromBeginning: fromBeginning) {
@@ -166,6 +167,8 @@ extension MediaDetailViewModel {
         if isPlayDisabled {
             return
         }
+        let targetID = nextPlayableItem(fromBeginning: false) ?? nextPlayableItemID
+        AppLogger.info("[BENCHMARK:PHASE] \(targetID) PLAY_TAP engine=newBackend")
         if displayItem?.isWatched ?? false {
             playMedia(
                 fromBeginning: true,

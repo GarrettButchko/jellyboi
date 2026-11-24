@@ -8,6 +8,21 @@
 import Foundation
 import Observation
 import LoggingKit
+import Darwin
+
+public enum SystemMetrics: Sendable {
+    public static var residentMemoryMB: Double {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        guard kerr == KERN_SUCCESS else { return 0.0 }
+        return Double(info.resident_size) / (1024.0 * 1024.0)
+    }
+}
 
 public struct LogRecord: Identifiable, Sendable {
     public let id: UUID
@@ -33,6 +48,7 @@ public final class AppLogRecorder: @unchecked Sendable {
 
     public init() {}
 
+    
     public func start() {
         AppLogger.logHandler = { [weak self] level, message in
             self?.append(level: level, message: message)

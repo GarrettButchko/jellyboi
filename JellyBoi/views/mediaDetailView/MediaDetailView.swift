@@ -9,6 +9,7 @@ import SwiftUI
 import BaseColors
 import SDWebImageSwiftUI
 import JellyfinAPI
+import LoggingKit
 
 // MARK: - MediaDetailView
 
@@ -32,6 +33,7 @@ struct MediaDetailView: View {
     @State var optionsSheetHeight: CGFloat = 0
     
     @State var heroArtworkHeight: CGFloat = 0
+    @State var viewAppearDate: Date? = nil
 
     // Zoom transitions
     @Namespace var episodeTransition
@@ -141,6 +143,18 @@ struct MediaDetailView: View {
         .navigationDestination(item: $selectedCollectionItem) { col in
             MediaDetailView(item: col)
                 .navigationTransition(.zoom(sourceID: AnyHashable(col), in: collectionTransition))
+        }
+        .onAppear {
+            viewAppearDate = Date()
+            let itemID = displayItem.id ?? ""
+            AppLogger.info("[BENCHMARK:PHASE] \(itemID) DETAIL_APPEAR engine=newBackend")
+        }
+        .onDisappear {
+            let itemID = displayItem.id ?? ""
+            if let appear = viewAppearDate, playbackManager.activePlayerViewModel == nil && !playbackManager.isPreparing {
+                let dwell = Date().timeIntervalSince(appear)
+                AppLogger.info("[BENCHMARK:ABANDON] engine=newBackend item_id=\(itemID) dwell_s=\(String(format: "%.2f", dwell)) did_trigger_api=false did_spawn_transcode=false was_session_orphaned=false")
+            }
         }
         .task(id: displayItem.id) {
             if let client = serverViewModel.client {
