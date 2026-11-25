@@ -189,6 +189,35 @@ class LibraryViewModel {
     private var currentUserID: String?
     @ObservationIgnored
     private var currentClient: JellyfinClient?
+    @ObservationIgnored
+    private var userDataTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var progressUpdateTask: Task<Void, Never>?
+
+    init() {
+        userDataTask = Task { @MainActor [weak self] in
+            for await notification in NotificationCenter.default.notifications(named: .mediaUserDataChanged) {
+                guard let self else { break }
+                guard let dtos = notification.userInfo?["userData"] as? [UserItemDataDto] else { continue }
+                self.applyUserData(dtos)
+            }
+        }
+
+        progressUpdateTask = Task { @MainActor [weak self] in
+            for await notification in NotificationCenter.default.notifications(named: .mediaProgressUpdated) {
+                guard let self else { break }
+                guard let itemID = notification.object as? String,
+                      let positionTicks = notification.userInfo?["positionTicks"] as? Int else { continue }
+                let totalTicks = notification.userInfo?["durationTicks"] as? Int
+                self.updateProgress(for: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+            }
+        }
+    }
+
+    deinit {
+        userDataTask?.cancel()
+        progressUpdateTask?.cancel()
+    }
 
     private(set) var isLoading = false
     var errorMessage: String?
@@ -243,14 +272,66 @@ class LibraryViewModel {
         resumeShowIDs.removeAll { id in
             guard changedIDs.contains(id) else { return false }
             guard let item = self[id] else { return true }
-            return !item.hasProgress && !item.isWatched
+            return (!item.hasProgress && !item.isWatched) || item.isWatched
+        }
+
+        for id in changedIDs {
+            guard let item = self[id],
+                  item.type == .episode,
+                  item.isInProgress,
+                  !resumeShowIDs.contains(id) else { continue }
+            let seriesID = item.seriesID
+            if let seriesID {
+                resumeShowIDs.removeAll { self[$0]?.seriesID == seriesID }
+            }
+            resumeShowIDs.insert(id, at: 0)
         }
     }
 
     func updateProgress(for itemID: String, positionTicks: Int, totalTicks: Int?) {
-        if var item = self[itemID] {
-            item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
-            self[itemID] = item
+        guard var item = self[itemID] else { return }
+        item.updateProgress(positionTicks: positionTicks, totalTicks: totalTicks)
+        self[itemID] = item
+
+        guard item.type == .episode else { return }
+        let seriesID = item.seriesID
+
+        if item.isInProgress {
+            resumeShowIDs.removeAll { existingID in
+                existingID == itemID || (seriesID != nil && self[existingID]?.seriesID == seriesID)
+            }
+            resumeShowIDs.insert(itemID, at: 0)
+        } else if item.isWatched {
+            resumeShowIDs.removeAll { $0 == itemID }
+        }
+    }
+
+    /// Refreshes the "Next Up" / continue-watching episode queue from the server.
+    func refreshNextUp() async {
+        guard let client = currentClient else { return }
+        let params = Paths.GetNextUpParameters.standard(userID: currentUserID, limit: 20)
+        guard let response = try? await client.send(Paths.getNextUp(parameters: params)) else { return }
+        let nextUpItems = response.value.items ?? []
+
+        for nextUpItem in nextUpItems {
+            guard let id = nextUpItem.id else { continue }
+            if var existing = self[id] {
+                if let userData = nextUpItem.userData {
+                    existing.userData = userData
+                    self[id] = existing
+                }
+            } else {
+                self[id] = nextUpItem
+            }
+        }
+
+        let filteredNextUpIDs = nextUpItems.compactMap(\.id).filter { id in
+            guard let item = self[id] else { return true }
+            return !item.isUnplayedFirstEpisode
+        }
+
+        if filteredNextUpIDs != resumeShowIDs {
+            resumeShowIDs = filteredNextUpIDs
         }
     }
 

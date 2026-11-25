@@ -70,6 +70,8 @@ class MediaDetailViewModel {
     /// Applies server-reported user data so this screen never keeps its own idea of watch state.
     @ObservationIgnored
     private var userDataTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var progressUpdateTask: Task<Void, Never>?
 
     // MARK: - Playback Options Sheet State
     var selectedMaxBitrate: Int?
@@ -155,10 +157,21 @@ class MediaDetailViewModel {
                 self.applyUserData(dtos)
             }
         }
+
+        progressUpdateTask = Task { @MainActor [weak self] in
+            for await notification in NotificationCenter.default.notifications(named: .mediaProgressUpdated) {
+                guard let self else { break }
+                guard let itemID = notification.object as? String,
+                      let positionTicks = notification.userInfo?["positionTicks"] as? Int else { continue }
+                let totalTicks = notification.userInfo?["durationTicks"] as? Int
+                self.handleProgressUpdated(itemID: itemID, positionTicks: positionTicks, totalTicks: totalTicks)
+            }
+        }
     }
 
     deinit {
         userDataTask?.cancel()
+        progressUpdateTask?.cancel()
     }
 
     /// Writes server-reported user data into every item this screen is holding.

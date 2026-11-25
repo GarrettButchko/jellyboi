@@ -119,16 +119,19 @@ final class PlayerViewModel: Identifiable {
 
     private var timeObserverToken: Any? = nil
     private var endObserverToken: NSObjectProtocol? = nil
+    private var timeJumpedObserverToken: NSObjectProtocol? = nil
     private var muteObserver: NSKeyValueObservation? = nil
     private var itemStatusObserver: NSKeyValueObservation? = nil
     private var timeControlStatusObserver: NSKeyValueObservation? = nil
     private var isDismissed: Bool = false
+    private var isCleanedUp: Bool = false
     private(set) var firstFrameRendered: Bool = false
     private var isReadyToPlayLogged: Bool = false
     private var ttfWaitingTimerTask: Task<Void, Never>? = nil
     private(set) var readyToPlayAt: Date? = nil
     private(set) var firstFrameRenderedAt: Date? = nil
     private var lastLoggedBufferSecond: Int = -1
+    let reporter: PlaybackReporter
 
     init(
         itemID: String,
@@ -141,7 +144,14 @@ final class PlayerViewModel: Identifiable {
         isTranscode: Bool = false,
         playSessionID: String? = nil,
         playMethod: String = "",
-        container: String = ""
+        container: String = "",
+        client: JellyfinClient? = nil,
+        userID: String? = nil,
+        resolvedPlayMethod: PlayMethod = .directStream,
+        resolvedMediaSourceID: String? = nil,
+        initialPositionTicks: Int = 0,
+        initialDurationTicks: Int = 0,
+        isEpisode: Bool = false
     ) {
         self.itemID = itemID
         self.playbackInfo = playbackInfo
@@ -154,6 +164,20 @@ final class PlayerViewModel: Identifiable {
         self.playSessionID = playSessionID
         self.playMethod = playMethod
         self.container = container
+        self.reporter = PlaybackReporter(
+            client: client,
+            userID: userID,
+            itemID: itemID,
+            mediaSourceID: resolvedMediaSourceID ?? playbackInfo.mediaSourceID,
+            playSessionID: playSessionID,
+            playMethod: resolvedPlayMethod,
+            initialPositionTicks: initialPositionTicks,
+            initialDurationTicks: initialDurationTicks,
+            audioStreamIndex: playbackInfo.audioStreamIndex,
+            subtitleStreamIndex: playbackInfo.subtitleStreamIndex,
+            queue: queue,
+            isEpisode: isEpisode
+        )
         AppLogger.debug("PlayerViewModel initialized for itemID: '\(itemID)', queue count: \(queue.count)")
         resolveNextItem()
         setupPlayerObservations()
@@ -195,6 +219,13 @@ final class PlayerViewModel: Identifiable {
 
                 let currentSeconds = time.seconds
                 let remaining = durationSeconds - currentSeconds
+                let isPaused = self.player?.timeControlStatus == .paused
+
+                self.reporter.handlePeriodicTick(
+                    currentSeconds: currentSeconds,
+                    durationSeconds: durationSeconds,
+                    isPaused: isPaused
+                )
 
                 if !self.firstFrameRendered && currentSeconds > 0.05 {
                     self.markFirstFrameRendered()
@@ -245,17 +276,41 @@ final class PlayerViewModel: Identifiable {
             }
         }
 
-        // When item finishes playing to the end, automatically advance to next item
+        // When item finishes playing to the end, mark completed and automatically advance to next item
         endObserverToken = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 guard let self,
                       let endedItem = notification.object as? AVPlayerItem,
                       endedItem === self.player?.currentItem else { return }
-                await self.playNextItem()
+                self.reporter.handleNaturalCompletion()
+                Task { @MainActor [weak self] in
+                    await self?.playNextItem()
+                }
+            }
+        }
+
+        // Report debounced seek positions when the user scrubs
+        timeJumpedObserverToken = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.timeJumpedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let jumpedItem = notification.object as? AVPlayerItem,
+                      jumpedItem === self.player?.currentItem else { return }
+                let positionSeconds = jumpedItem.currentTime().seconds
+                let durationSeconds = jumpedItem.duration.seconds
+                let isPaused = self.player?.timeControlStatus == .paused
+                self.reporter.handleUserSeek(
+                    positionSeconds: positionSeconds,
+                    durationSeconds: durationSeconds,
+                    isPaused: isPaused
+                )
             }
         }
 
@@ -282,15 +337,31 @@ final class PlayerViewModel: Identifiable {
             }
         }
 
-        // Fallback for audio-only items or when player begins playback
-        timeControlStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
-            if player.timeControlStatus == .playing {
-                Task { @MainActor [weak self] in
-                    guard let self, !self.firstFrameRendered else { return }
-                    let hasVideo = self.player?.currentItem?.tracks.contains(where: { $0.assetTrack?.mediaType == .video }) ?? true
-                    if !hasVideo {
-                        self.markFirstFrameRendered()
+        // Report playback start/pause/resume transitions and fallback for audio-only items
+        timeControlStatusObserver = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
+            let status = player.timeControlStatus
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch status {
+                case .playing:
+                    if self.reporter.state == .notReported {
+                        self.reporter.handlePlaybackStarted(isPaused: false)
+                    } else {
+                        self.reporter.handlePauseStateChanged(isPaused: false)
                     }
+                    if !self.firstFrameRendered {
+                        let hasVideo = self.player?.currentItem?.tracks.contains(where: { $0.assetTrack?.mediaType == .video }) ?? true
+                        if !hasVideo {
+                            self.markFirstFrameRendered()
+                        }
+                    }
+                case .paused:
+                    self.reporter.handlePauseStateChanged(isPaused: true)
+                case .waitingToPlayAtSpecifiedRate:
+                    // Buffering/stalling is not a user pause.
+                    break
+                @unknown default:
+                    break
                 }
             }
         }
@@ -390,6 +461,8 @@ final class PlayerViewModel: Identifiable {
     }
 
     func cleanup() {
+        guard !isCleanedUp else { return }
+        isCleanedUp = true
         AppLogger.info("Cleaning up PlayerViewModel for itemID: '\(itemID)'")
         ttfWaitingTimerTask?.cancel()
         ttfWaitingTimerTask = nil
@@ -397,6 +470,8 @@ final class PlayerViewModel: Identifiable {
             let elapsed = String(format: "%.2f", Date().timeIntervalSince(playbackRequestedAt))
             AppLogger.info("Playback TTF timer stopped after \(elapsed)s before first frame rendered for item '\(itemID)'")
         }
+
+        reporter.stop()
 
         if let currentItem = player?.currentItem, let log = currentItem.accessLog(), let lastEvent = log.events.last {
             let startupTime = lastEvent.startupTime
@@ -414,6 +489,10 @@ final class PlayerViewModel: Identifiable {
         if let endToken = endObserverToken {
             NotificationCenter.default.removeObserver(endToken)
             endObserverToken = nil
+        }
+        if let jumpToken = timeJumpedObserverToken {
+            NotificationCenter.default.removeObserver(jumpToken)
+            timeJumpedObserverToken = nil
         }
         muteObserver?.invalidate()
         muteObserver = nil
@@ -509,7 +588,8 @@ final class PlaybackManager {
     public func transcodingURL(
         itemID: String,
         playbackInfo: PlaybackInfoDto = PlaybackInfoDto(),
-        startTimeTicks: Int? = nil
+        startTimeTicks: Int? = nil,
+        playSessionID: String? = nil
     ) -> URL? {
         guard let client else {
             AppLogger.warning("Cannot construct transcodingURL for item '\(itemID)': Jellyfin client is nil")
@@ -517,7 +597,7 @@ final class PlaybackManager {
         }
 
         let sourceID = playbackInfo.mediaSourceID ?? itemID
-        let playSessionID = UUID().uuidString
+        let playSessionID = playSessionID ?? UUID().uuidString
 
         guard var components = URLComponents(url: client.configuration.url, resolvingAgainstBaseURL: false) else {
             AppLogger.error("Failed to construct URL components for transcoding URL from client URL: \(client.configuration.url)")
@@ -575,7 +655,8 @@ final class PlaybackManager {
     public func streamURL(
         itemID: String,
         playbackInfo: PlaybackInfoDto = PlaybackInfoDto(),
-        startTimeTicks: Int? = nil
+        startTimeTicks: Int? = nil,
+        playSessionID: String? = nil
     ) -> URL? {
         // If downloaded locally, always use the local file URL (direct play)
         if let localURL = DownloadManager.shared.localFileURL(for: itemID) {
@@ -592,12 +673,12 @@ final class PlaybackManager {
 
         if hasBitrateCap || requiresSubtitleTranscode || forcesTranscoding {
             AppLogger.debug("streamURL resolving via transcoding URL for item '\(itemID)' (bitrateCap: \(hasBitrateCap), nonCompatibleSubtitle: \(requiresSubtitleTranscode), forcesTranscoding: \(forcesTranscoding))")
-            return transcodingURL(itemID: itemID, playbackInfo: playbackInfo, startTimeTicks: startTimeTicks)
+            return transcodingURL(itemID: itemID, playbackInfo: playbackInfo, startTimeTicks: startTimeTicks, playSessionID: playSessionID)
         } else {
             AppLogger.debug("streamURL resolving via direct play with transcoding fallback for item '\(itemID)'")
             let directContainer = ApplePlayableContainer.preferredContainer(for: item?.container)
             return directPlayURL(itemID: itemID, container: directContainer, mediaSourceID: playbackInfo.mediaSourceID)
-                ?? transcodingURL(itemID: itemID, playbackInfo: playbackInfo, startTimeTicks: startTimeTicks)
+                ?? transcodingURL(itemID: itemID, playbackInfo: playbackInfo, startTimeTicks: startTimeTicks, playSessionID: playSessionID)
         }
     }
 
@@ -660,13 +741,6 @@ final class PlaybackManager {
                 )
             }
 
-            Task { [weak playerItem] in
-                await playerItem?.selectRequestedSubtitle(
-                    index: playbackInfo.subtitleStreamIndex,
-                    streams: item.mediaStreams
-                )
-            }
-
             let player = AVPlayer(playerItem: playerItem)
             player.allowsExternalPlayback = true
             player.usesExternalPlaybackWhileExternalScreenIsActive = true
@@ -684,6 +758,7 @@ final class PlaybackManager {
             let elapsed = String(format: "%.2f", prepElapsed)
             AppLogger.success("Offline playback started successfully in \(elapsed)s for item '\(itemID)'")
 
+            let effectiveUserID = playbackInfo.userID ?? self.userID
             let vm = PlayerViewModel(
                 itemID: itemID,
                 playbackInfo: playbackInfo,
@@ -695,7 +770,14 @@ final class PlaybackManager {
                 isTranscode: false,
                 playSessionID: nil,
                 playMethod: "Direct Play (Local)",
-                container: localURL.pathExtension.uppercased()
+                container: localURL.pathExtension.uppercased(),
+                client: self.client,
+                userID: effectiveUserID,
+                resolvedPlayMethod: .directPlay,
+                resolvedMediaSourceID: playbackInfo.mediaSourceID,
+                initialPositionTicks: resumeTicks ?? 0,
+                initialDurationTicks: item.runTimeTicks.map { Int($0) } ?? 0,
+                isEpisode: item.type == .episode
             )
             vm.playbackDiagnosticSummary = "Direct Play (Local) • \(localURL.pathExtension.uppercased())"
             self.activePlayerViewModel = vm
@@ -730,6 +812,8 @@ final class PlaybackManager {
             var playSessionID: String?
             var diagnosticSummary: String = ""
             var resolvedContainer: String = "unknown"
+            var resolvedPlayMethod: PlayMethod = .directStream
+            var resolvedMediaSourceID: String? = playbackInfo.mediaSourceID
 
             // Build full PlaybackInfoDto with device profile
             var requestDto = playbackInfo
@@ -776,6 +860,7 @@ final class PlaybackManager {
 
                 let selectedSource = sources.first(where: { $0.id == playbackInfo.mediaSourceID }) ?? sources.first
                 if let source = selectedSource {
+                    resolvedMediaSourceID = source.id ?? playbackInfo.mediaSourceID
                     let container = source.container?.lowercased() ?? "unknown"
                     let directContainer = ApplePlayableContainer.preferredContainer(for: container)
                     resolvedContainer = directContainer ?? container
@@ -788,7 +873,9 @@ final class PlaybackManager {
                         if let resolved = PlaybackURL.resolved(cappedURL, client: client) {
                             let authenticated = PlaybackURL.applyingAuthentication(resolved, token: client.configuration.accessToken)
                             negotiatedURL = authenticated
-                            let method = (playbackInfo.maxStreamingBitrate != nil) ? "Transcode" : (source.isSupportsDirectStream == true ? "Direct Stream" : "Transcode")
+                            let isTranscoding = (playbackInfo.maxStreamingBitrate != nil) || (source.isSupportsDirectStream != true)
+                            resolvedPlayMethod = isTranscoding ? .transcode : .directStream
+                            let method = isTranscoding ? "Transcode" : "Direct Stream"
                             diagnosticSummary = "\(method) • \(container) • \(source.bitrate.map { "\($0 / 1000) kbps" } ?? "Auto")"
                             AppLogger.info("Using server-provided transcoding URL (\(method)): \(authenticated.absoluteString)")
                         }
@@ -797,21 +884,44 @@ final class PlaybackManager {
                         if let directURL = client.directVideoStreamURL(itemID: itemID, container: directContainer, sessionID: playSessionID, mediaSourceID: source.id) {
                             let authenticated = PlaybackURL.applyingAuthentication(directURL, token: client.configuration.accessToken)
                             negotiatedURL = authenticated
+                            resolvedPlayMethod = .directPlay
                             diagnosticSummary = "Direct Play • \(directContainer.uppercased())"
                             AppLogger.info("Direct play authorized by server for container '\(directContainer)': \(authenticated.absoluteString)")
                         }
                     } else {
                         // Container requires remuxing or custom stream selection
                         AppLogger.info("Container '\(container)' or options require HLS delivery; requesting client-constructed transcoding URL")
-                        if let hlsURL = self.transcodingURL(itemID: itemID, playbackInfo: playbackInfo, startTimeTicks: resumeTicks) {
+                        let effectiveSessionID = playSessionID ?? UUID().uuidString
+                        playSessionID = effectiveSessionID
+                        if let hlsURL = self.transcodingURL(
+                            itemID: itemID,
+                            playbackInfo: playbackInfo,
+                            startTimeTicks: resumeTicks,
+                            playSessionID: effectiveSessionID
+                        ) {
                             negotiatedURL = hlsURL
-                            diagnosticSummary = "Direct Stream • \(container)"
+                            let hasBitrateCap = (playbackInfo.maxStreamingBitrate ?? 0) > 0
+                            let item = LibraryViewModel.shared[itemID]
+                            let selectedSubtitleStream = item?.mediaStreams?.first(where: { $0.type == .subtitle && $0.index == playbackInfo.subtitleStreamIndex })
+                            let requiresSubtitleTranscode = (selectedSubtitleStream != nil && !ApplePlayableSubtitle.isCompatible(selectedSubtitleStream))
+                            resolvedPlayMethod = (hasBitrateCap || requiresSubtitleTranscode) ? .transcode : .directStream
+                            let method = resolvedPlayMethod == .transcode ? "Transcode" : "Direct Stream"
+                            diagnosticSummary = "\(method) • \(container)"
                             AppLogger.info("Generated client HLS transcoding URL: \(hlsURL.absoluteString)")
                         }
                     }
                 } else {
                     AppLogger.warning("No media sources returned by server; falling back to client-constructed stream URL")
-                    negotiatedURL = self.streamURL(itemID: itemID, playbackInfo: playbackInfo, startTimeTicks: resumeTicks)
+                    let effectiveSessionID = playSessionID ?? UUID().uuidString
+                    playSessionID = effectiveSessionID
+                    let fallbackURL = self.streamURL(
+                        itemID: itemID,
+                        playbackInfo: playbackInfo,
+                        startTimeTicks: resumeTicks,
+                        playSessionID: effectiveSessionID
+                    )
+                    negotiatedURL = fallbackURL
+                    resolvedPlayMethod = (fallbackURL?.path.contains("master.m3u8") == true) ? .transcode : .directPlay
                     diagnosticSummary = "Stream"
                 }
             } catch is CancellationError {
@@ -825,7 +935,16 @@ final class PlaybackManager {
                     return
                 }
                 AppLogger.warning("Server PlaybackInfo negotiation failed (\(error.localizedDescription)); attempting client fallback stream URL")
-                negotiatedURL = self.streamURL(itemID: itemID, playbackInfo: playbackInfo, startTimeTicks: resumeTicks)
+                let effectiveSessionID = playSessionID ?? UUID().uuidString
+                playSessionID = effectiveSessionID
+                let fallbackURL = self.streamURL(
+                    itemID: itemID,
+                    playbackInfo: playbackInfo,
+                    startTimeTicks: resumeTicks,
+                    playSessionID: effectiveSessionID
+                )
+                negotiatedURL = fallbackURL
+                resolvedPlayMethod = (fallbackURL?.path.contains("master.m3u8") == true) ? .transcode : .directPlay
                 diagnosticSummary = "Fallback Stream"
             }
 
@@ -899,7 +1018,14 @@ final class PlaybackManager {
                 isTranscode: isTranscode,
                 playSessionID: playSessionID,
                 playMethod: diagnosticSummary,
-                container: resolvedContainer
+                container: resolvedContainer,
+                client: client,
+                userID: effectiveUserID,
+                resolvedPlayMethod: resolvedPlayMethod,
+                resolvedMediaSourceID: resolvedMediaSourceID,
+                initialPositionTicks: resumeTicks ?? 0,
+                initialDurationTicks: item.runTimeTicks.map { Int($0) } ?? 0,
+                isEpisode: item.type == .episode
             )
             vm.playbackDiagnosticSummary = diagnosticSummary
             self.activePlayerViewModel = vm
